@@ -1,0 +1,138 @@
+name: Terraform
+
+# Routing logic:
+#   - push to a feature branch                  -> nothing (no trigger matches)
+#   - draft PR touching infra/**                -> ci then `plan` matrix dev/test/prod
+#   - ready-for-review PR touching infra/**     -> ci then `apply-dev`
+#   - push to main touching infra/**            -> ci then `apply-test`
+#   - tag push (v*) OR manual workflow_dispatch -> ci then `apply-prod`
+#
+# Two safety gates:
+#   1. `ci` job runs first on every trigger (fmt-check + lint + security).
+#      Every plan/apply job `needs: ci`, so a fmt/lint failure stops everything
+#      cloud-side before any auth or state mutation happens.
+#   2. `apply` mode in the composite action is atomic plan-then-apply:
+#      `terraform plan -out=tfplan` followed by `terraform apply tfplan`. If
+#      plan errors, apply does not run.
+#
+# Each cloud-touching job authenticates to GCP via Workload Identity Federation
+# using values pulled from the matching GitHub Environment (dev/test/prod):
+#   vars.WIF_PROVIDER, vars.TF_SA
+# Bucket names live in infra/backends/<env>.config; project ID is derived
+# from var.environment inside the Terraform code.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform.yml'
+      - '.github/actions/terraform/**'
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform.yml'
+      - '.github/actions/terraform/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write          # required by google-github-actions/auth (OIDC)
+  pull-requests: write     # so the plan job can comment on the PR if extended later
+
+concurrency:
+  group: terraform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Fast static-analysis gate — runs first on every trigger; every other job
+  # `needs: ci`. No cloud credentials needed; pure local checks (fmt, lint,
+  # security scan). If this fails, no plan or apply runs anywhere.
+  ci:
+    name: ci (fmt-check + lint + security)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: '1.10.0'
+      - uses: terraform-linters/setup-tflint@v6
+      - uses: aquasecurity/setup-trivy@v0.2.6
+      - name: tflint --init (download plugins from infra/.tflint.hcl)
+        run: tflint --chdir=infra --init
+      - name: make -C infra ci
+        run: make -C infra ci
+
+  # Draft PR — plan everywhere so the author sees full blast radius.
+  plan:
+    name: plan / ${{ matrix.env }}
+    needs: ci
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.env }}
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, test, prod]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/terraform
+        with:
+          env: ${{ matrix.env }}
+          action: plan
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.TF_SA }}
+
+  # Ready-for-review PR — apply dev only (smoke test before merging to main).
+  apply-dev:
+    name: apply / dev
+    needs: ci
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/terraform
+        with:
+          env: dev
+          action: apply
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.TF_SA }}
+
+  # Merge / push to main — apply test.
+  apply-test:
+    name: apply / test
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/terraform
+        with:
+          env: test
+          action: apply
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.TF_SA }}
+
+  # Tag (v*) or manual dispatch — apply prod.
+  # Add required reviewers to the "prod" GitHub Environment to gate this
+  # behind a human approval.
+  apply-prod:
+    name: apply / prod
+    needs: ci
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/terraform
+        with:
+          env: prod
+          action: apply
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.TF_SA }}

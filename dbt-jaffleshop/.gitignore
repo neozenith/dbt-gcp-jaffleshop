@@ -1,0 +1,18 @@
+.venv
+venv
+.env
+env
+
+target/
+dbt_packages/
+logs/
+# profiles.yml is intentionally committed — values are env_var()-templated, no secrets.
+
+.DS_Store
+
+.user.yml
+
+.ruff_cache
+__pycache__
+.*_cache
+tmp/

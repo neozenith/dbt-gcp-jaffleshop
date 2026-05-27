@@ -1,0 +1,35 @@
+jaffle_shop:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: bigquery
+      method: "{{ env_var('DBT_BQ_METHOD', 'oauth') }}"
+      project: "{{ env_var('DBT_BQ_PROJECT_DEV') }}"
+      dataset: "{{ env_var('DBT_BQ_DATASET_DEV', 'dbt_dev') }}"
+      location: "{{ env_var('DBT_BQ_LOCATION', 'US') }}"
+      threads: "{{ env_var('DBT_BQ_THREADS', '4') | int }}"
+      priority: interactive
+      job_execution_timeout_seconds: "{{ env_var('DBT_BQ_TIMEOUT_SECS', '300') | int }}"
+      job_retries: 1
+
+    test:
+      type: bigquery
+      method: "{{ env_var('DBT_BQ_METHOD', 'oauth') }}"
+      project: "{{ env_var('DBT_BQ_PROJECT_TEST') }}"
+      dataset: "{{ env_var('DBT_BQ_DATASET_TEST', 'dbt_test') }}"
+      location: "{{ env_var('DBT_BQ_LOCATION', 'US') }}"
+      threads: "{{ env_var('DBT_BQ_THREADS', '4') | int }}"
+      priority: interactive
+      job_execution_timeout_seconds: "{{ env_var('DBT_BQ_TIMEOUT_SECS', '300') | int }}"
+      job_retries: 1
+
+    prod:
+      type: bigquery
+      method: "{{ env_var('DBT_BQ_METHOD', 'oauth') }}"
+      project: "{{ env_var('DBT_BQ_PROJECT_PROD') }}"
+      dataset: "{{ env_var('DBT_BQ_DATASET_PROD', 'analytics') }}"
+      location: "{{ env_var('DBT_BQ_LOCATION', 'US') }}"
+      threads: "{{ env_var('DBT_BQ_THREADS', '4') | int }}"
+      priority: batch
+      job_execution_timeout_seconds: "{{ env_var('DBT_BQ_TIMEOUT_SECS', '600') | int }}"
+      job_retries: 2

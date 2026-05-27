@@ -1,0 +1,59 @@
+name: Terraform
+description: |
+  Authenticate to GCP via Workload Identity Federation and run
+  terraform init + (plan | apply) for one environment of the shared infra/
+  stack.
+
+inputs:
+  env:
+    description: Environment name — one of dev / test / prod.
+    required: true
+  action:
+    description: Terraform action — "plan" or "apply".
+    required: true
+  workload_identity_provider:
+    description: Full WIF provider resource (from GitHub Environment vars.WIF_PROVIDER).
+    required: true
+  service_account:
+    description: Deployer service account email (from GitHub Environment vars.TF_SA).
+    required: true
+  terraform_version:
+    description: Terraform CLI version to install.
+    required: false
+    default: '1.10.0'
+
+runs:
+  using: composite
+  steps:
+    - id: auth
+      uses: google-github-actions/auth@v3
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+
+    - uses: hashicorp/setup-terraform@v4
+      with:
+        terraform_version: ${{ inputs.terraform_version }}
+
+    - shell: bash
+      run: terraform -chdir=infra init -backend-config=./backends/${{ inputs.env }}.config -reconfigure
+
+    - if: inputs.action == 'plan'
+      shell: bash
+      run: |
+        terraform -chdir=infra validate
+        terraform -chdir=infra plan -input=false -no-color -var environment=${{ inputs.env }}
+
+    # Atomic plan-then-apply: if the plan step errors (bash -e), the apply
+    # step won't run because the prior step failed. The on-disk tfplan also
+    # guarantees apply executes exactly what plan showed — no drift between
+    # the two operations.
+    - if: inputs.action == 'apply'
+      name: terraform plan -out=tfplan
+      shell: bash
+      run: terraform -chdir=infra plan -input=false -no-color -out=tfplan -var environment=${{ inputs.env }}
+
+    - if: inputs.action == 'apply'
+      name: terraform apply tfplan
+      shell: bash
+      run: terraform -chdir=infra apply -input=false -auto-approve tfplan

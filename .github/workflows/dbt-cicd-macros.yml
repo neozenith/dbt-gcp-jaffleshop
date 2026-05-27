@@ -1,0 +1,136 @@
+name: dbt jaffle-shop CI - macro tests
+on:
+  # Push checks: only on merge to main
+  push:
+    branches:
+      - main
+    paths:
+      - dbt-jaffleshop/macros/custom_naming/**
+      - dbt-jaffleshop/macros/generate_schema_name.sql
+      - dbt-jaffleshop/macros/generate_database_name.sql
+      - dbt-jaffleshop/pytests/**
+      
+  # PR checks: only when a PR (or draft PR) is open
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - dbt-jaffleshop/macros/custom_naming/**
+      - dbt-jaffleshop/macros/generate_schema_name.sql
+      - dbt-jaffleshop/macros/generate_database_name.sql
+      - dbt-jaffleshop/pytests/**
+
+permissions:
+  contents: read
+
+# Per (Workflow, branch) combination, only one job has preference. Prevents push and pull_request from racing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.event.ref }}
+  cancel-in-progress: true
+
+# These fake values let dbt parse/compile resolve profiles.yml templating without authenticating to a real GCP project.
+# The macros under test only need the manifest to render — no warehouse round-trips.
+env:
+  DBT_BQ_PROJECT_DEV: fake-gcp-project-dev
+  DBT_BQ_PROJECT_TEST: fake-gcp-project-test
+  DBT_BQ_PROJECT_PROD: fake-gcp-project-prod
+
+jobs:
+  basic-checks:
+    name: Python and dbt formatting / linting
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dbt-jaffleshop
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+          cache-dependency-glob: "dbt-jaffleshop/uv.lock"
+
+      - name: Cache virtual environment
+        uses: actions/cache@v5
+        with:
+          path: dbt-jaffleshop/.venv
+          key: venv-${{ runner.os }}-${{ hashFiles('dbt-jaffleshop/uv.lock') }}
+          restore-keys: venv-${{ runner.os }}-
+
+      - name: Install Python dependencies
+        run: uv sync
+
+      - name: Install dbt packages
+        run: uv run dbt deps
+
+      - name: SqlFluff lint
+        run: uv run sqlfluff lint models/
+
+  dbt-project-health:
+    name: dbt parse + compile
+    runs-on: ubuntu-latest
+    needs: basic-checks
+    defaults:
+      run:
+        working-directory: dbt-jaffleshop
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+          cache-dependency-glob: "dbt-jaffleshop/uv.lock"
+
+      - name: Cache virtual environment
+        uses: actions/cache@v5
+        with:
+          path: dbt-jaffleshop/.venv
+          key: venv-${{ runner.os }}-${{ hashFiles('dbt-jaffleshop/uv.lock') }}
+          restore-keys: venv-${{ runner.os }}-
+
+      - name: Install Python dependencies
+        run: uv sync
+
+      - name: Install dbt packages
+        run: uv run dbt deps
+
+      - name: dbt parse + compile
+        env:
+          DBT_GIT_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          uv run dbt parse
+          uv run dbt compile
+
+  test-macros:
+    name: pytest macro tests
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    needs: dbt-project-health
+    defaults:
+      run:
+        working-directory: dbt-jaffleshop
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+          cache-dependency-glob: "dbt-jaffleshop/uv.lock"
+
+      - name: Cache virtual environment
+        uses: actions/cache@v5
+        with:
+          path: dbt-jaffleshop/.venv
+          key: venv-${{ runner.os }}-${{ hashFiles('dbt-jaffleshop/uv.lock') }}
+          restore-keys: venv-${{ runner.os }}-
+
+      - name: Install Python dependencies
+        run: uv sync
+
+      - name: Install dbt packages
+        run: uv run dbt deps
+
+      - name: Run pytest
+        run: uv run pytest

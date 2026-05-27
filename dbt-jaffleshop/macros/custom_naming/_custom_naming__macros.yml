@@ -1,0 +1,14 @@
+# https://docs.getdbt.com/faqs/Docs/documenting-macros
+version: 2
+
+macros:
+  - name: clean_slice
+    description: |
+      A "slice" is a unit of change — typically a git branch name (DEV) or the tuple of PR id + Run id (TEST).
+      The slice acts as a schema (BigQuery dataset) prefix so multiple in-flight branches and CI runs do not collide.
+      In PROD the slice is an empty string.
+      It reads environment variables and project vars to determine the slice and cleans non-word characters to "_".
+  - name: data_environment
+    description: |
+      Reads DBT_ENV_TYPE (falling back to target.name) and returns one of DEV, TEST, PROD.
+      Any other value raises a compilation error.

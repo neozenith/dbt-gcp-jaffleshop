@@ -1,0 +1,26 @@
+[project]
+name = "jaffle-shop"
+version = "3.0.0"
+description = "Canonical dbt jaffle-shop example, wired for BigQuery."
+requires-python = ">=3.12"
+dependencies = [
+    "dbt-bigquery>=1.11.1",
+    "dbt-core>=1.11.10",
+    "jafgen>=0.4.12",
+    "requests~=2.31.0",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=3.7.0",
+    "pytest>=8.0.0",
+    "pytest-xdist>=3.8.0",
+    "sqlfluff>=4.2.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["pytests"]
+# xdist: each test shells out to `uv run dbt …` (~3-5s of cold-start per case), so the suite is
+# wall-clock-bound, not CPU-bound — parallelism gives ~Nx speedup. `auto` = os.cpu_count().
+# Override with `-n0` on the CLI for single-test debugging to skip worker startup.
+addopts = "-n auto"

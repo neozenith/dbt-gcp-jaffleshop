@@ -1,0 +1,9 @@
+[project]
+name = "play-dbt-gcp-jaffleshop"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "dbt-bigquery>=1.11.1",
+    "dbt-core>=1.11.10",
+    "sqlfluff>=4.2.1",
+]
