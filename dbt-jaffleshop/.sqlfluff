@@ -1,12 +1,9 @@
 [sqlfluff]
-templater = dbt-cloud
-dialect = snowflake
+templater = jinja
+dialect = bigquery
 runaway_limit = 10
 max_line_length = 80
 indent_unit = space
-
-[sqlfluff:templater:dbt]
-profiles_dir = .
 
 [sqlfluff:indentation]
 tab_space_size = 4
