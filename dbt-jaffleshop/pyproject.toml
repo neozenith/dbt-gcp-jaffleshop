@@ -16,6 +16,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-xdist>=3.8.0",
     "sqlfluff>=4.2.1",
+    "sqlfluff-templater-dbt>=4.2.1",
 ]
 
 [tool.pytest.ini_options]

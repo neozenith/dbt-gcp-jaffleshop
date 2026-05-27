@@ -32,10 +32,12 @@ concurrency:
 
 # These fake values let dbt parse/compile resolve profiles.yml templating without authenticating to a real GCP project.
 # The macros under test only need the manifest to render — no warehouse round-trips.
+# DBT_GIT_BRANCH feeds clean_slice.sql so generate_schema_name can produce a non-PROD slice without erroring.
 env:
   DBT_BQ_PROJECT_DEV: fake-gcp-project-dev
   DBT_BQ_PROJECT_TEST: fake-gcp-project-test
   DBT_BQ_PROJECT_PROD: fake-gcp-project-prod
+  DBT_GIT_BRANCH: ${{ github.head_ref || github.ref_name }}
 
 jobs:
   basic-checks:
@@ -66,13 +68,11 @@ jobs:
       - name: Install dbt packages
         run: uv run dbt deps
 
-      # TODO: re-enable once sqlfluff is wired to the dbt templater.
-      # The inherited .sqlfluff used `templater = dbt-cloud` + `dialect = snowflake`; both have been
-      # corrected to `jinja` + `bigquery`, but the jinja templater can't resolve `dbt_utils.*` or
-      # project macros like `cents_to_dollars`, producing parse failures. Adding `sqlfluff-templater-dbt`
-      # to the dev group + `templater = dbt` should fix it — out of scope for the action-versions loop.
-      # - name: SqlFluff lint
-      #   run: uv run sqlfluff lint models/
+      # sqlfluff uses the dbt templater (sqlfluff-templater-dbt in dev deps), which internally
+      # runs `dbt parse` to resolve macros like dbt_utils.* and project macros like cents_to_dollars.
+      # Needs `dbt deps` to have run above, plus DBT_BQ_PROJECT_* + DBT_GIT_BRANCH from workflow env.
+      - name: SqlFluff lint
+        run: uv run sqlfluff lint models/
 
   dbt-project-health:
     name: dbt parse + compile
@@ -106,9 +106,8 @@ jobs:
       # `dbt compile` is intentionally omitted: BigQuery adapter eagerly opens a connection
       # to resolve refs, which fails in CI without ADC/Workload Identity Federation. Until WIF
       # is wired up, `dbt parse` alone validates project structure + our custom-naming macros.
+      # DBT_GIT_BRANCH is set at the workflow env level.
       - name: dbt parse
-        env:
-          DBT_GIT_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: uv run dbt parse
 
   test-macros:

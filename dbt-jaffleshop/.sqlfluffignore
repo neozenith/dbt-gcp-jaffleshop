@@ -2,3 +2,6 @@ target
 dbt_packages
 macros
 .venv
+# metricflow_time_spine compiles via dbt_date.get_base_dates() into 3650+ unioned date casts,
+# which exceeds sqlfluff's 255 parse-depth limit. Framework-generated SQL — not ours to lint.
+models/marts/metricflow_time_spine.sql
