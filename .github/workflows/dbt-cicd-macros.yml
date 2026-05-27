@@ -1,19 +1,22 @@
 name: dbt jaffle-shop CI - macro tests
 on:
+  # Manual trigger for ad-hoc verification (e.g. after fixing the workflow itself).
+  workflow_dispatch:
   # Push checks: only on merge to main
   push:
     branches:
       - main
     paths:
+      - .github/workflows/dbt-cicd-macros.yml
       - dbt-jaffleshop/macros/custom_naming/**
       - dbt-jaffleshop/macros/generate_schema_name.sql
       - dbt-jaffleshop/macros/generate_database_name.sql
       - dbt-jaffleshop/pytests/**
-      
   # PR checks: only when a PR (or draft PR) is open
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - .github/workflows/dbt-cicd-macros.yml
       - dbt-jaffleshop/macros/custom_naming/**
       - dbt-jaffleshop/macros/generate_schema_name.sql
       - dbt-jaffleshop/macros/generate_database_name.sql
