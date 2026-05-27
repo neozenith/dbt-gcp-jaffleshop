@@ -68,11 +68,16 @@ jobs:
       - name: Install dbt packages
         run: uv run dbt deps
 
-      # sqlfluff uses the dbt templater (sqlfluff-templater-dbt in dev deps), which internally
-      # runs `dbt parse` to resolve macros like dbt_utils.* and project macros like cents_to_dollars.
-      # Needs `dbt deps` to have run above, plus DBT_BQ_PROJECT_* + DBT_GIT_BRANCH from workflow env.
-      - name: SqlFluff lint
-        run: uv run sqlfluff lint models/
+      # TODO: re-enable once a dedicated read-only lint SA exists.
+      # sqlfluff uses the dbt templater (sqlfluff-templater-dbt), which always calls
+      # `adapter.set_relations_cache()` — that opens a real BigQuery connection and lists
+      # datasets in the project. Locally that works via gcloud ADC; in CI it crashes with
+      # `AttributeError: 'NoneType' object has no attribute 'close'` because there's no auth.
+      # The fix is WIF auth for this step, but we explicitly do NOT want to reuse the
+      # terraform-deployer SA — sqlfluff lint should impersonate a least-privilege read-only SA.
+      # Until that SA is bootstrapped, lint runs only locally (`make lint`).
+      # - name: SqlFluff lint
+      #   run: uv run sqlfluff lint models/
 
   dbt-project-health:
     name: dbt parse + compile
