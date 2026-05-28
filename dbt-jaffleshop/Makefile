@@ -23,7 +23,7 @@ export
 
 export DBT_PROFILES_DIR := $(CURDIR)
 
-.PHONY: help install gen seed load clean deps debug build run test compile docs lint fix format pytest
+.PHONY: help install gen seed load clean deps debug build run test compile docs lint fix format pytest deploy-dev
 
 help:
 	@echo "Targets:"
@@ -42,6 +42,9 @@ help:
 	@echo "  fix       sqlfluff fix models"
 	@echo "  format    sqlfluff format models"
 	@echo "  pytest    Run pytest macro tests (parametrized; shells out to dbt)"
+	@echo "  deploy-dev Build dbt against dev + upload artefacts to dev GCS bucket"
+	@echo "             (mirrors what CI does for test/prod). Requires gcloud ADC"
+	@echo "             set up to impersonate dbt-dev@dbt-dev-jaffleshop.iam.gserviceaccount.com"
 	@echo "  clean     Remove dbt artifacts (target/, dbt_packages/, logs/)"
 
 install:
@@ -81,6 +84,26 @@ format:
 
 pytest:
 	uv run pytest
+
+# Local-only "deploy" — dbt-dev SA is humans-only per infra/dbt.tf, so dev never
+# gets a CI deploy. This target gives developers parity with what CI does for
+# test/prod: dbt build + upload manifest/run_results/catalog to the dev artefacts bucket.
+# Auth: relies on gcloud ADC being set to impersonate dbt-dev SA (one-time setup):
+#   gcloud auth application-default login
+#   gcloud config set auth/impersonate_service_account dbt-dev@dbt-dev-jaffleshop.iam.gserviceaccount.com
+# Slice from current git branch keeps your work isolated from other devs in dev.
+deploy-dev: deps
+	DBT_TARGET=dev \
+	DBT_BQ_PROJECT_DEV=dbt-dev-jaffleshop \
+	DBT_GIT_BRANCH=$$(git rev-parse --abbrev-ref HEAD) \
+	uv run dbt build --target dev
+	@BUCKET=gs://dbt-dev-jaffleshop-dbt-artefacts; \
+	RUN_PREFIX=runs/local-$$(date +%Y%m%d-%H%M%S)-$$(whoami); \
+	for f in manifest.json run_results.json catalog.json; do \
+	  if [ -f "target/$$f" ]; then \
+	    gcloud storage cp "target/$$f" "$$BUCKET/$$RUN_PREFIX/$$f"; \
+	  fi; \
+	done
 
 clean:
 	rm -rf target dbt_packages logs jaffle-data
