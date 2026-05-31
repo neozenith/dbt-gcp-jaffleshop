@@ -144,11 +144,26 @@ else
 fi
 
 # 6. GitHub OIDC provider on the pool --------------------------------------
+# Mapping + condition are CONVERGED on every run (create when absent, update when
+# present) so changes here — e.g. adding attribute.ref_type — propagate to an
+# already-existing provider on re-run. gcloud has no single create-or-update verb
+# for providers, hence the explicit branch sharing one mapping/condition source.
+# attribute.ref_type ("tag"/"branch") backs the prod tag-only WIF binding in dbt.tf;
+# WIF binding conditions can't read OIDC claims, so tag scoping must be a mapped
+# attribute matched in the principalSet, not an IAM condition.
 log "OIDC provider"
+WIF_ATTR_MAPPING="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner,attribute.ref=assertion.ref,attribute.ref_type=assertion.ref_type,attribute.event_name=assertion.event_name"
+WIF_ATTR_CONDITION="assertion.repository == '${GITHUB_REPO}'"
 if gcloud iam workload-identity-pools providers describe "${WIF_PROVIDER_ID}" \
     --project="${PROJECT_ID}" --location=global \
     --workload-identity-pool="${WIF_POOL_ID}" >/dev/null 2>&1; then
-  sub "provider exists"
+  gcloud iam workload-identity-pools providers update-oidc "${WIF_PROVIDER_ID}" \
+    --project="${PROJECT_ID}" \
+    --location=global \
+    --workload-identity-pool="${WIF_POOL_ID}" \
+    --attribute-mapping="${WIF_ATTR_MAPPING}" \
+    --attribute-condition="${WIF_ATTR_CONDITION}" >/dev/null
+  sub "provider converged (mapping + condition updated)"
 else
   gcloud iam workload-identity-pools providers create-oidc "${WIF_PROVIDER_ID}" \
     --project="${PROJECT_ID}" \
@@ -156,8 +171,8 @@ else
     --workload-identity-pool="${WIF_POOL_ID}" \
     --display-name="GitHub OIDC" \
     --issuer-uri="https://token.actions.githubusercontent.com" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner,attribute.ref=assertion.ref,attribute.event_name=assertion.event_name" \
-    --attribute-condition="assertion.repository == '${GITHUB_REPO}'"
+    --attribute-mapping="${WIF_ATTR_MAPPING}" \
+    --attribute-condition="${WIF_ATTR_CONDITION}"
   sub "provider created (restricted to repo ${GITHUB_REPO})"
 fi
 
