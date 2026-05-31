@@ -68,11 +68,11 @@ jobs:
       - name: make -C infra fmt-check security
         run: make -C infra fmt-check security
 
-  # Draft PR — plan everywhere so the author sees full blast radius.
+  # PR — plan everywhere so the author sees full blast radius. Regardless of Draft or Ready PR
   plan:
     name: plan / ${{ matrix.env }}
     needs: ci
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     environment: ${{ matrix.env }}
     strategy:
