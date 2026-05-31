@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v8.1.0
         with:
           enable-cache: true
           cache-dependency-glob: "dbt-jaffleshop/uv.lock"
@@ -90,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v8.1.0
         with:
           enable-cache: true
           cache-dependency-glob: "dbt-jaffleshop/uv.lock"
@@ -127,7 +127,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v8.1.0
         with:
           enable-cache: true
           cache-dependency-glob: "dbt-jaffleshop/uv.lock"
