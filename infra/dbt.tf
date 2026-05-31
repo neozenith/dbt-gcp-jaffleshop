@@ -182,9 +182,21 @@ resource "google_service_account_iam_member" "dbt_test_wif_pr" {
 }
 
 # -----------------------------------------------------------------------------
-# WIF bindings: dbt-prod impersonation — workflow_dispatch OR push to tags only.
-# Two bindings because principalSet matches one attribute value at a time; an IAM
-# condition further restricts the push binding to tag refs (block branch pushes).
+# WIF bindings: dbt-prod impersonation — workflow_dispatch OR tag pushes only.
+# Two bindings because a principalSet matches one attribute value at a time.
+#
+# Tag-only is enforced by MEMBERSHIP on attribute.ref_type/tag, NOT an IAM condition.
+# A WIF workloadIdentityUser binding condition cannot read the IdP's OIDC claims
+# (e.g. request.auth.claims.ref) — such expressions evaluate false and fail closed,
+# so the binding denies every token. (That broken condition silently blocked the first
+# real tag deploy — v1.0.0 — while only workflow_dispatch ever worked.) GitHub OIDC
+# emits ref_type ("tag"/"branch"); matching attribute.ref_type/tag admits tag pushes
+# and excludes branch pushes — preserving the documented defence-in-depth (the workflow
+# `if:` is gate 1, this binding is gate 2).
+#
+# REQUIRES the provider to map attribute.ref_type = assertion.ref_type — set in
+# infra/bootstrap/bootstrap_project.sh. The provider is bootstrap-managed (not TF), so
+# that mapping must exist on the live provider BEFORE this binding is applied.
 # -----------------------------------------------------------------------------
 resource "google_service_account_iam_member" "dbt_prod_wif_workflow_dispatch" {
   count              = var.environment == "prod" ? 1 : 0
@@ -197,13 +209,7 @@ resource "google_service_account_iam_member" "dbt_prod_wif_tag_push" {
   count              = var.environment == "prod" ? 1 : 0
   service_account_id = google_service_account.dbt.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "${local.wif_principal_prefix}/attribute.event_name/push"
-
-  condition {
-    title       = "Tag refs only"
-    description = "Restrict the push principalSet to tag refs (refs/tags/*) — blocks branch pushes."
-    expression  = "request.auth.claims.ref.startsWith('refs/tags/')"
-  }
+  member             = "${local.wif_principal_prefix}/attribute.ref_type/tag"
 }
 
 # -----------------------------------------------------------------------------
