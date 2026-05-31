@@ -12,8 +12,12 @@
 # single TF stack applied per env: each env's apply grants foreign principals
 # into itself, no foreign-env state references needed.
 #
+# Human developer access (dev SA impersonation + direct BQ read) is driven by
+# the curated registry in dbt-developers.yml — see local.developer_members and
+# the "Human developer access" section below.
+#
 # WIF (GitHub OIDC) bindings:
-#   dbt-dev:  no WIF — impersonated by humans (see var.dbt_human_impersonators)
+#   dbt-dev:  no WIF — impersonated by humans (see dbt-developers.yml)
 #   dbt-test: WIF principalSet on attribute.event_name/pull_request
 #   dbt-prod: WIF principalSet on attribute.event_name/workflow_dispatch
 #             AND   principalSet on attribute.event_name/push + IAM condition
@@ -35,6 +39,21 @@ locals {
 
   # WIF pool principalSet prefix — pool ID is hardcoded in bootstrap/config.sh as `github-pool`.
   wif_principal_prefix = "principalSet://iam.googleapis.com/projects/${data.google_project.this.number}/locations/global/workloadIdentityPools/github-pool"
+
+  # ---------------------------------------------------------------------------
+  # Human developer registry — curated in dbt-developers.yml, decoded here.
+  # `developers` -> "user:<email>", `groups` -> "group:<email>". Missing or
+  # null keys tolerate to []. The resulting member list drives both dbt-dev SA
+  # impersonation (dev only) and direct BigQuery read (every env).
+  # ---------------------------------------------------------------------------
+  _dev_registry   = yamldecode(file("${path.module}/dbt-developers.yml"))
+  _dev_user_list  = try(local._dev_registry.developers, null) == null ? [] : local._dev_registry.developers
+  _dev_group_list = try(local._dev_registry.groups, null) == null ? [] : local._dev_registry.groups
+
+  developer_members = concat(
+    [for email in local._dev_user_list : "user:${email}"],
+    [for email in local._dev_group_list : "group:${email}"],
+  )
 }
 
 # -----------------------------------------------------------------------------
@@ -111,15 +130,43 @@ resource "google_storage_bucket_iam_member" "dbt_artefacts_admin" {
 }
 
 # -----------------------------------------------------------------------------
-# Human / local-developer impersonation of dbt-dev SA.
-# Honored only on dev — test/prod are GH-OIDC-only by design.
-# Populate via -var or *.auto.tfvars (see variables.tf for example).
+# Human developer access — sourced from dbt-developers.yml (local.developer_members).
+#
+# 1. dbt-dev SA impersonation (DEV apply only). test/prod SAs are GH-OIDC-only
+#    by design, so humans never get a token-creator binding on them — only on
+#    dbt-dev, which is the humans-only SA. serviceAccountUser is paired with
+#    tokenCreator so the local ADC impersonation flow (Makefile `deploy-dev`)
+#    works end-to-end.
+# 2. Direct BigQuery READ on THIS env's project (every apply). Lets a developer
+#    browse/query dev OR test OR prod in the console AS themselves — read-only;
+#    all writes still route through a dbt SA.
 # -----------------------------------------------------------------------------
-resource "google_service_account_iam_member" "dbt_human_impersonators" {
-  for_each           = var.environment == "dev" ? toset(var.dbt_human_impersonators) : toset([])
+resource "google_service_account_iam_member" "dbt_dev_impersonators" {
+  for_each           = var.environment == "dev" ? toset(local.developer_members) : toset([])
   service_account_id = google_service_account.dbt.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = each.key
+}
+
+resource "google_service_account_iam_member" "dbt_dev_sa_users" {
+  for_each           = var.environment == "dev" ? toset(local.developer_members) : toset([])
+  service_account_id = google_service_account.dbt.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = each.key
+}
+
+resource "google_project_iam_member" "developer_bq_data_viewer" {
+  for_each = toset(local.developer_members)
+  project  = local.project_id
+  role     = "roles/bigquery.dataViewer"
+  member   = each.key
+}
+
+resource "google_project_iam_member" "developer_bq_job_user" {
+  for_each = toset(local.developer_members)
+  project  = local.project_id
+  role     = "roles/bigquery.jobUser"
+  member   = each.key
 }
 
 # -----------------------------------------------------------------------------

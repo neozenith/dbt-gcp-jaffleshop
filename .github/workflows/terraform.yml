@@ -1,17 +1,21 @@
 name: Terraform
 
-# Routing logic:
+# Routing logic (ci -> plan always runs first; the apply job is chosen by trigger):
 #   - push to a feature branch                  -> nothing (no trigger matches)
 #   - draft PR touching infra/**                -> ci then `plan` matrix dev/test/prod
-#   - ready-for-review PR touching infra/**     -> ci then `apply-dev`
-#   - push to main touching infra/**            -> ci then `apply-test`
-#   - tag push (v*) OR manual workflow_dispatch -> ci then `apply-prod`
+#   - ready-for-review PR touching infra/**     -> ci then `plan` then `apply-dev`
+#   - push to main touching infra/**            -> ci then `plan` then `apply-test`
+#   - tag push (v*) OR manual workflow_dispatch -> ci then `plan` then `apply-prod`
 #
-# Two safety gates:
+# Three safety gates:
 #   1. `ci` job runs first on every trigger (fmt-check + lint + security).
 #      Every plan/apply job `needs: ci`, so a fmt/lint failure stops everything
 #      cloud-side before any auth or state mutation happens.
-#   2. `apply` mode in the composite action is atomic plan-then-apply:
+#   2. `plan` (matrix dev/test/prod) runs on every trigger and every apply job
+#      `needs: [ci, plan]`. So no apply mutates state until the full plan matrix
+#      is green, and each apply is serialized after its `plan / <env>` — they
+#      never race for the same GCS state lock.
+#   3. `apply` mode in the composite action is atomic plan-then-apply:
 #      `terraform plan -out=tfplan` followed by `terraform apply tfplan`. If
 #      plan errors, apply does not run.
 #
@@ -68,11 +72,13 @@ jobs:
       - name: make -C infra fmt-check security
         run: make -C infra fmt-check security
 
-  # Draft PR — plan everywhere so the author sees full blast radius.
+  # Plan dev/test/prod on every trigger so the full blast radius is always
+  # visible, and so every apply job can gate on it (apply jobs `needs: [ci, plan]`).
+  # No `if:` — this runs after ci on all triggers (PR, push to main, tag, dispatch).
+  # The workflow only fires on those events, so there's no feature-branch noise.
   plan:
     name: plan / ${{ matrix.env }}
     needs: ci
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
     runs-on: ubuntu-latest
     environment: ${{ matrix.env }}
     strategy:
@@ -88,10 +94,17 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.TF_SA }}
 
+  # Every apply job `needs: [ci, plan]`: it waits for the full plan matrix to pass
+  # before mutating any state. This gates each apply behind a green plan AND
+  # serializes the apply after the matching `plan / <env>`, so the two never race
+  # for the same GCS state lock (the collision the all-PR-states plan introduced).
+  # `plan` now runs on every trigger (see above), so the dependency never points
+  # at a skipped job — no skipped-dependency cascade-skip of the deploy.
+
   # Ready-for-review PR — apply dev only (smoke test before merging to main).
   apply-dev:
     name: apply / dev
-    needs: ci
+    needs: [ci, plan]
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     environment: dev
@@ -107,7 +120,7 @@ jobs:
   # Merge / push to main — apply test.
   apply-test:
     name: apply / test
-    needs: ci
+    needs: [ci, plan]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: test
@@ -125,7 +138,7 @@ jobs:
   # behind a human approval.
   apply-prod:
     name: apply / prod
-    needs: ci
+    needs: [ci, plan]
     if: |
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       github.event_name == 'workflow_dispatch'

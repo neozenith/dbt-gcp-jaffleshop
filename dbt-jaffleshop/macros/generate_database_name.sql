@@ -13,11 +13,11 @@
         {{ default_database }}
     {%- elif data_env == 'prod' -%}
         {#- Prod: no env suffix. The custom_database_name must map to a real, pre-existing GCP project ID. -#}
-        {{ custom_database_name | trim | lower }}
+        dbt-{{ data_env }}-{{ custom_database_name | trim | lower }}
     {%- else -%}
         {#- Non-prod: append "-<env>" so DEV and TEST land in their own GCP projects. -#}
         {#- BigQuery project IDs allow only [a-z0-9-] — keep lowercase and hyphens. -#}
-        {{ custom_database_name | trim | lower }}-{{ data_env }}
+        dbt-{{ data_env }}-{{ custom_database_name | trim | lower }}
     {%- endif -%}
 
 {%- endmacro %}

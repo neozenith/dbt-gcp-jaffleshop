@@ -21,7 +21,7 @@ renamed as (
         ---------- numerics
         {{ cents_to_dollars('cost') }} as supply_cost,
 
-        ---------- booleans
+        ---------- boolean flags
         perishable as is_perishable_supply
 
     from source

@@ -1,0 +1,157 @@
+name: dbt deploy / prod
+
+# =============================================================================
+# PROD deploys (split out from the former dbt-deploy.yml; test lives in
+# dbt-deploy-test.yml).
+#
+# Routing (matches the SA scoping in infra/dbt.tf):
+#   - push to main                    → `parse` only (validation; no deploy)
+#   - push tag v*                     → `parse` then `deploy / prod`
+#   - workflow_dispatch (from main)   → `parse` then `deploy / prod`
+#
+# The IAM condition on the dbt-prod WIF binding additionally restricts push
+# events to refs/tags/* — branch pushes can't impersonate even if the workflow
+# gate misfires.
+#
+# Slice: PROD takes no slice prefix. data_environment resolves to PROD (set
+# explicitly via DBT_ENV_TYPE) and clean_slice returns empty in the PROD branch
+# of generate_schema_name, so datasets are unprefixed (RAW, STAGING, …).
+#
+# Auth: Workload Identity Federation only; no keyfiles.
+# =============================================================================
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'dbt-jaffleshop/**'
+      - '.github/workflows/dbt-deploy-prod.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write          # required for WIF (google-github-actions/auth)
+
+# Serialize per-ref so two prod-bound pushes don't deploy in parallel.
+# cancel-in-progress: false lets in-flight builds finish.
+concurrency:
+  group: dbt-deploy-prod-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: dbt-jaffleshop
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Fast static validation gate. Runs on every trigger (incl. main pushes that
+  # never deploy); deploy depends on it. No cloud auth — fake DBT_BQ_PROJECT_*
+  # values satisfy env_var() in profiles.yml.
+  # ---------------------------------------------------------------------------
+  parse:
+    name: dbt parse (validate)
+    runs-on: ubuntu-latest
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt-jaffleshop
+      DBT_BQ_PROJECT_DEV: fake-gcp-project-dev
+      DBT_BQ_PROJECT_TEST: fake-gcp-project-test
+      DBT_BQ_PROJECT_PROD: fake-gcp-project-prod
+      DBT_GIT_BRANCH: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "dbt-jaffleshop/uv.lock"
+
+      - name: Cache virtual environment
+        uses: actions/cache@v5
+        with:
+          path: dbt-jaffleshop/.venv
+          key: venv-${{ runner.os }}-${{ hashFiles('dbt-jaffleshop/uv.lock') }}
+          restore-keys: venv-${{ runner.os }}-
+
+      - name: Install Python deps
+        run: uv sync
+
+      - name: Install dbt packages
+        run: uv run dbt deps
+
+      - name: dbt parse
+        run: uv run dbt parse
+
+  # ---------------------------------------------------------------------------
+  # Deploy to PROD via dbt-prod SA (WIF on tag-push or workflow_dispatch only).
+  #
+  # latest/manifest.json is overwritten on every successful run so the next
+  # PR's deploy-test can gcloud storage cp it as the slim-CI defer state.
+  # ---------------------------------------------------------------------------
+  deploy-prod:
+    name: deploy / prod
+    needs: parse
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    environment: prod          # required reviewers + deployment branches enforced here
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt-jaffleshop
+      DBT_TARGET: prod
+      DBT_ENV_TYPE: PROD       # explicit; decouples env from target.name in data_environment
+      DBT_BQ_PROJECT_PROD: dbt-prod-jaffleshop
+      # DBT_BQ_DATASET_PROD left unset — profiles.yml default 'analytics' applies.
+      # No DBT_PR_ID / DBT_RUN_ID / DBT_GIT_BRANCH — PROD is unsliced.
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to GCP (WIF → dbt-prod SA)
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: dbt-prod@dbt-prod-jaffleshop.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "dbt-jaffleshop/uv.lock"
+
+      - name: Cache virtual environment
+        uses: actions/cache@v5
+        with:
+          path: dbt-jaffleshop/.venv
+          key: venv-${{ runner.os }}-${{ hashFiles('dbt-jaffleshop/uv.lock') }}
+          restore-keys: venv-${{ runner.os }}-
+
+      - name: Install Python deps
+        run: uv sync
+
+      - name: Install dbt packages
+        run: uv run dbt deps
+
+      - name: dbt seed (prod)
+        run: |
+          uv run dbt seed --target prod --vars '{"load_source_data": true}'
+
+      - name: dbt build (prod)
+        run: uv run dbt build --target prod
+
+      - name: Upload dbt artefacts to GCS (runs/<id> + latest)
+        if: always()
+        run: |
+          BUCKET=gs://dbt-prod-jaffleshop-dbt-artefacts
+          RUN_PREFIX=runs/${{ github.run_id }}
+          for f in manifest.json run_results.json catalog.json; do
+            if [ -f "target/$f" ]; then
+              gcloud storage cp "target/$f" "$BUCKET/$RUN_PREFIX/$f"
+            fi
+          done
+          # Only refresh latest/manifest.json on successful runs — slim CI
+          # consumers downstream rely on it being a known-good baseline.
+          if [ "${{ job.status }}" = "success" ] && [ -f "target/manifest.json" ]; then
+            gcloud storage cp target/manifest.json "$BUCKET/latest/manifest.json"
+          fi

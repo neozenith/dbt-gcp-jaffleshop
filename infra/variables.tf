@@ -14,16 +14,6 @@ variable "region" {
   default     = "australia-southeast1"
 }
 
-variable "dbt_human_impersonators" {
-  description = <<-EOT
-    IAM members allowed to impersonate the dbt-dev service account.
-    Honored only when environment == "dev"; ignored in test/prod by design.
-    Each entry must include the IAM principal prefix, e.g.:
-      - "user:josh@example.com"
-      - "group:dbt-developers@example.com"
-      - "serviceAccount:foo@bar.iam.gserviceaccount.com"
-    Populate via *.auto.tfvars or `-var 'dbt_human_impersonators=[...]'`.
-  EOT
-  type        = list(string)
-  default     = []
-}
+# NOTE: human developer access was previously driven by var.dbt_human_impersonators.
+# It is now sourced from the curated registry in dbt-developers.yml (decoded into
+# local.developer_members in dbt.tf) so onboarding is a reviewed one-line YAML diff.

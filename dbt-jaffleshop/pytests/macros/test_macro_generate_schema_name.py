@@ -116,8 +116,8 @@ def test_macro_generate_schema_name(
         elif is_deployment:
             assert model_details["schema"] == f"{expected_ci_slice}{model_config_schema}"
 
-        # Database assertion: {custom}-{env} in non-PROD, plain {custom} in PROD.
+        # Database assertion: dbt-{env}-{custom} in non-PROD, dbt-prod-{custom} in PROD.
         if expected_data_env == "PROD":
-            assert model_details["database"] == model_config_database
+            assert model_details["database"] == f"dbt-prod-{model_config_database}" 
         else:
-            assert model_details["database"] == f"{model_config_database}-{expected_data_env.lower()}"
+            assert model_details["database"] == f"dbt-{expected_data_env.lower()}-{model_config_database}"

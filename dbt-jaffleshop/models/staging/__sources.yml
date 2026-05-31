@@ -1,8 +1,39 @@
 version: 2
 
+# Source dataset (BigQuery dataset == dbt "schema") naming.
+#
+# Source YAML is parsed as YAML FIRST, then Jinja is rendered only inside
+# string field values, in dbt's LIMITED base context: env_var / var / target /
+# modules are available, but PROJECT MACROS ARE NOT (verified: clean_slice is
+# undefined here). So we can neither call clean_slice nor use a file-level
+# {% set %} block (that breaks YAML parsing). The schema below inlines the SAME
+# env-var/target logic as the macro path, as one expression.
+#
+# MUST stay in sync with the macro path used by seeds/models —
+# macros/generate_schema_name.sql -> macros/custom_naming/clean_slice.sql —
+# so source() references resolve to where the raw seeds land:
+#   PROD     -> RAW
+#   non-PROD -> <SLICE>__RAW   (SLICE = sanitised git branch, else PR+run id)
+
 sources:
   - name: ecom
-    schema: raw
+    schema: >-
+      {{
+        'RAW'
+        if (env_var('DBT_ENV_TYPE', target.name) | upper == 'PROD')
+        else (
+          (modules.re.sub('\W', '_',
+            env_var('DBT_CLOUD_GIT_BRANCH',
+              env_var('DBT_GIT_BRANCH',
+                env_var('GIT_BRANCH', var('git_branch', ''))))) | trim | upper)
+          if (modules.re.sub('\W', '_',
+                env_var('DBT_CLOUD_GIT_BRANCH',
+                  env_var('DBT_GIT_BRANCH',
+                    env_var('GIT_BRANCH', var('git_branch', ''))))) | trim | length > 0)
+          else ('PR' ~ (modules.re.sub('\W', '_', env_var('DBT_CLOUD_PR_ID', env_var('DBT_PR_ID', ''))) | trim | upper)
+                ~ '_RUN' ~ (modules.re.sub('\W', '_', env_var('DBT_CLOUD_RUN_ID', env_var('DBT_RUN_ID', ''))) | trim | upper))
+        ) ~ '__RAW'
+      }}
     description: E-commerce data for the Jaffle Shop
     tables:
       - name: raw_customers

@@ -29,14 +29,14 @@ vars:
 
 seeds:
   jaffle_shop:
-    +database: jaffle-shop
+    +database: jaffleshop
     +schema: raw
     jaffle-data:
       +enabled: "{{ var('load_source_data', false) }}"
 
 models:
   jaffle_shop:
-    +database: jaffle-shop
+    +database: jaffleshop
     staging:
       +materialized: view
       +schema: staging
