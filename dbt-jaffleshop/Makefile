@@ -18,29 +18,19 @@ DBT_BQ_LOCATION := $(or $(DBT_BQ_LOCATION),US)
 DBT_BQ_THREADS := $(or $(DBT_BQ_THREADS),4)
 DBT_BQ_TIMEOUT_SECS := $(or $(DBT_BQ_TIMEOUT_SECS),300)
 
-# Git ref that the CHANGED-model targets (lint / lint-fix / format-check) diff against.
+# Git ref the cicd_cli check targets diff against for their default --changed-only scope.
 # Defaults to main for local dev; override in CI to the PR base, e.g. `make ci BASE_REF=origin/main`.
 # NOTE: CI must have BASE_REF reachable locally — use actions/checkout with fetch-depth: 0
 # (or `git fetch origin main`) so `git merge-base` can resolve it on a shallow clone.
+# The "what changed" detection itself now lives in cicd_cli/gitutil.py (was a shell snippet here).
 BASE_REF ?= main
-
-# Shell snippet (expanded inside recipes) that prints the changed model paths:
-# models/**/*.sql differing from BASE_REF in ANY git state — committed, staged,
-# unstaged, OR untracked-new. `git diff <merge-base>` covers tracked changes;
-# `ls-files --others` adds untracked files. --relative strips the dbt-jaffleshop/
-# prefix so paths are valid for sqlfluff run from here. Single source of truth for
-# "what changed", shared by lint, lint-fix, and format-check.
-CHANGED_MODELS = { \
-	  git diff --name-only --relative --diff-filter=d $$(git merge-base $(BASE_REF) HEAD) -- 'models/*.sql'; \
-	  git ls-files --others --exclude-standard -- 'models/*.sql'; \
-	} | sort -u
 
 # Export every Make-level variable to recipe environments (covers .env keys + fallbacks above).
 export
 
 export DBT_PROFILES_DIR := $(CURDIR)
 
-.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check pytest deploy-dev
+.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage tests-coverage checks pytest deploy-dev
 
 help:
 	@echo "Targets:"
@@ -59,7 +49,12 @@ help:
 	@echo "  format-check  formatter check on CHANGED models (subset of rules; vs BASE_REF=$(BASE_REF))"
 	@echo "  lint      full sqlfluff lint on CHANGED models, all rules (vs BASE_REF=$(BASE_REF))"
 	@echo "  lint-fix  sqlfluff fix on CHANGED models (auto-fix all fixable rules)"
-	@echo "  pytest    Run pytest macro tests (parametrized; shells out to dbt)"
+	@echo "  --- cicd_cli gates (vs BASE_REF=$(BASE_REF); add --json via 'uv run -m cicd_cli') ---"
+	@echo "  deprecations-check  dbt-autofix dry-run over FOLDERS of CHANGED models"
+	@echo "  docs-coverage       documentation coverage of CHANGED models (from manifest)"
+	@echo "  tests-coverage      test coverage of CHANGED models (from manifest)"
+	@echo "  checks              run deprecations-check + docs-coverage + tests-coverage"
+	@echo "  pytest    Run pytest macro + cicd_cli tests (parametrized; shells out to dbt)"
 	@echo "  deploy-dev Build dbt against dev + upload artefacts to dev GCS bucket"
 	@echo "             (mirrors what CI does for test/prod). Requires gcloud ADC"
 	@echo "             set up to impersonate dbt-dev@dbt-dev-jaffleshop.iam.gserviceaccount.com"
@@ -93,51 +88,41 @@ docs:
 docs-serve: docs
 	uv run dbt docs serve
 
-# --- SQLFluff: two pairs, both scoped to CHANGED models (vs BASE_REF) ---------
-# format / format-check : opinionated FORMATTER  — layout + keyword case only,
-#                         the subset `sqlfluff format` can auto-fix.
-# lint   / lint-fix     : full LINTER             — every rule in .sqlfluff.
-# A *-check/lint target reports; its sibling auto-fixes. lint ⊇ format-check, so
-# a green `lint` implies a green `format-check`.
+# --- cicd_cli: all CHANGED-model gates (SQLFluff, dbt-autofix, coverage) -------
+# The shell that used to live here now lives in the cicd_cli Python package
+# (cicd_cli/), which a developer, an agent, or GHA can all invoke identically:
+#   uv run -m cicd_cli check --help
+# Each target is a thin delegation. The check commands default to --changed-only
+# (vs BASE_REF); pass --all or --select <selector> directly to the CLI for other
+# scopes, and --json for machine-readable output.
 
-# Auto-fix formatting (layout + keyword case) across ALL models. Idempotent + safe.
-format:
-	uv run sqlfluff format models
-
-# Report formatting drift on CHANGED models only, scoped to the rules `format`
-# fixes, so any failure here is always resolvable by `make format`.
+# SQLFluff: format = opinionated layout+keyword-case subset; lint = full ruleset.
+# A check reports (non-zero on drift); --fix applies. Both scoped to CHANGED models.
 format-check:
-	@CHANGED="$$( $(CHANGED_MODELS) )"; \
-	if [ -z "$$CHANGED" ]; then \
-	  echo "format-check: no changed models vs $(BASE_REF) — nothing to check."; \
-	else \
-	  echo "format-check: checking changed models vs $(BASE_REF):"; \
-	  echo "$$CHANGED" | sed 's/^/  /'; \
-	  uv run sqlfluff lint --rules layout,capitalisation.keywords $$CHANGED; \
-	fi
+	uv run -m cicd_cli check format --base-ref $(BASE_REF)
 
-# Full lint (ALL rules) on CHANGED models only — the comprehensive PR gate.
+# `format` keeps its historic "fix ALL models" meaning (--fix --all).
+format:
+	uv run -m cicd_cli check format --fix --all
+
 lint:
-	@CHANGED="$$( $(CHANGED_MODELS) )"; \
-	if [ -z "$$CHANGED" ]; then \
-	  echo "lint: no changed models vs $(BASE_REF) — nothing to check."; \
-	else \
-	  echo "lint: linting changed models vs $(BASE_REF):"; \
-	  echo "$$CHANGED" | sed 's/^/  /'; \
-	  uv run sqlfluff lint $$CHANGED; \
-	fi
+	uv run -m cicd_cli check lint --base-ref $(BASE_REF)
 
-# Auto-fix every fixable violation on CHANGED models (ALL rules). Whatever remains
-# afterward is a rule sqlfluff can't auto-fix and must be corrected by hand.
 lint-fix:
-	@CHANGED="$$( $(CHANGED_MODELS) )"; \
-	if [ -z "$$CHANGED" ]; then \
-	  echo "lint-fix: no changed models vs $(BASE_REF) — nothing to fix."; \
-	else \
-	  echo "lint-fix: fixing changed models vs $(BASE_REF):"; \
-	  echo "$$CHANGED" | sed 's/^/  /'; \
-	  uv run sqlfluff fix $$CHANGED; \
-	fi
+	uv run -m cicd_cli check lint --fix --base-ref $(BASE_REF)
+
+deprecations-check:
+	uv run -m cicd_cli check deprecations --base-ref $(BASE_REF)
+
+docs-coverage:
+	uv run -m cicd_cli check docs --base-ref $(BASE_REF)
+
+tests-coverage:
+	uv run -m cicd_cli check tests --base-ref $(BASE_REF)
+
+# All CHANGED-model gates in one pass; non-zero if any fail.
+checks:
+	uv run -m cicd_cli check all --base-ref $(BASE_REF)
 
 pytest:
 	uv run pytest
