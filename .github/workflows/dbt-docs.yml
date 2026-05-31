@@ -3,7 +3,7 @@ name: dbt docs
 # =============================================================================
 # Publishes the dbt documentation site to GitHub Pages whenever "prod" happens.
 #
-# "Prod" is defined identically to the deploy-prod job in dbt-deploy.yml:
+# "Prod" is defined identically to the deploy-prod job in dbt-deploy-prod.yml:
 #   - push tag v*                     → build + publish docs
 #   - workflow_dispatch (from main)   → build + publish docs
 #   - anything else                   → no trigger matches
@@ -13,7 +13,7 @@ name: dbt docs
 # dbt-prod SA (via WIF) that deploy-prod uses — that's what fills in column types,
 # row counts, and table sizes. Without it the catalog would be empty.
 #
-# This workflow is decoupled from dbt-deploy.yml on purpose: it queries whatever
+# This workflow is decoupled from dbt-deploy-prod.yml on purpose: it queries whatever
 # state the warehouse is currently in, so it does not need to wait on the deploy
 # job. On a fresh tag the deploy and docs runs race harmlessly — docs just
 # document the warehouse as it stands when the catalog query runs.
@@ -38,7 +38,7 @@ on:
 permissions:
   contents: read
 
-# Serialize Pages publishes. cancel-in-progress: false matches dbt-deploy.yml's
+# Serialize Pages publishes. cancel-in-progress: false matches dbt-deploy-prod.yml's
 # stance — let an in-flight publish finish rather than risk a half-swapped site.
 concurrency:
   group: dbt-docs-pages
