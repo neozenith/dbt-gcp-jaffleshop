@@ -80,7 +80,7 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v3
 
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.1.0
         with:
           enable-cache: true
           cache-dependency-glob: "dbt-jaffleshop/uv.lock"
