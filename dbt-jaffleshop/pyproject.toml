@@ -12,16 +12,28 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "dbt-autofix>=0.20.5",
     "pre-commit>=3.7.0",
     "pytest>=8.0.0",
     "pytest-xdist>=3.8.0",
+    "python-dotenv>=1.2.2",
     "sqlfluff>=4.2.1",
     "sqlfluff-templater-dbt>=4.2.1",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["pytests"]
+# Put the dbt project root on sys.path so in-process unit tests can `import cicd_cli`
+# (the CLI is found at runtime via cwd-on-path; this gives pytest the same reach).
+pythonpath = ["."]
 # xdist: each test shells out to `uv run dbt …` (~3-5s of cold-start per case), so the suite is
 # wall-clock-bound, not CPU-bound — parallelism gives ~Nx speedup. `auto` = os.cpu_count().
 # Override with `-n0` on the CLI for single-test debugging to skip worker startup.
 addopts = "-n auto"
+
+# Pyright/IDE: cicd_cli is a cwd-relative package (not an installed dist), so point the
+# type checker at the project root and its venv to resolve `import cicd_cli` and deps.
+[tool.pyright]
+extraPaths = ["."]
+venvPath = "."
+venv = ".venv"
