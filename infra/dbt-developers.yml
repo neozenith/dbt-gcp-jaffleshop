@@ -1,0 +1,44 @@
+# =============================================================================
+# Curated registry of HUMAN developers granted access to the dbt GCP projects.
+#
+# Consumed by infra/dbt.tf via yamldecode(file(...)). This file is the single
+# source of truth for "who is a dbt developer" — onboarding is a one-line diff
+# here, reviewed and applied through the normal Terraform PR/CI gate.
+#
+# What each principal is granted (applied PER ENVIRONMENT — re-apply all three):
+#
+#   DEV apply  (var.environment == "dev"):
+#     - roles/iam.serviceAccountTokenCreator on the dbt-dev SA  -> can mint
+#       short-lived tokens to RUN dbt locally AS the dbt-dev SA (see
+#       dbt-jaffleshop/Makefile `deploy-dev`).
+#     - roles/iam.serviceAccountUser        on the dbt-dev SA  -> attach/act-as.
+#     - roles/bigquery.dataViewer + jobUser on dbt-dev-jaffleshop (direct).
+#
+#   TEST apply (var.environment == "test"):
+#     - roles/bigquery.dataViewer + jobUser on dbt-test-jaffleshop (direct).
+#
+#   PROD apply (var.environment == "prod"):
+#     - roles/bigquery.dataViewer + jobUser on dbt-prod-jaffleshop (direct).
+#
+# "Direct" means the human identity itself gets read access to that project's
+# BigQuery (console browse / ad-hoc query AS themselves) — separate from the
+# impersonation path, which routes through the dbt-dev SA. Note humans get
+# READ-ONLY direct access everywhere; WRITE only ever happens via a dbt SA.
+#
+# After editing, propagate to every environment:
+#   make -C infra apply-dev && make -C infra apply-test && make -C infra apply-prod
+#
+# Email prefixing (handled in Terraform, do NOT include the prefix here):
+#   developers: individual Google identities  -> prefixed "user:"  in TF.
+#   groups:     Google Group email addresses  -> prefixed "group:" in TF.
+#
+# Leave a list empty as `[]` rather than blank — a bare `developers:` with no
+# value decodes to null and is tolerated, but `[]` is the clearer intent.
+# =============================================================================
+
+developers:
+  - joshpeak05@gmail.com
+  - josh.peak@v2.ai
+  # - jeremiah.wangaruro@v2.ai
+
+groups: []

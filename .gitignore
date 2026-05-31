@@ -237,3 +237,6 @@ terraform.rc
 tmp/
 
 .env
+
+# Mermaid render cache (mermaidjs_diagrams skill) — fences live in .md, PNGs are transient
+.mmdc_cache/
