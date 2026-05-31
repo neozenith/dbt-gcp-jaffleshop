@@ -1,0 +1,136 @@
+name: dbt docs
+
+# =============================================================================
+# Publishes the dbt documentation site to GitHub Pages whenever "prod" happens.
+#
+# "Prod" is defined identically to the deploy-prod job in dbt-deploy.yml:
+#   - push tag v*                     → build + publish docs
+#   - workflow_dispatch (from main)   → build + publish docs
+#   - anything else                   → no trigger matches
+#
+# Docs reflect the LIVE prod warehouse. `dbt docs generate` runs catalog queries
+# against BigQuery INFORMATION_SCHEMA, so the build job authenticates as the same
+# dbt-prod SA (via WIF) that deploy-prod uses — that's what fills in column types,
+# row counts, and table sizes. Without it the catalog would be empty.
+#
+# This workflow is decoupled from dbt-deploy.yml on purpose: it queries whatever
+# state the warehouse is currently in, so it does not need to wait on the deploy
+# job. On a fresh tag the deploy and docs runs race harmlessly — docs just
+# document the warehouse as it stands when the catalog query runs.
+#
+# Auth: Workload Identity Federation only; no keyfiles. The dbt-prod WIF binding
+# (infra/dbt.tf) already permits tag pushes + workflow_dispatch from main.
+#
+# Site format: `dbt docs generate --static` emits a single self-contained
+# target/static_index.html (all assets + manifest + catalog inlined). We publish
+# that one file as index.html — no sibling JSON fetch, no exposed compiled/ SQL.
+#
+# PREREQUISITE: repo Settings → Pages → Source must be set to "GitHub Actions"
+# (one-time, manual). The deploy-pages action fails clearly if it isn't.
+# =============================================================================
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# Default to read-only; each job widens only what it needs.
+permissions:
+  contents: read
+
+# Serialize Pages publishes. cancel-in-progress: false matches dbt-deploy.yml's
+# stance — let an in-flight publish finish rather than risk a half-swapped site.
+concurrency:
+  group: dbt-docs-pages
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: dbt-jaffleshop
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build: authenticate to prod, generate the static docs site, upload it as a
+  # Pages artifact. Holds id-token (for WIF) but NOT pages:write.
+  # ---------------------------------------------------------------------------
+  build:
+    name: dbt docs generate (prod catalog)
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    environment: prod          # same required-reviewers / branch gate as deploy-prod
+    permissions:
+      contents: read
+      id-token: write          # required for WIF (google-github-actions/auth)
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt-jaffleshop
+      DBT_TARGET: prod
+      DBT_BQ_PROJECT_PROD: dbt-prod-jaffleshop
+      # DBT_BQ_DATASET_PROD left unset — profiles.yml default 'analytics' applies.
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to GCP (WIF → dbt-prod SA)
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: dbt-prod@dbt-prod-jaffleshop.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+          cache-dependency-glob: "dbt-jaffleshop/uv.lock"
+
+      - name: Cache virtual environment
+        uses: actions/cache@v5
+        with:
+          path: dbt-jaffleshop/.venv
+          key: venv-${{ runner.os }}-${{ hashFiles('dbt-jaffleshop/uv.lock') }}
+          restore-keys: venv-${{ runner.os }}-
+
+      - name: Install Python deps
+        run: uv sync
+
+      - name: Install dbt packages
+        run: uv run dbt deps
+
+      # --static inlines manifest + catalog into a single static_index.html.
+      - name: dbt docs generate (prod, static)
+        run: uv run dbt docs generate --target prod --static
+
+      # Stage just the self-contained file as the site root. `uses:` steps ignore
+      # defaults.run.working-directory, so upload-pages-artifact reads from the
+      # workspace root — stage there, not under dbt-jaffleshop/.
+      - name: Stage static docs site
+        run: |
+          mkdir -p "${{ github.workspace }}/_site"
+          cp target/static_index.html "${{ github.workspace }}/_site/index.html"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  # ---------------------------------------------------------------------------
+  # Deploy: publish the artifact to Pages. Holds pages:write but never touches
+  # GCP. Skipped automatically when `build` is skipped (needs: build).
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: publish to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write             # required to publish the Pages deployment
+      id-token: write          # required by deploy-pages for its OIDC verification
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
