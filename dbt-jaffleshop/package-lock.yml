@@ -8,4 +8,7 @@ packages:
   - git: https://github.com/dbt-labs/dbt-audit-helper.git
     name: audit_helper
     revision: 71817f0a7fa3df9f63adb90db0cf28f7423f720b
-sha1_hash: 171c3fa545f8b4d5f61a4db225ecea560eac8932
+  - name: elementary
+    package: elementary-data/elementary
+    version: 0.24.0
+sha1_hash: 44479e808eb1239ef65d97a532763bf61c5d2e82

@@ -49,3 +49,10 @@ models:
     marts:
       +materialized: table
       +schema: marts
+
+  # Elementary observability models — their own `elementary` schema, same GCP project as our models
+  # (+database is mandatory: generate_database_name enforces an explicit custom database per model).
+  # No TTL/materialized overrides here: Elementary manages its own (incremental) materializations.
+  elementary:
+    +database: jaffleshop
+    +schema: elementary

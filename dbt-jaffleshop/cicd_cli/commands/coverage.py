@@ -180,6 +180,9 @@ class ColumnsReport:
             return "catalog missing"
         if not self.rows:
             return "nothing to check"
+        uncatalogued = sum(1 for r in self.rows if r.in_manifest and not r.in_catalog)
+        if uncatalogued == len(self.rows):
+            return f"{uncatalogued} model(s) not in catalog — build first"
         return f"{sum(r.documented for r in self.rows)}/{sum(r.total for r in self.rows)} columns documented"
 
     def to_dict(self) -> dict:
