@@ -17,6 +17,7 @@ DBT_BQ_DATASET_PROD := $(or $(DBT_BQ_DATASET_PROD),analytics)
 DBT_BQ_LOCATION := $(or $(DBT_BQ_LOCATION),US)
 DBT_BQ_THREADS := $(or $(DBT_BQ_THREADS),4)
 DBT_BQ_TIMEOUT_SECS := $(or $(DBT_BQ_TIMEOUT_SECS),300)
+DBT_BQ_PROJECT_DEV := $(or $(DBT_BQ_PROJECT_DEV), dbt-dev-jaffleshop)
 
 # Git ref the cicd_cli check targets diff against for their default --changed-only scope.
 # Defaults to main for local dev; override in CI to the PR base, e.g. `make ci BASE_REF=origin/main`.
@@ -75,6 +76,13 @@ seed:
 	uv run dbt seed --full-refresh --vars '{"load_source_data": true}'
 
 load: install gen seed
+
+login:
+	# Authenticate your use for `gcloud storage cp` commands.
+	gcloud auth login --account "$$(git config user.email 2>/dev/null)"
+
+	# Impersonate dbt-dev SA for ADC which dbt profiles.yml needs.
+	gcloud auth application-default login --impersonate-service-account=dbt-dev@dbt-dev-jaffleshop.iam.gserviceaccount.com
 
 debug:
 	uv run dbt debug
