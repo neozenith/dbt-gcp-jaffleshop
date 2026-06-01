@@ -77,9 +77,13 @@ jobs:
       - name: Install dbt packages
         run: uv run dbt deps
 
-      # Produces manifest.json (docs/tests) + catalog.json (columns).
+      # Produces manifest.json (docs/tests) + catalog.json (columns). `|| true`: without a build
+      # the sliced datasets don't exist, so the catalog query errors per-dataset ("Not found:
+      # Dataset …") and dbt exits non-zero — but it still writes manifest + a (partial) catalog.
+      # We tolerate that so `check all` runs; `columns` then honestly reports "not in catalog" for
+      # unbuilt models, and a genuine compile failure still surfaces (no manifest → check all fails).
       - name: dbt docs generate (manifest + catalog)
-        run: uv run dbt docs generate --target test
+        run: uv run dbt docs generate --target test || true
 
       # Every gate over all models. --md writes the comment table; full detail stays in the logs.
       # continue-on-error so the comment is always posted; the final step sets the real status.
