@@ -372,7 +372,7 @@ GCP call.
 | `config.sh` | Shared constants (repo name, region, project list). Sourced by the others. |
 | `bootstrap_project.sh` | Sets up steps 1–7 above for **one** project. Usage: `bootstrap_project.sh <project-id> <env-name>`. |
 | `bootstrap_all.sh` | Runs `bootstrap_project.sh` for every entry in `PROJECT_PAIRS` (dev → test → prod). |
-| `bootstrap_github.sh` | Sets up step 8 — creates the GitHub Environments and writes the two vars. Run **after** `bootstrap_all.sh`. Requires `gh` authenticated with repo-admin on `${GITHUB_REPO}`. |
+| `bootstrap_github.sh` | Sets up step 8 — creates the GitHub Environments and writes the two vars, and adds a `v*` **tag** deployment policy to the `github-pages` environment (dbt-docs publishes the prod catalog on a tag, which the default branch-only Pages policy rejects). Run **after** `bootstrap_all.sh`. Requires `gh` authenticated with repo-admin on `${GITHUB_REPO}`. |
 
 ## Overriding defaults
 
