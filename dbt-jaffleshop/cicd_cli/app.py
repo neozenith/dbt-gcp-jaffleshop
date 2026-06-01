@@ -17,7 +17,8 @@ Command tree::
         deprecations [--fix]      dbt-autofix dry-run / apply over folders of selected models
         lint         [--fix]      SQLFluff full ruleset (lint / fix)
         format       [--fix]      SQLFluff formatter subset (lint --rules / format)
-        docs                      documentation coverage (no autofix)
+        docs                      model description coverage (no autofix)
+        columns                   column description coverage (no autofix)
         tests                     test coverage (no autofix)
         all                       run every check; non-zero if any fail
 """
@@ -33,9 +34,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Local
-from cicd_cli import config, selection
+from cicd_cli import config, selection, style
 from cicd_cli.commands import checks, coverage, deprecations, sqlfluff
-from cicd_cli.formatting import render
+from cicd_cli.formatting import render_from_args
 from cicd_cli.logging_setup import configure_logging
 
 log = logging.getLogger(__name__)
@@ -87,6 +88,24 @@ def _add_selection(p: argparse.ArgumentParser) -> None:
         dest="as_json",
         help="Emit machine-readable JSON to stdout (human log lines go to stderr)",
     )
+    p.add_argument(
+        "--show-logs",
+        action="store_true",
+        dest="show_logs",
+        help="Print the raw underlying-tool transcript even on success (always shown on failure)",
+    )
+    p.add_argument(
+        "--show-passes",
+        action="store_true",
+        dest="show_passes",
+        help="Show passing results too (default: only failures are shown)",
+    )
+    p.add_argument(
+        "--color",
+        choices=["auto", "always", "never"],
+        default="auto",
+        help="Colourise output: auto (TTY only), always, or never (default: %(default)s)",
+    )
 
 
 def _add_fix(p: argparse.ArgumentParser) -> None:
@@ -111,12 +130,18 @@ def _add_manifest(p: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_columns_toggle(p: argparse.ArgumentParser) -> None:
+def _add_catalog(p: argparse.ArgumentParser) -> None:
     p.add_argument(
-        "--no-columns",
-        action="store_false",
-        dest="require_columns",
-        help="Only require a model-level description (ignore undocumented columns)",
+        "--catalog",
+        type=Path,
+        default=config.DEFAULT_CATALOG,
+        help="Path to dbt catalog.json — resolved warehouse columns (default: %(default)s)",
+    )
+    p.add_argument(
+        "--docs-generate",
+        action="store_true",
+        dest="docs_generate",
+        help="Run `dbt docs generate` first to refresh the manifest + catalog (needs a warehouse build)",
     )
 
 
@@ -148,11 +173,16 @@ def build_parser() -> argparse.ArgumentParser:
     _add_fix(fmt)
     fmt.set_defaults(func=lambda a: _run_sqlfluff("format", a))
 
-    docs = check_sub.add_parser("docs", help="Documentation coverage of selected models")
+    docs = check_sub.add_parser("docs", help="Model description coverage of selected models")
     _add_selection(docs)
     _add_manifest(docs)
-    _add_columns_toggle(docs)
     docs.set_defaults(func=coverage.cmd_docs)
+
+    columns = check_sub.add_parser("columns", help="Column description coverage (resolved via catalog.json)")
+    _add_selection(columns)
+    _add_manifest(columns)
+    _add_catalog(columns)
+    columns.set_defaults(func=coverage.cmd_columns)
 
     tests = check_sub.add_parser("tests", help="Test coverage of selected models")
     _add_selection(tests)
@@ -162,7 +192,8 @@ def build_parser() -> argparse.ArgumentParser:
     all_ = check_sub.add_parser("all", help="Run every check; non-zero if any fail")
     _add_selection(all_)
     _add_manifest(all_)
-    _add_columns_toggle(all_)
+    _add_catalog(all_)
+    _add_fix(all_)  # propagates to the fixable checks (deprecations, lint, format); no-op for the rest
     all_.set_defaults(func=checks.cmd_all)
 
     return parser
@@ -174,13 +205,14 @@ def _run_sqlfluff(name: str, args: argparse.Namespace) -> int:
     sel = selection.from_args(args)
     files = selection.resolve_model_files(sel)
     report = sqlfluff.run(name, files, fix=args.fix, scope=selection.describe(sel))
-    return render(report, as_json=args.as_json)
+    return render_from_args(report, args)
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     configure_logging()
+    style.configure(getattr(args, "color", "auto"))
     load_dotenv()  # load dbt-jaffleshop/.env if present (project IDs for dbt parse/ls)
     # profiles.yml is committed inside the dbt project, so point dbt AND the sqlfluff dbt
     # templater at it unconditionally — mirrors the Makefile's `export DBT_PROFILES_DIR :=

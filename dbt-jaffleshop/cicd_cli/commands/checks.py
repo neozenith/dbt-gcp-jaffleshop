@@ -11,8 +11,9 @@ import logging
 import sys
 
 # Local
-from cicd_cli import config, selection
+from cicd_cli import config, selection, style
 from cicd_cli.commands import coverage, deprecations, sqlfluff
+from cicd_cli.formatting import emit_tool_logs
 
 log = logging.getLogger(__name__)
 
@@ -23,23 +24,41 @@ def cmd_all(args) -> int:
     scope = selection.describe(sel)
     files = selection.resolve_model_files(sel, cwd=cwd)
 
-    dep_report = deprecations.run(files, scope=scope, fix=False, cwd=cwd)
-    lint_report = sqlfluff.run("lint", files, fix=False, scope=scope, cwd=cwd)
-    format_report = sqlfluff.run("format", files, fix=False, scope=scope, cwd=cwd)
-    manifest = coverage.load_manifest(args.manifest, parse=args.parse, cwd=cwd)
-    docs_report = coverage.evaluate_docs(manifest, files, scope=scope, require_columns=args.require_columns)
+    # --fix propagates to the fixable checks (deprecations, lint, format); docs/tests have no
+    # auto-fix, so it is a no-op for them.
+    fix = getattr(args, "fix", False)
+    dep_report = deprecations.run(files, scope=scope, fix=fix, cwd=cwd)
+    lint_report = sqlfluff.run("lint", files, fix=fix, scope=scope, cwd=cwd)
+    format_report = sqlfluff.run("format", files, fix=fix, scope=scope, cwd=cwd)
+    if args.docs_generate:
+        coverage.dbt_docs_generate(cwd)
+        manifest = coverage.load_manifest(args.manifest, parse=False, cwd=cwd)
+    else:
+        manifest = coverage.load_manifest(args.manifest, parse=args.parse, cwd=cwd)
+    docs_report = coverage.evaluate_docs(manifest, files, scope=scope)
+    try:
+        catalog = coverage.load_catalog(args.catalog)
+        columns_report = coverage.evaluate_columns(manifest, catalog, files, scope=scope)
+    except FileNotFoundError as exc:
+        # Keep the other gates running; surface the missing catalog as a visible columns failure.
+        columns_report = coverage.ColumnsReport(scope, [], error=str(exc))
     tests_report = coverage.evaluate_tests(manifest, files, scope=scope)
 
-    reports = [dep_report, lint_report, format_report, docs_report, tests_report]
+    reports = [dep_report, lint_report, format_report, docs_report, columns_report, tests_report]
     ok = all(r.ok for r in reports)
 
     if args.as_json:
         payload = {"ok": ok, "scope": scope, "checks": {r.name: r.to_dict() for r in reports}}
         sys.stdout.write(json.dumps(payload, indent=2) + "\n")
     else:
-        for report in reports:
-            for level, line in report.human_lines():
+        log.info(style.dim(f"▸ {scope}"))
+        for i, report in enumerate(reports):
+            if i:
+                log.info("")  # blank line separates each check section
+            for level, line in report.human_lines(show_passes=args.show_passes):
                 log.log(level, line)
+            emit_tool_logs(report, show_logs=args.show_logs)
+        log.info("")
         log.log(logging.INFO if ok else logging.ERROR,
-                "✓ all checks passed" if ok else "✗ one or more checks failed")
+                style.passed("all checks passed") if ok else style.failed("one or more checks failed"))
     return 0 if ok else 1
