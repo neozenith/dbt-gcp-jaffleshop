@@ -13,7 +13,7 @@ import sys
 # Local
 from cicd_cli import config, selection, style
 from cicd_cli.commands import coverage, deprecations, sqlfluff
-from cicd_cli.formatting import emit_tool_logs
+from cicd_cli.formatting import emit_tool_logs, markdown_summary
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +46,12 @@ def cmd_all(args) -> int:
 
     reports = [dep_report, lint_report, format_report, docs_report, columns_report, tests_report]
     ok = all(r.ok for r in reports)
+
+    # Optional Markdown summary file (a PR-comment body). The full per-check detail stays in the
+    # human output / tool logs; this is just the at-a-glance table.
+    md_path = getattr(args, "md_path", None)
+    if md_path is not None:
+        md_path.write_text(markdown_summary(reports, scope), encoding="utf-8")
 
     if args.as_json:
         payload = {"ok": ok, "scope": scope, "checks": {r.name: r.to_dict() for r in reports}}

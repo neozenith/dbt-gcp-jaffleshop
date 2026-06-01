@@ -85,6 +85,13 @@ class DeprecationsReport:
     def files(self) -> list[str]:
         return sorted({r["file_path"] for r in self.records})
 
+    def summary(self) -> str:
+        if not self.scanned_dirs:
+            return "nothing to check"
+        if self.mode == "fix":
+            return f"{len(self.files)} file(s) fixed" if self.files else "nothing to fix"
+        return "no deprecations" if self.ok else f"{len(self.files)} file(s) affected"
+
     def to_dict(self) -> dict:
         return {
             "check": self.name,

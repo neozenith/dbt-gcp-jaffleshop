@@ -113,7 +113,15 @@ still run.
 ## Makefile
 
 `make lint` / `lint-fix` / `format` / `format-check` / `deprecations-check` / `docs-coverage` /
-`tests-coverage` / `checks` all delegate here. See `dbt-jaffleshop/Makefile`.
+`columns-coverage` / `tests-coverage` / `checks` all delegate here. See `dbt-jaffleshop/Makefile`.
+
+## PR checks (CI)
+
+`.github/workflows/dbt-cicd-checks.yml` runs `check all` on every PR (WIF → dbt-test SA, then
+`dbt docs generate` for the manifest + catalog), writes the summary table with `check all --md
+<file>`, and posts a single **self-updating** PR comment that links to the run's logs — the
+comment is the digest, the logs hold the full per-file / per-violation detail. (`columns` is
+accurate only once the models are built; see the note in the workflow file.)
 
 ## Extending it
 

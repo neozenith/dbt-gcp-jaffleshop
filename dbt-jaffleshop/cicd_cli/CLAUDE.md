@@ -37,7 +37,7 @@ cicd_cli/
 ├── catalog.py          # read target/catalog.json → RESOLVED (actual warehouse) columns per model
 ├── toollog.py          # ToolLog + run_tool(): the ONLY way to shell out to a tool
 ├── style.py            # ANSI colour + per-check emoji for OUR output (gated on --color)
-├── formatting.py       # render() + emit_tool_logs(): human↔json split, logs-on-failure
+├── formatting.py       # render() + emit_tool_logs() + markdown_summary(): human↔json↔md output
 └── commands/
     ├── deprecations.py # dbt-autofix
     ├── sqlfluff.py     # lint + format

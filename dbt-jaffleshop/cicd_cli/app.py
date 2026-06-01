@@ -194,6 +194,13 @@ def build_parser() -> argparse.ArgumentParser:
     _add_manifest(all_)
     _add_catalog(all_)
     _add_fix(all_)  # propagates to the fixable checks (deprecations, lint, format); no-op for the rest
+    all_.add_argument(
+        "--md",
+        type=Path,
+        default=None,
+        dest="md_path",
+        help="Also write a Markdown summary table to this file (e.g. for a PR comment)",
+    )
     all_.set_defaults(func=checks.cmd_all)
 
     return parser

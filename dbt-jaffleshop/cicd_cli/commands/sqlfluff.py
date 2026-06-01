@@ -51,6 +51,12 @@ class SqlfluffReport:
     def ok(self) -> bool:
         return self.skipped or self.returncode == 0
 
+    def summary(self) -> str:
+        if self.skipped:
+            return "no models"
+        ok_msg, fail_msg = _SUMMARY[(self.name, self.mode)]
+        return ok_msg if self.ok else fail_msg
+
     def to_dict(self) -> dict:
         return {
             "check": self.name,

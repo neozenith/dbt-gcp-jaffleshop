@@ -57,3 +57,26 @@ def render_from_args(report, args) -> int:
     """Render a report pulling the output flags off parsed args — the single call site every
     command handler uses, so none can forget to thread ``--json``/``--show-logs``/``--show-passes``."""
     return render(report, as_json=args.as_json, show_logs=args.show_logs, show_passes=args.show_passes)
+
+
+def markdown_summary(reports, scope: str) -> str:
+    """A GitHub-flavoured Markdown summary table of the checks — the body of a PR comment.
+
+    Detail per check is one line (``report.summary()``); the FULL per-file/per-violation detail
+    lives in the run logs, which the workflow links to alongside this table.
+    """
+    overall = "✅ all checks passed" if all(r.ok for r in reports) else "❌ one or more checks failed"
+    lines = [
+        f"### cicd_cli checks — {overall}",
+        "",
+        f"_Scope: {scope}_",
+        "",
+        "| Check | Status | Detail |",
+        "|:--|:--:|:--|",
+    ]
+    for report in reports:
+        emoji = style.EMOJI.get(report.name, "•")
+        status = "✅ pass" if report.ok else "❌ fail"
+        lines.append(f"| {emoji} `{report.name}` | {status} | {report.summary()} |")
+    lines.append("")
+    return "\n".join(lines)

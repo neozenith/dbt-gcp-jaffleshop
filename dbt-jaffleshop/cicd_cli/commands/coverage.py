@@ -87,6 +87,11 @@ class DocsReport:
     def ok(self) -> bool:
         return all(r.ok for r in self.rows)
 
+    def summary(self) -> str:
+        if not self.rows:
+            return "nothing to check"
+        return "all documented" if self.ok else f"{sum(1 for r in self.rows if not r.ok)} model(s) missing a description"
+
     def to_dict(self) -> dict:
         return {
             "check": self.name,
@@ -169,6 +174,13 @@ class ColumnsReport:
     @property
     def ok(self) -> bool:
         return self.error is None and all(r.ok for r in self.rows)
+
+    def summary(self) -> str:
+        if self.error:
+            return "catalog missing"
+        if not self.rows:
+            return "nothing to check"
+        return f"{sum(r.documented for r in self.rows)}/{sum(r.total for r in self.rows)} columns documented"
 
     def to_dict(self) -> dict:
         return {
@@ -269,6 +281,11 @@ class TestsReport:
     @property
     def ok(self) -> bool:
         return all(r.ok for r in self.rows)
+
+    def summary(self) -> str:
+        if not self.rows:
+            return "nothing to check"
+        return "all tested" if self.ok else f"{sum(1 for r in self.rows if not r.ok)} model(s) untested"
 
     def to_dict(self) -> dict:
         return {
