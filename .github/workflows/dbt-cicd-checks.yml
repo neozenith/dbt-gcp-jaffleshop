@@ -74,15 +74,9 @@ jobs:
       - name: Install Python deps
         run: uv sync
 
-      - name: Install dbt packages
-        run: uv run dbt deps
-      
-      - name: Install dbt seed
+      - name: run dbt build + docs generate
         run: |
-          uv run dbt seed --target test --vars '{"load_source_data": true}'
-
-      - name: Install dbt build
-        run: uv run dbt build
+          uv run dbt deps
 
       # Produces manifest.json (docs/tests) + catalog.json (doc-columns). `|| true`: without a build
       # the sliced datasets don't exist, so the catalog query errors per-dataset ("Not found:
