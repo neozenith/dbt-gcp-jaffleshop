@@ -25,6 +25,13 @@ name: dbt docs
 # target/static_index.html (all assets + manifest + catalog inlined). We publish
 # that one file as index.html — no sibling JSON fetch, no exposed compiled/ SQL.
 #
+# Alongside it we publish the sdag data-product lineage viewer (sdag.html + sdag.js +
+# full_graph.json + super_graph.json) as SIBLING files, reachable at <pages-url>/sdag.html.
+# `products generate` reads the manifest.json that `dbt docs generate` writes (it's still
+# emitted under --static) and resolves data-product membership via `dbt ls` (parse-only).
+# The emitted JSONs carry only graph metadata (node names, resource types, tags, lineage,
+# selector membership) — NOT compiled SQL — so they keep the same "no exposed SQL" stance.
+#
 # PREREQUISITE: repo Settings → Pages → Source must be set to "GitHub Actions"
 # (one-time, manual). The deploy-pages action fails clearly if it isn't.
 # =============================================================================
@@ -109,6 +116,13 @@ jobs:
         run: |
           mkdir -p "${{ github.workspace }}/_site"
           cp target/static_index.html "${{ github.workspace }}/_site/index.html"
+
+      # Build the sdag data-product lineage viewer straight into _site so its assets land as siblings of
+      # index.html (→ <pages-url>/sdag.html). Reads target/manifest.json from the generate step above;
+      # `dbt ls` membership resolution is parse-only, so the prod env already set on this job is enough
+      # (no warehouse query). Fail-loud (no `|| true`) to match the docs-generate step's stance.
+      - name: Build sdag data-product viewer (sibling of index.html)
+        run: uv run -m cicd_cli products generate -o "${{ github.workspace }}/_site"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
