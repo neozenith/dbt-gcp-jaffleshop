@@ -28,6 +28,17 @@ EMOJI = {
     "docs": "📄",
     "doc-columns": "📑",
     "tests": "🧪",
+    "boundaries": "🧭",
+    "system-boundaries": "🛡️",
+}
+
+# Glyph per boundary classification, used by the data-product analysis. inbound = data enters the
+# product, outbound = data leaves it, both = a shared crossing node, internal = fully interior.
+BOUNDARY_GLYPH = {
+    "inbound": "⬇",
+    "outbound": "⬆",
+    "both": "⇅",
+    "internal": "·",
 }
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -72,6 +83,10 @@ def cyan(s: str) -> str:
     return _wrap("36", s)
 
 
+def magenta(s: str) -> str:
+    return _wrap("35", s)
+
+
 def bold(s: str) -> str:
     return _wrap("1", s)
 
@@ -100,3 +115,15 @@ def pass_item(msg: str) -> str:
 
 def fail_item(msg: str) -> str:
     return red(f"   {FAIL} {msg}")
+
+
+# Colour per boundary classification — distinct hues so the four roles are scannable. inbound/cyan
+# (incoming), outbound/yellow (outgoing), both/magenta (a crossing in both directions), internal/dim.
+_BOUNDARY_COLOUR = {"inbound": cyan, "outbound": yellow, "both": magenta, "internal": dim}
+
+
+def boundary_item(kind: str, msg: str) -> str:
+    """A single classified node row: glyph + message, coloured by classification."""
+    glyph = BOUNDARY_GLYPH.get(kind, "·")
+    colour = _BOUNDARY_COLOUR.get(kind, dim)
+    return colour(f"   {glyph} {msg}")

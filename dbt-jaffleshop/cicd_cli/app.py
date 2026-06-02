@@ -20,7 +20,12 @@ Command tree::
         docs                      model description coverage (no autofix)
         doc-columns               column description coverage, resolved via catalog (no autofix)
         tests                     test coverage (no autofix)
+        system-boundaries         fail when an inbound/outbound data-product boundary node has no tests
         all                       run every check; non-zero if any fail
+      products                    data-product (named-selector) analysis — read-only
+        boundaries                classify each node as inbound/outbound/both/internal system boundary
+        generate                  build the sdag Cytoscape JSON + HTML viewer assets
+        serve                     generate the sdag assets, then host them over HTTP
 """
 
 # Standard Library
@@ -35,7 +40,7 @@ from dotenv import load_dotenv
 
 # Local
 from cicd_cli import config, selection, style
-from cicd_cli.commands import checks, coverage, deprecations, sqlfluff
+from cicd_cli.commands import checks, coverage, dataproducts, deprecations, sqlfluff
 from cicd_cli.formatting import render_from_args
 from cicd_cli.logging_setup import configure_logging
 
@@ -82,6 +87,11 @@ def _add_selection(p: argparse.ArgumentParser) -> None:
         metavar="SELECTOR",
         help="dbt exclusion selector (repeatable; matches dbt --exclude)",
     )
+    _add_output(p)
+
+
+def _add_output(p: argparse.ArgumentParser) -> None:
+    """The output flags every renderer needs: --json / --show-logs / --show-passes / --color."""
     p.add_argument(
         "--json",
         action="store_true",
@@ -189,6 +199,29 @@ def build_parser() -> argparse.ArgumentParser:
     _add_manifest(tests)
     tests.set_defaults(func=coverage.cmd_tests)
 
+    # system-boundaries selects by DATA PRODUCT (selectors.yml), not by the changed-file scope the
+    # other checks share — so it takes --selectors/--product, not _add_selection. Fails when a node
+    # on a product's system boundary (inbound/outbound/both) has zero tests.
+    sysbound = check_sub.add_parser(
+        "system-boundaries",
+        help="Fail when an inbound/outbound system-boundary node of a data product has zero tests",
+    )
+    _add_manifest(sysbound)
+    sysbound.add_argument(
+        "--selectors",
+        type=Path,
+        default=config.DEFAULT_SELECTORS,
+        help="Path to dbt's selectors.yml defining the data products (default: %(default)s)",
+    )
+    sysbound.add_argument(
+        "--product",
+        action="append",
+        metavar="NAME",
+        help="Limit the gate to this named data product (repeatable; default: all in selectors.yml)",
+    )
+    _add_output(sysbound)
+    sysbound.set_defaults(func=dataproducts.cmd_check)
+
     all_ = check_sub.add_parser("all", help="Run every check; non-zero if any fail")
     _add_selection(all_)
     _add_manifest(all_)
@@ -203,7 +236,63 @@ def build_parser() -> argparse.ArgumentParser:
     )
     all_.set_defaults(func=checks.cmd_all)
 
+    # --- products group ----------------------------------------------------
+    # Data-product (named-selector) analysis. Read-only today; feeds a future contracts/tests gate.
+    products = sub.add_parser("products", help="Data-product (named-selector) analysis")
+    products.set_defaults(func=_help(products))
+    products_sub = products.add_subparsers(dest="products_cmd", required=False)
+
+    boundaries = products_sub.add_parser(
+        "boundaries",
+        help="Classify each node of a data product as an inbound/outbound/both/internal system boundary",
+    )
+    _add_manifest(boundaries)  # --manifest + --parse (the lineage graph comes from manifest.json)
+    _add_dataproduct_scope(boundaries)  # --selectors + --product
+    _add_output(boundaries)  # --json / --show-passes (shows internal nodes too) / --color
+    boundaries.set_defaults(func=dataproducts.cmd)
+
+    # products generate / serve — the interactive sdag viewer over the data products.
+    generate = products_sub.add_parser("generate", help="Build the sdag Cytoscape JSON + HTML viewer assets")
+    _add_manifest(generate)
+    _add_dataproduct_scope(generate)
+    _add_sdag_output(generate)
+    generate.set_defaults(func=dataproducts.cmd_generate)
+
+    serve = products_sub.add_parser("serve", help="Generate the sdag assets, then host them over HTTP")
+    _add_manifest(serve)
+    _add_dataproduct_scope(serve)
+    _add_sdag_output(serve)
+    serve.add_argument("-p", "--port", type=int, default=8088, help="HTTP port (default: %(default)s)")
+    serve.set_defaults(func=dataproducts.cmd_serve)
+
     return parser
+
+
+def _add_dataproduct_scope(p: argparse.ArgumentParser) -> None:
+    """The data-product selection flags: --selectors (the selectors.yml) + --product (subset by name)."""
+    p.add_argument(
+        "--selectors",
+        type=Path,
+        default=config.DEFAULT_SELECTORS,
+        help="Path to dbt's selectors.yml defining the data products (default: %(default)s)",
+    )
+    p.add_argument(
+        "--product",
+        action="append",
+        metavar="NAME",
+        help="Limit to this named data product (repeatable; default: all in selectors.yml)",
+    )
+
+
+def _add_sdag_output(p: argparse.ArgumentParser) -> None:
+    """The viewer output directory flag (defaults under the project tmp/)."""
+    p.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=config.DEFAULT_SDAG_OUTPUT,
+        help="Directory for the generated viewer assets (default: %(default)s)",
+    )
 
 
 def _run_sqlfluff(name: str, args: argparse.Namespace) -> int:

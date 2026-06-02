@@ -30,20 +30,73 @@ always carries every result.
 ```
 cicd_cli/
 ├── app.py              # argparse wiring + main(). NO business logic.
-├── config.py           # PROJECT_ROOT, DEFAULT_BASE_REF, DEFAULT_MANIFEST, MODEL_GLOB
+├── config.py           # PROJECT_ROOT, DEFAULT_BASE_REF, DEFAULT_MANIFEST, MODEL_GLOB, DEFAULT_SELECTORS
 ├── selection.py        # --changed-only/--all/--select/--exclude → list[Path] of models
 ├── gitutil.py          # changed-file detection (the Makefile CHANGED_MODELS, ported)
 ├── manifest.py         # read target/manifest.json → ModelDoc (description, DECLARED columns, test_count)
 ├── catalog.py          # read target/catalog.json → RESOLVED (actual warehouse) columns per model
+├── graph.py            # data-node lineage DAG (manifest parent_map) + classify_boundary() — pure
+├── viewer.py           # sdag viewer engine: full/super Cytoscape JSON builders + write_outputs + serve
+├── assets/             # sdag.html + sdag.js viewer templates ({{BUILD_ID}}/{{SOURCE}} tokens)
 ├── toollog.py          # ToolLog + run_tool(): the ONLY way to shell out to a tool
 ├── style.py            # ANSI colour + per-check emoji for OUR output (gated on --color)
 ├── formatting.py       # render() + emit_tool_logs() + markdown_summary(): human↔json↔md output
 └── commands/
-    ├── deprecations.py # dbt-autofix
-    ├── sqlfluff.py     # lint + format
-    ├── coverage.py     # docs + tests (manifest), doc-columns (catalog-resolved + manifest)
-    └── checks.py       # `check all` aggregator
+    ├── deprecations.py  # dbt-autofix
+    ├── sqlfluff.py      # lint + format
+    ├── coverage.py      # docs + tests (manifest), doc-columns (catalog-resolved + manifest)
+    ├── dataproducts.py  # `products boundaries`/`generate`/`serve` + `check system-boundaries`
+    └── checks.py        # `check all` aggregator
 ```
+
+## Data-product boundary analysis (`products boundaries`)
+
+A second command family beside `check`. A "data product" is a NAMED selector in `selectors.yml`
+(e.g. `supply`, `demand`); the analysis classifies each of its nodes as an inbound / outbound / both /
+internal **system boundary**, for a future gate asserting the right tests/contracts exist per class.
+
+Three ideas hold it together, mirrored on the `check` side:
+
+- **Membership comes from dbt, not a re-implemented resolver** (`dataproducts.resolve_members` →
+  `dbt ls --selector <name> --output json`). This is the same reasoning as `selection.py`'s `--select`
+  path: the `+`/`parents` graph operators and full selector grammar are dbt's to interpret, not ours.
+  (sdag's original pure-Python resolver did *not* implement `+`, so porting it verbatim would have
+  silently dropped every upstream node.)
+- **The graph is data-nodes-only** (`graph.DATA_RESOURCE_TYPES` = model/source/seed/snapshot). Both the
+  node set AND the edge set are filtered, so a model's `test`/`semantic_model` children don't get
+  mistaken for downstream data (which would flag every tested model as an outbound boundary).
+- **`classify_boundary` is pure** (members + full edge list → per-node role). Unit-tested against a
+  hand-built manifest dict; the dbt/file I/O is the thin shell around it.
+
+`products boundaries` is read-only: `BoundaryReport.ok` is always True, reusing the shared
+`render`/`--json` plumbing; `--show-passes` reveals the otherwise-hidden `internal` nodes.
+
+**`check system-boundaries`** is the gate built on the same machinery (`evaluate_system_boundaries` +
+`SystemBoundaryReport`): every boundary node (inbound/outbound/both) must have ≥1 test, else fail.
+Internal nodes are not gated. Two things to know when extending it:
+
+- **Test counts come from `graph.NodeInfo.test_count`, not `manifest.Manifest`.** Boundary nodes span
+  models AND sources; `Manifest` only counts model tests, so `Graph.from_dict` tallies `depends_on.nodes`
+  across every data node (the same second-pass trick, widened). A source with no tests is a real failure.
+- **It is deliberately NOT in `check all`.** `check all` fans ONE model-file selection out to its gates;
+  `system-boundaries` selects by data product (`selectors.yml`) via `_select_named`, a different axis, so
+  it stays standalone (own subcommand, own Makefile target `system-boundaries-check`). Don't shoehorn it
+  into `checks.cmd_all` — wire it as a separate CI step instead.
+
+**`products generate` / `serve`** are the visualisation half (`viewer.py` + `assets/`). Two things to
+keep in mind when touching them:
+
+- **The viewer reads the FULL manifest, not `graph.Graph`.** `viewer.load_full_manifest` keeps every
+  resource type (tests, semantic models, sources) and uses the RAW `resolve_members` (no data-node
+  intersection), because the Cytoscape view shows the whole DAG. Don't route it through the data-node
+  graph or the viewer loses its test/source nodes. The JSON builders are pure (nodes+edges+resolved →
+  dict) and unit-tested in `test_viewer.py`; only `load_full_manifest`/`write_outputs`/`serve` do I/O.
+- **The HTML/JS are token templates, resolved package-relative.** `viewer.ASSETS_DIR` is
+  `Path(__file__).parent/"assets"` (NOT cwd — the package is found via cwd-on-path but its assets are
+  package-relative). `write_outputs` substitutes `{{BUILD_ID}}`/`{{SOURCE}}`; if you ever see literal
+  `{{…}}` in a served file, the templating step was skipped. Output goes to `tmp/sdag/` (gitignored) per
+  the project's "artifacts stay in project tmp/" rule. The JSON contract (element `kind`s, `data` keys,
+  `metadata`) is what `sdag.js` consumes — change a key in one place and you must change it in both.
 
 ## Non-negotiable conventions (project rules)
 
@@ -85,6 +138,13 @@ core is testable without a warehouse — that's why `evaluate_docs`/`evaluate_te
 `parse_autofix_output` take plain data and return Reports.
 
 ## Gotchas (each cost real debugging once)
+
+- **dbt only reads `selectors.yml`, never `selectors.yaml`.** The filename is hardcoded upstream
+  (`dbt/config/selectors.py`). A `.yaml` file is silently ignored — selectors resolve to `[]` with the
+  misleading `Could not find selector named X, expected one of []`. `config.DEFAULT_SELECTORS` is `.yml`.
+- **`products boundaries` membership needs the dbt project env** (it shells out to `dbt ls`, which
+  parses the project and so requires the `.env` project IDs + `DBT_PROFILES_DIR`, both set in `main()`).
+  The graph load itself is a pure `manifest.json` read; only membership resolution touches dbt.
 
 - **`dbt-autofix` always exits 0**, even when it finds deprecations. Failure is derived from its
   `--json` `refactors` key, not its exit code. A genuine non-zero exit is re-raised.

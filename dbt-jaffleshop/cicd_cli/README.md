@@ -23,7 +23,7 @@ project root.)
 ## Commands
 
 ```
-cicd_cli check {deprecations,lint,format,docs,doc-columns,tests,all}
+cicd_cli check {deprecations,lint,format,docs,doc-columns,tests,system-boundaries,all}
 ```
 
 | Command | What it checks | Underlying tool | `--fix`? |
@@ -34,7 +34,84 @@ cicd_cli check {deprecations,lint,format,docs,doc-columns,tests,all}
 | `docs` | every selected model has a **model** description | `manifest.json` | — |
 | `doc-columns` | every **resolved (actual warehouse) column** has a description | `catalog.json` + `manifest.json` | — |
 | `tests` | every selected model has ≥1 test | `manifest.json` | — |
-| `all` | runs all of the above over one selection | — | — |
+| `system-boundaries` | every **system-boundary node** of a data product has ≥1 test | `manifest.json` + `selectors.yml` | — |
+| `all` | runs all of the above **except `system-boundaries`** over one selection | — | — |
+
+> **`system-boundaries` selects by data product, not by changed files.** Every other check (and `check
+> all`) operates on a model-file selection (`--changed-only`/`--select`); `system-boundaries` operates
+> on the named selectors in `selectors.yml`, so it takes `--selectors`/`--product` instead and is **not**
+> part of `check all`. Run it as its own gate. See the data-products section below.
+
+## Data products: system-boundary analysis
+
+```
+cicd_cli products boundaries [--product NAME ...] [--show-passes] [--json]
+```
+
+A **data product** is a named selector in `selectors.yml` (e.g. `supply`, `demand`). This command
+classifies each node *inside* a data product by where it sits on the product's **system boundary**:
+
+| Class | Meaning | Where a data contract lives |
+|-------|---------|------------------------------|
+| **inbound** ⬇ | has a parent outside the product (or is a source/root) | data **entering** the product |
+| **outbound** ⬆ | has a child outside the product (or is a final leaf) | data the product **publishes** |
+| **both** ⇅ | crosses in *and* out — typically a node shared by two products | both directions |
+| **internal** · | fully interior; no lineage crosses the boundary here | no external contract |
+
+Membership is resolved by dbt itself (`dbt ls --selector`), so the `+`/`parents` graph operators are
+honoured and upstream **sources** count as inbound boundaries. Only data nodes (model/source/seed/
+snapshot) are classified — tests and semantic models are excluded as attachments. By default only the
+boundary nodes are shown; `--show-passes` also lists the `internal` ones. `--json` emits the full
+classification (including each node's external parent/child `unique_id`s) for downstream tooling.
+
+```bash
+cicd_cli products boundaries                       # all data products, boundary nodes only
+cicd_cli products boundaries --product demand       # one product
+cicd_cli products boundaries --show-passes           # include internal nodes
+cicd_cli products boundaries --json | jq '.products[]'
+```
+
+`products boundaries` is read-only (it never gates) — it's the descriptive view. The gate built on it
+is **`check system-boundaries`**:
+
+```
+cicd_cli check system-boundaries [--product NAME ...] [--show-passes] [--json]
+```
+
+It fails when any **boundary** node (inbound / outbound / both) of a data product has **zero tests** —
+the test being the enforceable half of the data contract at the product's edge. Internal nodes are not
+gated. Sources count: an untested raw source is an untested inbound boundary. Failures-only by default;
+`--show-passes` lists the already-tested boundary nodes too.
+
+```bash
+cicd_cli check system-boundaries                      # gate every data product; exit 1 if any boundary is untested
+cicd_cli check system-boundaries --product demand     # gate one product
+cicd_cli check system-boundaries --json | jq '.results[] | select(.ok==false)'
+```
+
+### Interactive viewer (`products generate` / `serve`)
+
+```
+cicd_cli products generate [--product NAME ...] [-o DIR]
+cicd_cli products serve     [--product NAME ...] [-o DIR] [-p PORT]
+```
+
+`generate` builds an [sdag](#) — a "super-DAG" — viewer: it renders the **whole lineage** with the data
+products overlaid, both as compound boxes around their members (full graph) and as collapsed
+super-nodes with weighted cross-product edges (super graph). It writes four files into the output dir
+(default `tmp/sdag/`): `full_graph.json`, `super_graph.json`, and a self-contained `sdag.html` + `sdag.js`
+(Cytoscape.js + dagre via CDN). `serve` regenerates, then hosts the bundle with no-cache headers.
+
+```bash
+cicd_cli products serve                 # → http://localhost:8088/sdag.html
+cicd_cli products generate -o tmp/sdag  # just write the assets; open sdag.html yourself
+```
+
+Unlike the boundary checks, the viewer shows **every** entity (tests, sources, semantic models), not
+just data nodes — picking a selector in its sidebar filter highlights that product's inbound/outbound
+boundary nodes and the 1-hop external halo. The assets live under `tmp/` (gitignored); regenerate any
+time. A monotonic `build_id` is stamped into every file and shown in the sidebar so a stale browser tab
+is obvious.
 
 ## Selecting which models to check
 

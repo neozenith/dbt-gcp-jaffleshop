@@ -32,7 +32,7 @@ export
 
 export DBT_PROFILES_DIR := $(CURDIR)
 
-.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage doc-columns-coverage tests-coverage checks pytest deploy-dev
+.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage doc-columns-coverage tests-coverage checks boundaries system-boundaries-check sdag sdag-serve pytest deploy-dev
 
 help:
 	@echo "Targets:"
@@ -57,6 +57,10 @@ help:
 	@echo "  doc-columns-coverage  resolved column description coverage of CHANGED models (needs catalog.json)"
 	@echo "  tests-coverage      test coverage of CHANGED models (from manifest)"
 	@echo "  checks              run all cicd_cli check gates over CHANGED models"
+	@echo "  boundaries          classify each data-product (selectors.yml) node as a system boundary"
+	@echo "  system-boundaries-check  fail if any inbound/outbound data-product boundary node has no tests"
+	@echo "  sdag                build the interactive sdag viewer assets into tmp/sdag/"
+	@echo "  sdag-serve          generate + host the sdag viewer on http://localhost:8088/sdag.html"
 	@echo "  pytest    Run pytest macro + cicd_cli tests (parametrized; shells out to dbt)"
 	@echo "  deploy-dev Build dbt against dev + upload artefacts to dev GCS bucket"
 	@echo "             (mirrors what CI does for test/prod). Requires gcloud ADC"
@@ -142,6 +146,27 @@ tests-coverage:
 # All CHANGED-model gates in one pass; non-zero if any fail.
 checks:
 	uv run -m cicd_cli check all --base-ref $(BASE_REF)
+
+# Data-product system-boundary analysis over the named selectors in selectors.yml. Read-only: it
+# classifies each node as an inbound/outbound/both/internal boundary. Add --product <name> to scope to
+# one product, --show-passes to include internal nodes, --json for the machine payload. Needs the dbt
+# project env (.env) since membership comes from `dbt ls`.
+boundaries:
+	uv run -m cicd_cli products boundaries
+
+# Gate: fail if any inbound/outbound system-boundary node of a data product has zero tests. Selects by
+# data product (selectors.yml), so it is NOT part of `checks` (which is changed-file scoped); run it as
+# its own gate. Needs the dbt project env (.env).
+system-boundaries-check:
+	uv run -m cicd_cli check system-boundaries
+
+# Build the interactive sdag viewer assets (full + super Cytoscape JSON + HTML/JS) into tmp/sdag/.
+sdag:
+	uv run -m cicd_cli products generate
+
+# Generate then host the sdag viewer on http://localhost:8088/sdag.html (Ctrl-C to stop).
+sdag-serve:
+	uv run -m cicd_cli products serve
 
 pytest:
 	uv run pytest

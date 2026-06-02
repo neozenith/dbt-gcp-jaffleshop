@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>sdag — super-DAG viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- Tailwind via CDN. Pinned to v3 — v4 ships only via build tooling. -->
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+
+<!-- Cytoscape core + dagre layout. Pinned to specific versions for
+     reproducibility — bump deliberately, not silently. -->
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+
+<style>
+  html, body, #cy { height: 100%; width: 100%; margin: 0; padding: 0; }
+  #cy { background: #0f172a; }
+  /* Compound (selector) parent boxes — faint, labeled top-left */
+  .cy-tooltip {
+    position: absolute; pointer-events: none;
+    background: rgba(15,23,42,0.95); color: #e2e8f0;
+    font-family: ui-monospace, monospace; font-size: 11px;
+    padding: 6px 8px; border-radius: 6px; border: 1px solid #334155;
+    max-width: 360px; white-space: pre-wrap; z-index: 50;
+  }
+</style>
+</head>
+<body class="bg-slate-900 text-slate-100">
+
+<div class="flex h-screen w-screen overflow-hidden">
+
+  <!-- ── Sidebar ───────────────────────────────────────────────────────── -->
+  <aside class="w-80 shrink-0 border-r border-slate-700 bg-slate-950 p-4 overflow-y-auto">
+    <h1 class="text-lg font-semibold mb-1">sdag</h1>
+    <p class="text-xs text-slate-400 mb-1">super-DAG over named selectors</p>
+    <p id="build-banner" class="text-[10px] text-slate-500 font-mono mb-4 leading-tight"></p>
+
+    <div class="space-y-2 mb-4">
+      <label class="block text-xs uppercase tracking-wider text-slate-400">View</label>
+      <div class="flex rounded overflow-hidden border border-slate-700">
+        <button id="btn-full"  class="flex-1 px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700">Full graph</button>
+        <button id="btn-super" class="flex-1 px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700">Super graph</button>
+      </div>
+    </div>
+
+    <!-- Filter applies to the Full graph view: pick a single selector to
+         drill into its compound, hiding the rest of the lineage tree. -->
+    <div class="space-y-1 mb-4">
+      <label class="block text-xs uppercase tracking-wider text-slate-400"
+             for="filter-selector">Filter to selector</label>
+      <select id="filter-selector"
+              class="w-full px-2 py-1 text-xs bg-slate-800 border border-slate-700 rounded
+                     text-slate-200 font-mono">
+        <option value="__all__">(show all)</option>
+      </select>
+      <p class="text-[10px] text-slate-500 leading-tight">
+        Only applies in Full graph view. Picking a selector shows its compound
+        plus the lineage between its members.
+      </p>
+    </div>
+
+    <div class="space-y-2 mb-4">
+      <button id="btn-fit"     class="w-full px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded">Fit to viewport</button>
+      <button id="btn-relayout" class="w-full px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded">Re-run layout</button>
+    </div>
+
+    <div id="legend" class="space-y-1 text-xs mb-4">
+      <div class="text-slate-400 uppercase tracking-wider">Legend</div>
+    </div>
+
+    <div id="metadata" class="text-xs text-slate-300 space-y-0.5 mb-4">
+      <div class="text-slate-400 uppercase tracking-wider mb-1">Stats</div>
+      <div id="metadata-body" class="font-mono whitespace-pre"></div>
+    </div>
+
+    <div id="detail" class="text-xs">
+      <div class="text-slate-400 uppercase tracking-wider mb-1">Selection</div>
+      <div id="detail-body" class="font-mono whitespace-pre text-slate-200">click a node…</div>
+    </div>
+  </aside>
+
+  <!-- ── Cytoscape canvas ─────────────────────────────────────────────── -->
+  <main class="flex-1 relative">
+    <div id="cy"></div>
+    <div id="status" class="absolute top-2 right-2 text-xs text-slate-300 bg-slate-800/80 px-2 py-1 rounded">loading…</div>
+  </main>
+</div>
+
+<script src="sdag.js?v={{BUILD_ID}}" defer></script>
+
+</body>
+</html>
