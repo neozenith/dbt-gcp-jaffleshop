@@ -77,6 +77,10 @@ jobs:
       - name: Install dbt packages
         run: uv run dbt deps
       
+      - name: Install dbt seed
+        run: |
+          uv run dbt seed --target test --vars '{"load_source_data": true}'
+
       - name: Install dbt build
         run: uv run dbt build
 
