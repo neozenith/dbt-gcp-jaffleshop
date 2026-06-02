@@ -7,7 +7,7 @@ YEARS ?= 6
 # profiles.yml's env_var(..., default) only fires when a var is *unset*; if .env defines a key
 # with an empty value (e.g. DBT_BQ_DATASET_DEV=), the env_var default is bypassed and dbt errors
 # (typically "Must specify schema"). $(or X,Y) treats empty as falsy, so these guards bridge the gap.
-# DBT_BQ_PROJECT_* deliberately has no fallback — wrong-project writes must fail loud.
+# DBT_BQ_PROJECT_TEST/PROD deliberately have no fallback — wrong-project writes must fail loud.
 DBT_TARGET := $(or $(DBT_TARGET),dev)
 DBT_ENV_TYPE := $(or $(DBT_ENV_TYPE),$(DBT_TARGET))
 DBT_BQ_METHOD := $(or $(DBT_BQ_METHOD),oauth)
@@ -17,7 +17,8 @@ DBT_BQ_DATASET_PROD := $(or $(DBT_BQ_DATASET_PROD),analytics)
 DBT_BQ_LOCATION := $(or $(DBT_BQ_LOCATION),US)
 DBT_BQ_THREADS := $(or $(DBT_BQ_THREADS),4)
 DBT_BQ_TIMEOUT_SECS := $(or $(DBT_BQ_TIMEOUT_SECS),300)
-DBT_BQ_PROJECT_DEV := $(or $(DBT_BQ_PROJECT_DEV), dbt-dev-jaffleshop)
+DBT_BQ_PROJECT_DEV := $(or $(DBT_BQ_PROJECT_DEV),dbt-dev-jaffleshop)
+DBT_GIT_BRANCH := $(or $(DBT_GIT_BRANCH),$(shell git rev-parse --abbrev-ref HEAD 2>/dev/null))
 
 # Git ref the cicd_cli check targets diff against for their default --changed-only scope.
 # Defaults to main for local dev; override in CI to the PR base, e.g. `make ci BASE_REF=origin/main`.
@@ -61,6 +62,12 @@ help:
 	@echo "             (mirrors what CI does for test/prod). Requires gcloud ADC"
 	@echo "             set up to impersonate dbt-dev@dbt-dev-jaffleshop.iam.gserviceaccount.com"
 	@echo "  clean     Remove dbt artifacts (target/, dbt_packages/, logs/)"
+	@echo ""
+	@echo "Environment:"
+	@echo "  DBT_PROFILES_DIR=$(DBT_PROFILES_DIR)"
+	@echo "  DBT_TARGET=$(DBT_TARGET)"
+	@echo "  DBT_ENV_TYPE=$(DBT_ENV_TYPE)"
+	@echo "  DBT_GIT_BRANCH=$(DBT_GIT_BRANCH)"
 
 install:
 	uv sync
@@ -144,6 +151,9 @@ pytest:
 # the whole project.
 ci: lint compile pytest
 
+elementary-init:
+	uv run dbt run -s elementary --full-refresh
+
 # Local-only "deploy" — dbt-dev SA is humans-only per infra/dbt.tf, so dev never
 # gets a CI deploy. This target gives developers parity with what CI does for
 # test/prod: dbt build + upload manifest/run_results/catalog to the dev artefacts bucket.
@@ -153,8 +163,6 @@ ci: lint compile pytest
 # Slice from current git branch keeps your work isolated from other devs in dev.
 deploy-dev: deps
 	DBT_TARGET=dev \
-	DBT_BQ_PROJECT_DEV=dbt-dev-jaffleshop \
-	DBT_GIT_BRANCH=$$(git rev-parse --abbrev-ref HEAD) \
 	uv run dbt seed --target dev --vars '{"load_source_data": true}'
 	uv run dbt build --target dev
 	@BUCKET=gs://dbt-dev-jaffleshop-dbt-artefacts; \
