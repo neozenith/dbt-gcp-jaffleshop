@@ -27,19 +27,32 @@ vars:
   #   uv run dbt run --vars "git_branch: $(git rev-parse --abbrev-ref HEAD)"
   "git_branch": ""
 
+# Ephemeral-data hygiene: in NON-prod targets (dev / test — including the PR-sliced datasets CI
+# spins up), every dbt-created table gets a 24h BigQuery expiry so they self-clean; prod tables are
+# permanent. `{{ 24 if … else none }}` renders to "24" for dev/test and "" otherwise, and
+# dbt-bigquery treats an empty/falsy `hours_to_expiration` as "no expiration". (Views ignore it.)
 seeds:
   jaffle_shop:
     +database: jaffleshop
     +schema: raw
+    +hours_to_expiration: "{{ 24 if target.name in ['dev', 'test'] else none }}"
     jaffle-data:
       +enabled: "{{ var('load_source_data', false) }}"
 
 models:
   jaffle_shop:
     +database: jaffleshop
+    +hours_to_expiration: "{{ 24 if target.name in ['dev', 'test'] else none }}"
     staging:
       +materialized: view
       +schema: staging
     marts:
       +materialized: table
       +schema: marts
+
+  # Elementary observability models — their own `elementary` schema, same GCP project as our models
+  # (+database is mandatory: generate_database_name enforces an explicit custom database per model).
+  # No TTL/materialized overrides here: Elementary manages its own (incremental) materializations.
+  elementary:
+    +database: jaffleshop
+    +schema: elementary

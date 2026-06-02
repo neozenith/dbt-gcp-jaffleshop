@@ -1046,6 +1046,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-xdist" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "sqlfluff" },
     { name = "sqlfluff-templater-dbt" },
 ]
@@ -1065,6 +1066,7 @@ dev = [
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "sqlfluff", specifier = ">=4.2.1" },
     { name = "sqlfluff-templater-dbt", specifier = ">=4.2.1" },
 ]

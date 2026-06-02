@@ -5,3 +5,8 @@ packages:
     version: 0.17.1
   - git: "https://github.com/dbt-labs/dbt-audit-helper.git"
     revision: main
+  # Elementary: data observability — captures dbt run/test results + anomaly tests.
+  # Its models live in the `elementary` schema (configured in dbt_project.yml); on dbt 1.8+
+  # its test materialization must be explicitly re-exported (see macros/elementary_materialization.sql).
+  - package: elementary-data/elementary
+    version: 0.24.0

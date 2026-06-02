@@ -26,5 +26,17 @@ DEFAULT_BASE_REF = "main"
 # dbt writes the parsed project graph here. The source of truth for doc/test coverage.
 DEFAULT_MANIFEST = Path("target") / "manifest.json"
 
+# `dbt docs generate` writes the catalog here — the RESOLVED (actual warehouse) columns,
+# used by the `doc-columns` check (manifest only knows YAML-declared columns).
+DEFAULT_CATALOG = Path("target") / "catalog.json"
+
 # Pathspec for "what is a model file" — kept identical to the Makefile's CHANGED_MODELS.
 MODEL_GLOB = "models/*.sql"
+
+# dbt's named-selector file — defines the "data products" the boundary analysis classifies.
+# dbt hardcodes this filename as `selectors.yml` (never `.yaml`); see config/selectors.py upstream.
+DEFAULT_SELECTORS = Path("selectors.yml")
+
+# Where `products generate`/`serve` write the sdag viewer assets. Under the project `tmp/` per the
+# project rule that all generated/temporary artifacts stay inside the repo (never system /tmp).
+DEFAULT_SDAG_OUTPUT = Path("tmp") / "sdag"

@@ -1,0 +1,136 @@
+name: dbt jaffle-shop CI - checks
+
+# =============================================================================
+# Runs the cicd_cli check suite (deprecations, lint, format, docs, doc-columns, tests)
+# over the PR and posts a single, self-updating comment summarising the result —
+# with a link to THIS run's logs, where the full per-file / per-violation detail
+# lives. The comment is the at-a-glance digest; the logs are the source of truth.
+#
+# Auth: Workload Identity Federation → dbt-test SA (the same provider deploy-test
+# uses). lint/format need a BigQuery connection (the sqlfluff dbt templater) and
+# `doc-columns` reads catalog.json from `dbt docs generate`, so a warehouse identity
+# is required — fake project IDs are not enough here.
+#
+# NB on `doc-columns`: `dbt docs generate` only catalogues relations that EXIST in the
+# warehouse. This workflow does not build the models, so on a PR with no prior
+# build `doc-columns` will report "not in catalog". For accurate column coverage, add
+# a `dbt build` step before docs-generate, or run the checks after deploy-test's
+# build (same run → same slice).
+# =============================================================================
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'dbt-jaffleshop/**'
+      - '.github/workflows/dbt-cicd-checks.yml'
+
+permissions:
+  contents: read
+  id-token: write          # WIF (google-github-actions/auth)
+  pull-requests: write      # post / update the summary comment
+
+concurrency:
+  group: dbt-cicd-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: dbt-jaffleshop
+
+jobs:
+  checks:
+    name: cicd_cli check all
+    runs-on: ubuntu-latest
+    environment: test         # binds vars.WIF_PROVIDER + env protection rules
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt-jaffleshop
+      DBT_TARGET: test
+      DBT_ENV_TYPE: TEST
+      DBT_BQ_PROJECT_TEST: dbt-test-jaffleshop
+      # A slice is mandatory in non-PROD (generate_schema_name errors otherwise).
+      DBT_GIT_BRANCH: ${{ github.head_ref || github.ref_name }}
+      SUMMARY: ${{ github.workspace }}/checks-summary.md
+      COMMENT: ${{ github.workspace }}/comment.md
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0       # base ref reachable, in case --changed-only is used later
+
+      - name: Authenticate to GCP (WIF → dbt-test SA)
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: dbt-test@dbt-test-jaffleshop.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "dbt-jaffleshop/uv.lock"
+
+      - name: Install Python deps
+        run: uv sync
+
+      - name: run dbt build + docs generate
+        run: |
+          uv run dbt deps
+
+      # Produces manifest.json (docs/tests) + catalog.json (doc-columns). `|| true`: without a build
+      # the sliced datasets don't exist, so the catalog query errors per-dataset ("Not found:
+      # Dataset …") and dbt exits non-zero — but it still writes manifest + a (partial) catalog.
+      # We tolerate that so `check all` runs; `doc-columns` then reports "not in catalog" for
+      # unbuilt models, and a genuine compile failure still surfaces (no manifest → check all fails).
+      - name: dbt docs generate (manifest + catalog)
+        run: uv run dbt docs generate --target test || true
+
+      # Every gate over all models. --md writes the comment table; full detail stays in the logs.
+      # continue-on-error so the comment is always posted; the final step sets the real status.
+      - name: cicd_cli check all
+        id: checks
+        run: uv run -m cicd_cli check all --all --color never --md "${SUMMARY}"
+        continue-on-error: true
+
+      - name: Compose comment body
+        if: always()
+        working-directory: ${{ github.workspace }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          {
+            echo "<!-- cicd_cli-checks -->"
+            if [ -s "${SUMMARY}" ]; then
+              cat "${SUMMARY}"
+            else
+              echo "### cicd_cli checks — ❌ failed before a summary could be produced"
+            fi
+            echo ""
+            echo "**[View full check logs →](${RUN_URL})**  ·  _updated $(date -u +%Y-%m-%dT%H:%M:%SZ)_"
+          } > "${COMMENT}"
+
+      # Self-updating ("sticky") comment: find the prior one by its marker and PATCH it, else POST.
+      - name: Post / update PR comment
+        if: always()
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          body="$(cat "${COMMENT}")"
+          existing="$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- cicd_cli-checks -->")) | .id' | head -n1)"
+          if [ -n "${existing}" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${existing}" -f body="${body}" >/dev/null
+            echo "Updated comment ${existing}"
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR}/comments" -f body="${body}" >/dev/null
+            echo "Created comment"
+          fi
+
+      - name: Reflect check status
+        if: always() && steps.checks.outcome == 'failure'
+        run: |
+          echo "::error::cicd_cli checks failed — see the PR comment and the logs above." >&2
+          # exit 1

@@ -133,12 +133,11 @@ jobs:
       - name: Install dbt packages
         run: uv run dbt deps
 
-      - name: dbt seed (prod)
+      - name: run dbt build
         run: |
+          uv run dbt run -s elementary --full-refresh --target prod   # pre-build Elementary's models so the manifest has them, for the checks that need it
           uv run dbt seed --target prod --vars '{"load_source_data": true}'
-
-      - name: dbt build (prod)
-        run: uv run dbt build --target prod
+          uv run dbt build --target prod
 
       - name: Upload dbt artefacts to GCS (runs/<id> + latest)
         if: always()
