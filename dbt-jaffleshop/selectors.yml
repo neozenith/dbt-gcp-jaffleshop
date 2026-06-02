@@ -1,0 +1,41 @@
+# Reusable named selectors — the "data product" subsets of the Jaffle Shop DAG.
+#
+# Invoke with:  dbt build  --selector supply
+#               dbt ls     --selector demand
+#               dbt test   --selector demand
+#
+# Each selector includes the named mart(s) AND their upstream staging models
+# (`parents: true`, the YAML form of the `+model` graph operator) so the subset
+# is independently *buildable* — every ref() it makes resolves within the slice.
+#
+# NOTE on overlap: `orders` depends on `order_items`, which refs `stg_products`
+# and `stg_supplies`. So the demand slice necessarily re-includes the supply-side
+# staging models. That is the real shape of the lineage (supply feeds demand),
+# which is why these are "roughly" the two sides rather than a clean partition.
+
+selectors:
+  - name: supply
+    description: >
+      Supply-side data product: the products and supplies marts plus their
+      upstream staging dependencies (stg_products, stg_supplies).
+    definition:
+      union:
+        - method: fqn
+          value: products
+          parents: true
+        - method: fqn
+          value: supplies
+          parents: true
+
+  - name: demand
+    description: >
+      Demand-side data product: the orders and customers marts plus their
+      upstream dependencies (order_items and all feeding staging models).
+    definition:
+      union:
+        - method: fqn
+          value: orders
+          parents: true
+        - method: fqn
+          value: customers
+          parents: true

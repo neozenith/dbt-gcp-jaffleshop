@@ -26,7 +26,7 @@ EMOJI = {
     "lint": "🔍",
     "format": "🎨",
     "docs": "📄",
-    "columns": "📑",
+    "doc-columns": "📑",
     "tests": "🧪",
 }
 

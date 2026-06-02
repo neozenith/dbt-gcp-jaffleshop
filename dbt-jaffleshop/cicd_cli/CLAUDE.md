@@ -41,7 +41,7 @@ cicd_cli/
 └── commands/
     ├── deprecations.py # dbt-autofix
     ├── sqlfluff.py     # lint + format
-    ├── coverage.py     # docs + tests (manifest), columns (catalog-resolved + manifest)
+    ├── coverage.py     # docs + tests (manifest), doc-columns (catalog-resolved + manifest)
     └── checks.py       # `check all` aggregator
 ```
 
@@ -103,7 +103,7 @@ core is testable without a warehouse — that's why `evaluate_docs`/`evaluate_te
   inherited value (e.g. the repo root) otherwise makes dbt fail with "could not find profile".
 - **`--select`/`--exclude` shell out to `dbt ls`**, which needs the dbt profile env (project IDs
   from `.env`, loaded via `load_dotenv()` in `main()`). `--changed-only`/`--all` are pure git/FS.
-- **`columns` is catalog-resolved and warehouse-dependent.** It joins `catalog.json` (actual
+- **`doc-columns` is catalog-resolved and warehouse-dependent.** It joins `catalog.json` (actual
   columns — `dbt docs generate`, needs a warehouse build) with `manifest.json` (descriptions).
   `manifest` alone only knows YAML-*declared* columns, which understates the denominator. A
   missing catalog **fails loud** (no silent declared-only fallback); `check all` catches that and

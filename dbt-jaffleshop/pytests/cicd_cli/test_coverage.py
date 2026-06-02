@@ -18,7 +18,7 @@ def test_docs_passes_model_with_description(manifest: Manifest):
 
 
 def test_docs_is_model_level_only_ignores_undocumented_columns(manifest: Manifest):
-    # partial_cols has a model description but an undocumented column — that's the `columns`
+    # partial_cols has a model description but an undocumented column — that's the `doc-columns`
     # check's concern now, so docs passes it.
     report = evaluate_docs(manifest, [Path("models/staging/partial_cols.sql")], scope=SCOPE)
     assert report.rows[0].has_description is True
@@ -89,7 +89,7 @@ def test_columns_model_absent_from_manifest_fails(manifest: Manifest, catalog: C
 
 def test_columns_to_dict_shape(manifest: Manifest, catalog: Catalog):
     payload = evaluate_columns(manifest, catalog, [Path("models/staging/partial_cols.sql")], scope=SCOPE).to_dict()
-    assert payload["check"] == "columns"
+    assert payload["check"] == "doc-columns"
     assert payload["ok"] is False
     assert payload["error"] is None
     result = payload["results"][0]

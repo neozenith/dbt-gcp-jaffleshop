@@ -16,7 +16,7 @@ def test_markdown_summary_is_a_table_with_status_and_detail(manifest, catalog):
     assert "| Check | Status | Detail |" in md
     assert "_Scope: all models_" in md
     assert "`docs`" in md and "❌ fail" in md
-    assert "`columns`" in md and "1/1 columns documented" in md  # summary() detail
+    assert "`doc-columns`" in md and "1/1 columns documented" in md  # check label + summary() detail
     assert "`tests`" in md and "✅ pass" in md
     assert "one or more checks failed" in md  # overall = fail because docs failed
 

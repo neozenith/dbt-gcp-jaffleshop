@@ -18,7 +18,7 @@ Command tree::
         lint         [--fix]      SQLFluff full ruleset (lint / fix)
         format       [--fix]      SQLFluff formatter subset (lint --rules / format)
         docs                      model description coverage (no autofix)
-        columns                   column description coverage (no autofix)
+        doc-columns               column description coverage, resolved via catalog (no autofix)
         tests                     test coverage (no autofix)
         all                       run every check; non-zero if any fail
 """
@@ -178,11 +178,11 @@ def build_parser() -> argparse.ArgumentParser:
     _add_manifest(docs)
     docs.set_defaults(func=coverage.cmd_docs)
 
-    columns = check_sub.add_parser("columns", help="Column description coverage (resolved via catalog.json)")
-    _add_selection(columns)
-    _add_manifest(columns)
-    _add_catalog(columns)
-    columns.set_defaults(func=coverage.cmd_columns)
+    doc_columns = check_sub.add_parser("doc-columns", help="Column description coverage (resolved via catalog.json)")
+    _add_selection(doc_columns)
+    _add_manifest(doc_columns)
+    _add_catalog(doc_columns)
+    doc_columns.set_defaults(func=coverage.cmd_columns)
 
     tests = check_sub.add_parser("tests", help="Test coverage of selected models")
     _add_selection(tests)

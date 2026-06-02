@@ -27,7 +27,7 @@ DEFAULT_BASE_REF = "main"
 DEFAULT_MANIFEST = Path("target") / "manifest.json"
 
 # `dbt docs generate` writes the catalog here — the RESOLVED (actual warehouse) columns,
-# used by the `columns` check (manifest only knows YAML-declared columns).
+# used by the `doc-columns` check (manifest only knows YAML-declared columns).
 DEFAULT_CATALOG = Path("target") / "catalog.json"
 
 # Pathspec for "what is a model file" — kept identical to the Makefile's CHANGED_MODELS.

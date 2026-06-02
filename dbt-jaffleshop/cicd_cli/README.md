@@ -23,7 +23,7 @@ project root.)
 ## Commands
 
 ```
-cicd_cli check {deprecations,lint,format,docs,columns,tests,all}
+cicd_cli check {deprecations,lint,format,docs,doc-columns,tests,all}
 ```
 
 | Command | What it checks | Underlying tool | `--fix`? |
@@ -32,7 +32,7 @@ cicd_cli check {deprecations,lint,format,docs,columns,tests,all}
 | `lint` | full SQLFluff ruleset | `sqlfluff lint` / `fix` | ✅ `sqlfluff fix` |
 | `format` | layout + keyword-case subset | `sqlfluff lint --rules …` / `format` | ✅ `sqlfluff format` |
 | `docs` | every selected model has a **model** description | `manifest.json` | — |
-| `columns` | every **resolved (actual warehouse) column** has a description | `catalog.json` + `manifest.json` | — |
+| `doc-columns` | every **resolved (actual warehouse) column** has a description | `catalog.json` + `manifest.json` | — |
 | `tests` | every selected model has ≥1 test | `manifest.json` | — |
 | `all` | runs all of the above over one selection | — | — |
 
@@ -71,13 +71,13 @@ cicd_cli check all --fix           # fixes deprecations + lint + format in one p
 ```
 
 The fixable checks are `deprecations`, `lint`, and `format`. `check all --fix` propagates
-`--fix` to those three and is a **no-op** for `docs`/`columns`/`tests` (descriptions and tests can't be
+`--fix` to those three and is a **no-op** for `docs`/`doc-columns`/`tests` (descriptions and tests can't be
 synthesised), which keep reporting their gaps.
 
 ## Output, and getting a signal an agent can act on
 
 - **Human** (default): a concise, **emoji-labelled, colour-coded** verdict per check
-  (`🧹 deprecations`, `🔍 lint`, `🎨 format`, `📄 docs`, `📑 columns`, `🧪 tests`), written to **stderr**, with
+  (`🧹 deprecations`, `🔍 lint`, `🎨 format`, `📄 docs`, `📑 doc-columns`, `🧪 tests`), written to **stderr**, with
   ✅/❌ in green/red and each section clearly separated. **Failures-only** — passing per-item
   results (e.g. each documented/tested model) are suppressed; a passing check collapses to a
   single ✅ line. Pass `--show-passes` to see passing results too. Colour follows `--color`
@@ -99,11 +99,11 @@ cicd_cli check lint --fix --all                              # remaining unfixab
 ```
 
 `docs`/`tests` need a manifest: pass `--manifest <path>` (default `target/manifest.json`) or `--parse`
-to rebuild it via `dbt parse`. `columns` additionally needs **`catalog.json`** for the *resolved*
+to rebuild it via `dbt parse`. `doc-columns` additionally needs **`catalog.json`** for the *resolved*
 (actual warehouse) column set — `--catalog <path>` (default `target/catalog.json`) or `--docs-generate`
 to (re)build manifest **and** catalog via `dbt docs generate` (which needs a warehouse build/connection,
-unlike `dbt parse`). If the catalog is absent, `columns` fails loud — it does **not** silently fall back
-to YAML-declared columns. In `check all`, a missing catalog is a visible columns failure; the other gates
+unlike `dbt parse`). If the catalog is absent, `doc-columns` fails loud — it does **not** silently fall back
+to YAML-declared columns. In `check all`, a missing catalog is a visible doc-columns failure; the other gates
 still run.
 
 ## Exit codes
@@ -113,14 +113,14 @@ still run.
 ## Makefile
 
 `make lint` / `lint-fix` / `format` / `format-check` / `deprecations-check` / `docs-coverage` /
-`columns-coverage` / `tests-coverage` / `checks` all delegate here. See `dbt-jaffleshop/Makefile`.
+`doc-columns-coverage` / `tests-coverage` / `checks` all delegate here. See `dbt-jaffleshop/Makefile`.
 
 ## PR checks (CI)
 
 `.github/workflows/dbt-cicd-checks.yml` runs `check all` on every PR (WIF → dbt-test SA, then
 `dbt docs generate` for the manifest + catalog), writes the summary table with `check all --md
 <file>`, and posts a single **self-updating** PR comment that links to the run's logs — the
-comment is the digest, the logs hold the full per-file / per-violation detail. (`columns` is
+comment is the digest, the logs hold the full per-file / per-violation detail. (`doc-columns` is
 accurate only once the models are built; see the note in the workflow file.)
 
 ## Extending it

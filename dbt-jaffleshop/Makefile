@@ -32,7 +32,7 @@ export
 
 export DBT_PROFILES_DIR := $(CURDIR)
 
-.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage columns-coverage tests-coverage checks pytest deploy-dev
+.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage doc-columns-coverage tests-coverage checks pytest deploy-dev
 
 help:
 	@echo "Targets:"
@@ -54,7 +54,7 @@ help:
 	@echo "  --- cicd_cli gates (vs BASE_REF=$(BASE_REF); add --json via 'uv run -m cicd_cli') ---"
 	@echo "  deprecations-check  dbt-autofix dry-run over FOLDERS of CHANGED models"
 	@echo "  docs-coverage       model description coverage of CHANGED models (from manifest)"
-	@echo "  columns-coverage    resolved column description coverage of CHANGED models (needs catalog.json)"
+	@echo "  doc-columns-coverage  resolved column description coverage of CHANGED models (needs catalog.json)"
 	@echo "  tests-coverage      test coverage of CHANGED models (from manifest)"
 	@echo "  checks              run all cicd_cli check gates over CHANGED models"
 	@echo "  pytest    Run pytest macro + cicd_cli tests (parametrized; shells out to dbt)"
@@ -133,8 +133,8 @@ deprecations-check:
 docs-coverage:
 	uv run -m cicd_cli check docs --base-ref $(BASE_REF)
 
-columns-coverage:
-	uv run -m cicd_cli check columns --base-ref $(BASE_REF)
+doc-columns-coverage:
+	uv run -m cicd_cli check doc-columns --base-ref $(BASE_REF)
 
 tests-coverage:
 	uv run -m cicd_cli check tests --base-ref $(BASE_REF)

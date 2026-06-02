@@ -166,7 +166,7 @@ class ColumnsRow:
 
 @dataclass
 class ColumnsReport:
-    name: ClassVar[str] = "columns"
+    name: ClassVar[str] = "doc-columns"
     scope: str
     rows: list[ColumnsRow]
     error: str | None = None  # set when the catalog couldn't be loaded (check-all keeps running)
@@ -195,7 +195,7 @@ class ColumnsReport:
         }
 
     def human_lines(self, *, show_passes: bool = False) -> list[tuple[int, str]]:
-        label = style.section("columns")
+        label = style.section("doc-columns")
         if self.error:
             return [(ERROR, f"{label}  {style.failed(self.error)}")]
         if not self.rows:

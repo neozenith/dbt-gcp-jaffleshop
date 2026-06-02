@@ -2,7 +2,7 @@
 
 `dbt docs generate` queries the warehouse information schema to build catalog.json, so its
 column set is the model's ACTUAL columns — unlike manifest.json, which only knows the columns
-DECLARED in YAML. The `columns` check joins the two: the actual column set (catalog) against
+DECLARED in YAML. The `doc-columns` check joins the two: the actual column set (catalog) against
 which of those columns carry a description (manifest YAML). Generating the catalog therefore
 requires a warehouse build/connection, which `dbt parse` does not.
 """

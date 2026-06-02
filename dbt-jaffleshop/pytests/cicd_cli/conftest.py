@@ -56,7 +56,7 @@ def manifest() -> Manifest:
 
 
 # Catalog = the RESOLVED (actual warehouse) columns, keyed by unique_id. Deliberately richer
-# than the manifest's declared columns, to exercise the resolved `columns` check:
+# than the manifest's declared columns, to exercise the resolved `doc-columns` check:
 #   documented   → {id}            → 1/1 (id is described)
 #   partial_cols → {id, blank, extra} → 1/3 (blank declared-but-blank, extra never declared)
 #   no_desc      → {a, b}          → 0/2 (warehouse columns the manifest-only check couldn't see)

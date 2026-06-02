@@ -34,7 +34,7 @@ def test_top_level_help_exits_zero():
 def test_check_help_lists_all_leaves():
     proc = _run("check", "--help")
     assert proc.returncode == 0
-    for leaf in ("deprecations", "lint", "format", "docs", "columns", "tests", "all"):
+    for leaf in ("deprecations", "lint", "format", "docs", "doc-columns", "tests", "all"):
         assert leaf in proc.stdout
 
 
@@ -58,8 +58,8 @@ def test_check_all_exposes_fix_and_show_passes():
 
 
 def test_fixable_checks_have_fix_but_coverage_does_not():
-    # deprecations/lint/format are fixable; docs/columns/tests are not.
+    # deprecations/lint/format are fixable; docs/doc-columns/tests are not.
     for leaf in ("deprecations", "lint", "format"):
         assert "--fix" in _run("check", leaf, "--help").stdout
-    for leaf in ("docs", "columns", "tests"):
+    for leaf in ("docs", "doc-columns", "tests"):
         assert "--fix" not in _run("check", leaf, "--help").stdout
