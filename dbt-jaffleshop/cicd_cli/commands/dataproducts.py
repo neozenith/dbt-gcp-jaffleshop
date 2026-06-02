@@ -322,12 +322,15 @@ class SystemBoundaryReport:
     name: ClassVar[str] = "system-boundaries"
     scope: str
     rows: list[BoundaryTestRow]
+    error: str | None = None  # set when membership couldn't be resolved (check-all keeps running)
 
     @property
     def ok(self) -> bool:
-        return all(r.ok for r in self.rows)
+        return self.error is None and all(r.ok for r in self.rows)
 
     def summary(self) -> str:
+        if self.error:
+            return "could not resolve data products"
         if not self.rows:
             return "no boundary nodes"
         missing = sum(1 for r in self.rows if not r.ok)
@@ -338,11 +341,14 @@ class SystemBoundaryReport:
             "check": self.name,
             "ok": self.ok,
             "scope": self.scope,
+            "error": self.error,
             "results": [vars(r) | {"ok": r.ok} for r in sorted(self.rows, key=_test_row_sort_key)],
         }
 
     def human_lines(self, *, show_passes: bool = False) -> list[tuple[int, str]]:
         label = style.section("system-boundaries")
+        if self.error:
+            return [(ERROR, f"{label}  {style.failed(self.error)}")]
         if not self.rows:
             return [(INFO, f"{label}  {style.dim('— no boundary nodes to gate')}")]
         if self.ok:

@@ -228,6 +228,12 @@ def build_parser() -> argparse.ArgumentParser:
     _add_catalog(all_)
     _add_fix(all_)  # propagates to the fixable checks (deprecations, lint, format); no-op for the rest
     all_.add_argument(
+        "--selectors",
+        type=Path,
+        default=config.DEFAULT_SELECTORS,
+        help="Path to selectors.yml for the system-boundaries gate (default: %(default)s)",
+    )
+    all_.add_argument(
         "--md",
         type=Path,
         default=None,

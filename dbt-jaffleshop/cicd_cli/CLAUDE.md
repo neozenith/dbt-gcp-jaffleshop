@@ -78,10 +78,13 @@ Internal nodes are not gated. Two things to know when extending it:
 - **Test counts come from `graph.NodeInfo.test_count`, not `manifest.Manifest`.** Boundary nodes span
   models AND sources; `Manifest` only counts model tests, so `Graph.from_dict` tallies `depends_on.nodes`
   across every data node (the same second-pass trick, widened). A source with no tests is a real failure.
-- **It is deliberately NOT in `check all`.** `check all` fans ONE model-file selection out to its gates;
-  `system-boundaries` selects by data product (`selectors.yml`) via `_select_named`, a different axis, so
-  it stays standalone (own subcommand, own Makefile target `system-boundaries-check`). Don't shoehorn it
-  into `checks.cmd_all` — wire it as a separate CI step instead.
+- **It IS part of `check all`, but off the file-selection axis.** `check all` fans ONE model-file
+  selection out to the file-scoped gates; `system-boundaries` ignores that selection and always runs over
+  EVERY data product (`selectors.yml`), so its row is always present in the aggregate / PR comment.
+  `cmd_all` loads its own `Graph.load(args.manifest)` (the coverage `Manifest` is model-only) and wraps
+  the resolve in a `try/except` that yields a `SystemBoundaryReport(error=…)` on failure — same
+  "keep the aggregate running, surface a visible failure" pattern as `doc-columns`. It also still exists
+  as the standalone `check system-boundaries` subcommand (and the `system-boundaries-check` Make target).
 
 **`products generate` / `serve`** are the visualisation half (`viewer.py` + `assets/`). Two things to
 keep in mind when touching them:

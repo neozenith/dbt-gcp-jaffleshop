@@ -251,3 +251,14 @@ def test_gate_empty_is_ok():
     report = SystemBoundaryReport("x", [])
     assert report.ok is True
     assert "no boundary nodes" in report.summary()
+
+
+def test_gate_error_state_fails_and_renders_without_crashing():
+    # This is the shape check-all produces when membership can't be resolved (bad selectors / dbt-ls
+    # error): a failing report that still renders, so the aggregate keeps running.
+    report = SystemBoundaryReport("all data products", [], error="`dbt ls --selector supply` failed")
+    assert report.ok is False
+    assert "could not resolve data products" in report.summary()
+    text = _gate_text(report)
+    assert "dbt ls --selector supply` failed" in text
+    assert report.to_dict()["error"] == "`dbt ls --selector supply` failed"

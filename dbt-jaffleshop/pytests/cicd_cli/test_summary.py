@@ -3,6 +3,7 @@ from pathlib import Path
 
 # Local
 from cicd_cli.commands.coverage import evaluate_columns, evaluate_docs, evaluate_tests
+from cicd_cli.commands.dataproducts import BoundaryTestRow, SystemBoundaryReport
 from cicd_cli.formatting import markdown_summary
 
 
@@ -25,3 +26,17 @@ def test_markdown_summary_all_pass_header(manifest):
     tests = evaluate_tests(manifest, [Path("models/marts/documented.sql")], scope="s")
     md = markdown_summary([tests], scope="s")
     assert "all checks passed" in md
+
+
+def test_markdown_summary_includes_system_boundaries_row(manifest):
+    # check all now folds system-boundaries into the aggregate; its row must render in the table with
+    # the gate's own summary() detail (and force the overall verdict to fail when a boundary is untested).
+    tests = evaluate_tests(manifest, [Path("models/marts/documented.sql")], scope="s")  # passes
+    sysbound = SystemBoundaryReport(
+        "all data products",
+        [BoundaryTestRow("supply", "source.raw_a", "raw_a", "source", "inbound", 0)],  # untested → fail
+    )
+    md = markdown_summary([tests, sysbound], scope="all models")
+    assert "`system-boundaries`" in md
+    assert "1 boundary node(s) untested" in md  # the gate's summary() detail
+    assert "one or more checks failed" in md

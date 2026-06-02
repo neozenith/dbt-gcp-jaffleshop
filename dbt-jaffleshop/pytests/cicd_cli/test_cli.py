@@ -34,7 +34,7 @@ def test_top_level_help_exits_zero():
 def test_check_help_lists_all_leaves():
     proc = _run("check", "--help")
     assert proc.returncode == 0
-    for leaf in ("deprecations", "lint", "format", "docs", "doc-columns", "tests", "all"):
+    for leaf in ("deprecations", "lint", "format", "docs", "doc-columns", "tests", "system-boundaries", "all"):
         assert leaf in proc.stdout
 
 

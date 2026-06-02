@@ -35,12 +35,13 @@ cicd_cli check {deprecations,lint,format,docs,doc-columns,tests,system-boundarie
 | `doc-columns` | every **resolved (actual warehouse) column** has a description | `catalog.json` + `manifest.json` | — |
 | `tests` | every selected model has ≥1 test | `manifest.json` | — |
 | `system-boundaries` | every **system-boundary node** of a data product has ≥1 test | `manifest.json` + `selectors.yml` | — |
-| `all` | runs all of the above **except `system-boundaries`** over one selection | — | — |
+| `all` | runs all of the above over one selection | — | — |
 
-> **`system-boundaries` selects by data product, not by changed files.** Every other check (and `check
-> all`) operates on a model-file selection (`--changed-only`/`--select`); `system-boundaries` operates
-> on the named selectors in `selectors.yml`, so it takes `--selectors`/`--product` instead and is **not**
-> part of `check all`. Run it as its own gate. See the data-products section below.
+> **`system-boundaries` selects by data product, not by changed files.** Every other check operates on a
+> model-file selection (`--changed-only`/`--select`); `system-boundaries` operates on the named selectors
+> in `selectors.yml`, so it takes `--selectors`/`--product` instead. `check all` still includes it — but
+> it always runs over **every** data product there, ignoring the file scope (so the PR comment always
+> carries a `system-boundaries` row). It can also be run on its own as a standalone gate.
 
 ## Data products: system-boundary analysis
 
