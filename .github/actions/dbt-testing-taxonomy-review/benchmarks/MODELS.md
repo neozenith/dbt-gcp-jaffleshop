@@ -41,9 +41,71 @@ $ / 1M tokens  =  multiplier × 1,000,000 × $0.00001  =  multiplier × $10
 | `meta/llama-4-maverick-17b-128e-instruct-fp8` | Meta | 0.025 | 0.1 | $0.25 | $1.00 |
 
 > Other catalogue families (Cohere, Mistral AI, AI21 Labs, OpenAI `gpt-5`/`o`-series) are
-> available for inference but did not have published billing multipliers at fetch time, so
-> their at-list-price cost can't be stated here. `gh api` the catalog for the live list:
-> `curl -H "Authorization: Bearer $(gh auth token)" https://models.github.ai/catalog/models`.
+> available for inference but did **not** have published billing multipliers at fetch time, so
+> their at-list-price cost can't be stated here.
+
+### Full live catalogue (authoritative, via GHA)
+
+The complete, up-to-date listing is fetched by the
+[`github models catalog`](../../../workflows/github-models-catalog.yml) workflow using the
+runner's `GITHUB_TOKEN` (`models: read`) and read from the run log / job summary — reproducible,
+not hand-maintained. Refresh: `gh workflow run "github models catalog" --ref main`.
+
+> **The catalogue API exposes no pricing** — only id / publisher / rate-limit tier / context
+> limits / modalities / capabilities (confirmed via the GHA: the model objects carry no price
+> field). So **listings** come from the catalogue (live) and **prices** from the billing
+> multipliers above (multiplier × $10) — there is no single endpoint with both.
+
+<details>
+<summary>43 models — GHA-extracted 2026-06-03 (run 26883567820)</summary>
+
+| id | publisher | tier | ctx in | ctx out | input | capabilities |
+|----|-----------|------|-------:|--------:|-------|--------------|
+| `ai21-labs/ai21-jamba-1.5-large` | AI21 Labs | high | 262144 | 4096 | text | streaming, tool-calling |
+| `cohere/cohere-command-a` | Cohere | low | 131072 | 4096 | text | — |
+| `cohere/cohere-command-r-08-2024` | Cohere | low | 131072 | 4096 | text | streaming |
+| `cohere/cohere-command-r-plus-08-2024` | Cohere | high | 131072 | 4096 | text | streaming, tool-calling |
+| `deepseek/deepseek-r1` | DeepSeek | custom | 128000 | 4096 | text | reasoning, streaming, tool-calling |
+| `deepseek/deepseek-r1-0528` | DeepSeek | custom | 128000 | 4096 | text | agentsV2, reasoning, streaming, tool-calling |
+| `deepseek/deepseek-v3-0324` | DeepSeek | high | 128000 | 4096 | text | agentsV2, streaming, tool-calling |
+| `meta/llama-3.2-11b-vision-instruct` | Meta | low | 128000 | 4096 | text+image+audio | streaming |
+| `meta/llama-3.2-90b-vision-instruct` | Meta | high | 128000 | 4096 | text+image+audio | streaming |
+| `meta/llama-3.3-70b-instruct` | Meta | high | 128000 | 4096 | text | agentsV2, streaming |
+| `meta/llama-4-maverick-17b-128e-instruct-fp8` | Meta | high | 1000000 | 4096 | text+image | agents, agentsV2, assistants, streaming, tool-calling |
+| `meta/llama-4-scout-17b-16e-instruct` | Meta | high | 10000000 | 4096 | text+image | agents, assistants, streaming, tool-calling |
+| `meta/meta-llama-3.1-405b-instruct` | Meta | high | 131072 | 4096 | text | agents |
+| `meta/meta-llama-3.1-8b-instruct` | Meta | low | 131072 | 4096 | text | streaming |
+| `microsoft/mai-ds-r1` | Microsoft | custom | 128000 | 4096 | text | agentsV2, reasoning, streaming |
+| `microsoft/phi-4` | Microsoft | low | 16384 | 16384 | text | — |
+| `microsoft/phi-4-mini-instruct` | Microsoft | low | 128000 | 4096 | text | — |
+| `microsoft/phi-4-mini-reasoning` | Microsoft | low | 128000 | 4096 | text | reasoning |
+| `microsoft/phi-4-multimodal-instruct` | Microsoft | low | 128000 | 4096 | audio+image+text | streaming |
+| `microsoft/phi-4-reasoning` | Microsoft | low | 32768 | 4096 | text | reasoning, streaming |
+| `mistral-ai/codestral-2501` | Mistral AI | low | 256000 | 4096 | text | streaming |
+| `mistral-ai/ministral-3b` | Mistral AI | low | 131072 | 4096 | text | streaming, tool-calling |
+| `mistral-ai/mistral-medium-2505` | Mistral AI | low | 128000 | 4096 | text+image | streaming, tool-calling |
+| `mistral-ai/mistral-small-2503` | Mistral AI | low | 128000 | 4096 | text+image | agents, assistants, streaming, tool-calling |
+| `openai/gpt-4.1` | OpenAI | high | 1048576 | 32768 | text+image | agents, streaming, tool-calling, agentsV2 |
+| `openai/gpt-4.1-mini` | OpenAI | low | 1048576 | 32768 | text+image | agents, streaming, tool-calling, agentsV2 |
+| `openai/gpt-4.1-nano` | OpenAI | low | 1048576 | 32768 | text+image | agents, streaming, tool-calling, agentsV2 |
+| `openai/gpt-4o` | OpenAI | high | 131072 | 16384 | text+image+audio | agents, assistants, streaming, tool-calling, agentsV2 |
+| `openai/gpt-4o-mini` | OpenAI | low | 131072 | 4096 | text+image+audio | agents, assistants, streaming, tool-calling, agentsV2 |
+| `openai/gpt-5` | OpenAI | custom | 200000 | 100000 | text+image | agents, agentsV2, reasoning, tool-calling, streaming |
+| `openai/gpt-5-chat` | OpenAI | custom | 200000 | 100000 | text+image | agents, agentsV2, reasoning, tool-calling, streaming |
+| `openai/gpt-5-mini` | OpenAI | custom | 200000 | 100000 | text+image | agents, agentsV2, reasoning, tool-calling, streaming |
+| `openai/gpt-5-nano` | OpenAI | custom | 200000 | 100000 | text+image | agents, agentsV2, reasoning, tool-calling, streaming |
+| `openai/o1` | OpenAI | custom | 200000 | 100000 | text+image | agents, reasoning, tool-calling, agentsV2 |
+| `openai/o1-mini` | OpenAI | custom | 128000 | 65536 | text | reasoning, streaming, agentsV2 |
+| `openai/o1-preview` | OpenAI | custom | 128000 | 32768 | text | agentsV2, reasoning |
+| `openai/o3` | OpenAI | custom | 200000 | 100000 | text+image | agents, agentsV2, reasoning, streaming, tool-calling |
+| `openai/o3-mini` | OpenAI | custom | 200000 | 100000 | text | agents, reasoning, streaming, tool-calling, agentsV2 |
+| `openai/o4-mini` | OpenAI | custom | 200000 | 100000 | text+image | agents, agentsV2, reasoning, tool-calling, streaming |
+| `openai/text-embedding-3-large` | OpenAI | embeddings | 8191 | — | text | — |
+| `openai/text-embedding-3-small` | OpenAI | embeddings | 8191 | — | text | — |
+| `xai/grok-3` | xAI | custom | 131072 | 4096 | text | agentsV2 |
+| `xai/grok-3-mini` | xAI | custom | 131072 | 4096 | text | agentsV2 |
+
+</details>
 
 ## Trial methodology
 
