@@ -1,3 +1,4 @@
+-- taxonomy-review smoke test (reverted before merge)
 with
 
 orders as (
