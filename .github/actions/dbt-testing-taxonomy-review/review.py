@@ -52,10 +52,10 @@ STATUS_EMOJI = {"applicable_present": "✅", "applicable_missing": "❌", "not_a
 # One marker per variant so each is upserted independently.
 MARKERS = {
     "matrix_changed": "<!-- ttr:matrix-changed -->",
-    "fails_changed": "<!-- ttr:fails-changed -->",
     "matrix_all": "<!-- ttr:matrix-all -->",
-    "fails_all": "<!-- ttr:fails-all -->",
 }
+# Markers from variants we no longer post; any lingering comments are deleted on each run.
+RETIRED_MARKERS = ["<!-- ttr:fails-changed -->", "<!-- ttr:fails-all -->"]
 LEGEND = "✅ present · ❌ missing (gap) · ➖ n/a"
 FOOTER = "<sub>Rule codes: [`rules.json`](.github/actions/dbt-testing-taxonomy-review/rules.json) · vignettes in `docs/guides/testing_taxonomy/`.</sub>"
 
@@ -277,29 +277,6 @@ def matrix_comment(result: dict, marker: str, scope: str) -> str:
                              header, sep, *rows, "", FOOTER])
 
 
-def failures_comment(result: dict, marker: str, scope: str) -> str:
-    idx = _index(result)
-    head = [marker, f"## 🧪 Taxonomy failures — {scope}", ""]
-    if not idx:
-        return "\n".join(head + ["_No models to review._"])
-    failed = {c for codes in idx.values() for c, s in codes.items() if s == "applicable_missing"}
-    cols = [c for c in CODE_ORDER if c in failed]
-    fail_models = [m for m, codes in idx.items()
-                   if any(s == "applicable_missing" for s in codes.values())]
-    if not cols or not fail_models:
-        return "\n".join(head + ["✅ No applicable rules are failing."])
-    header = "| Model / Failed rule | " + " | ".join(cols) + " |"
-    sep = "|:---|" + "|".join([":---:"] * len(cols)) + "|"
-    rows = []
-    for m in sorted(fail_models):
-        cells = ["❌" if idx[m].get(c) == "applicable_missing"
-                 else ("✅" if idx[m].get(c) == "applicable_present" else "")
-                 for c in cols]
-        rows.append(f"| `{m}` | " + " | ".join(cells) + " |")
-    legend = "Only rules that **apply and fail** somewhere · ❌ missing · ✅ present (elsewhere) · blank n/a"
-    return "\n".join(head + [legend, "", header, sep, *rows, "", FOOTER])
-
-
 # --- GitHub API --------------------------------------------------------------
 
 def api(method: str, url: str, token: str, data: dict | None = None):
@@ -323,6 +300,15 @@ def upsert_comment(repo: str, pr: str, token: str, marker: str, body: str) -> No
     else:
         api("POST", f"{base}/issues/{pr}/comments", token, {"body": body})
         print(f"  created comment ({marker})")
+
+
+def delete_retired_comments(repo: str, pr: str, token: str) -> None:
+    """Remove comments from variants we no longer post (keeps the PR tidy after a trim)."""
+    base = f"https://api.github.com/repos/{repo}"
+    for c in api("GET", f"{base}/issues/{pr}/comments?per_page=100", token):
+        if any(m in c.get("body", "") for m in RETIRED_MARKERS):
+            api("DELETE", f"{base}/issues/comments/{c['id']}", token)
+            print(f"  deleted retired comment {c['id']}")
 
 
 def estimated_cost(totals: dict, in_price: float, out_price: float) -> float:
@@ -378,12 +364,9 @@ def main() -> None:
     footer = "\n\n" + usage_footer(totals, model, in_price, out_price)
     upsert_comment(repo, pr, token, MARKERS["matrix_changed"],
                    matrix_comment(res_changed, MARKERS["matrix_changed"], "changed models") + footer)
-    upsert_comment(repo, pr, token, MARKERS["fails_changed"],
-                   failures_comment(res_changed, MARKERS["fails_changed"], "changed models") + footer)
     upsert_comment(repo, pr, token, MARKERS["matrix_all"],
                    matrix_comment(res_all, MARKERS["matrix_all"], "all models") + footer)
-    upsert_comment(repo, pr, token, MARKERS["fails_all"],
-                   failures_comment(res_all, MARKERS["fails_all"], "all models") + footer)
+    delete_retired_comments(repo, pr, token)
 
     write_step_summary(totals, model, in_price, out_price)
 

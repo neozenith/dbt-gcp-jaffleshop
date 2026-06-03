@@ -1,194 +1,158 @@
 # dbt testing-taxonomy review (composite action)
 
-A composite GitHub Action that reviews dbt models against this project's testing
-taxonomy (distilled from [`docs/guides/testing_taxonomy/`](../../../docs/guides/testing_taxonomy/README.md))
-and posts the findings to the PR. The long-form vignettes stay the source of truth
-(each rule's `doc` links to its vignette); this directory is the **engine + index +
-decision framework**.
+A composite GitHub Action that reviews the dbt models in a pull request against a curated
+**testing taxonomy** and posts the findings back to the PR as coverage-matrix comments — so a
+reviewer can see, at a glance, which taxonomy rules each model satisfies, misses, or doesn't
+need. It calls an LLM via **GitHub Models** (keyless, using the workflow's `GITHUB_TOKEN`) and
+reports token usage + estimated cost on every comment.
 
-> This started life as an agent skill under `.agents/skills/`; it now lives here as a
-> reusable action. Agents can still read this README + `rules.json` for the catalogue and
-> decision framework when reviewing models interactively.
+<details>
+<summary>Table of contents</summary>
 
-## Usage
+<!--TOC-->
+
+- [dbt testing-taxonomy review (composite action)](#dbt-testing-taxonomy-review-composite-action)
+  - [Quickstart](#quickstart)
+  - [Architecture](#architecture)
+  - [Reference](#reference)
+    - [Inputs (see \[`action.yml`\](./action.yml))](#inputs-see-actionymlactionyml)
+    - [Files](#files)
+    - [Rule-code scheme](#rule-code-scheme)
+    - [Decision framework (how codes are chosen)](#decision-framework-how-codes-are-chosen)
+    - [Troubleshooting](#troubleshooting)
+  - [For maintainers](#for-maintainers)
+
+<!--TOC-->
+
+</details>
+
+## Quickstart
+
+**In a workflow** (see [`testing-taxonomy-review.yml`](../../workflows/testing-taxonomy-review.yml)):
 
 ```yaml
-- uses: actions/checkout@v6
-  with: { fetch-depth: 0 }          # base..head diff needs both commits
-- uses: ./.github/actions/dbt-testing-taxonomy-review
-  with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}   # needs models:read + pull-requests:write
-    pr-number: ${{ github.event.pull_request.number }}
-    base-sha: ${{ github.event.pull_request.base.sha }}
-    head-sha: ${{ github.event.pull_request.head.sha }}
-    # optional: model, models-endpoint, models-glob, cost-per-1m-input, cost-per-1m-output
+permissions: { contents: read, pull-requests: write, models: read }
+steps:
+  - uses: actions/checkout@v6
+    with: { fetch-depth: 0 }          # base..head diff needs both commits
+  - uses: ./.github/actions/dbt-testing-taxonomy-review
+    with:
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+      pr-number: ${{ github.event.pull_request.number }}
+      base-sha: ${{ github.event.pull_request.base.sha }}
+      head-sha: ${{ github.event.pull_request.head.sha }}
+      # optional: model, models-endpoint, models-glob, cost-per-1m-input, cost-per-1m-output
 ```
 
-Wired up in [`.github/workflows/testing-taxonomy-review.yml`](../../workflows/testing-taxonomy-review.yml).
-**LLM runner:** GitHub Models (keyless, via `GITHUB_TOKEN` + `permissions: models: read`) —
-no vendor API key or plugin. Output is forced to `review-output.schema.json`
-(`response_format: json_schema`, strict).
+**Run the engine directly** (local iteration / debugging):
 
-## What it posts
+```bash
+GITHUB_TOKEN=$(gh auth token) PR_NUMBER=123 \
+BASE_SHA=$(git merge-base origin/main HEAD) HEAD_SHA=$(git rev-parse HEAD) \
+uv run --no-project .github/actions/dbt-testing-taxonomy-review/review.py
+```
 
-Four sticky PR comments (each its own `<!-- ttr:* -->` marker, upserted in place):
+**Swap the model** (any structured-output-capable GitHub Models id) without code changes:
 
-1. **coverage matrix — changed models** · rows = models, columns = applicable rule codes,
-   cells ✅ present / ❌ missing / ➖ n/a.
-2. **failures — changed models** · narrowed to rules that apply *and* fail somewhere.
-3. **coverage matrix — all models** · variant 1 over every model.
-4. **failures — all models** · variant 2 over every model.
+```yaml
+  - uses: ./.github/actions/dbt-testing-taxonomy-review
+    with:
+      model: openai/gpt-4o-mini          # cheaper; see benchmarks/MODELS.md
+      cost-per-1m-input: "0.15"
+      cost-per-1m-output: "0.60"
+      # … + the required token/pr/sha inputs
+```
 
-Every comment footer (and the GHA **job summary**) reports token usage — input/output
-tokens, call count, and an estimated cost at the model's list price (`cost-per-1m-*`
-inputs; the GitHub Models free tier may bill $0).
+## Architecture
 
-## Files
+```mermaid
+flowchart TD
+    pr["PR · changed dbt models"]:::ingress --> act["composite action"]:::primary
+    act --> diff["git diff → changed set"]:::secondary
+    act --> allm["all project models"]:::secondary
+    diff --> batch["batch under token budget"]:::primary
+    allm --> batch
+    batch --> gm{"GitHub Models<br/>json_schema (strict)"}:::gate
+    gm --> mtx["coverage matrices<br/>changed + all"]:::primary
+    mtx --> cmt["sticky PR comments"]:::ingress
+    mtx --> sumy["job summary<br/>tokens + est. cost"]:::secondary
 
-- **`action.yml`** — composite action definition (inputs + `setup-uv` + run).
-- **`review.py`** — the engine (stdlib-only; run via `uv run --no-project`). Greedily
-  batches models under a per-request token budget (GitHub Models caps a request at ~8000
-  input tokens) to minimise calls, and backs off on rate limits (429, honouring `Retry-After`).
-- **`rules.json`** — machine-readable catalogue: single source of truth for the 29 rule
-  codes + metadata. The engine injects the codes into the schema enum at runtime.
-- **`review-output.schema.json`** — the structured-output contract.
+    classDef ingress   fill:#1e40af,stroke:#fff,color:#fff,stroke-width:2px
+    classDef primary   fill:#0f766e,stroke:#fff,color:#fff,stroke-width:2px
+    classDef secondary fill:#dbeafe,stroke:#3b82f6,color:#1e293b,stroke-width:1px
+    classDef gate      fill:#c2410c,stroke:#fff,color:#fff,stroke-width:2px
+```
 
-## Rule-code scheme
+The engine reviews **all** project models once (batched per request to respect the provider's
+~8000-token request cap), then derives the PR's *changed* subset by name — so the two matrices
+are consistent and changed models aren't reviewed twice. The model is forced to return JSON
+conforming to [`review-output.schema.json`](./review-output.schema.json); the `rule_code` enum is
+injected from [`rules.json`](./rules.json) at runtime so the schema and catalogue cannot drift.
 
-`<ROLE>[-<SUBROLE>]-<NN>` — a 2-letter role prefix, an optional sub-role segment
-(only `time` has one today), then a zero-padded number. Roles are the **stable**
-axis; the orthogonal overlays (Wang–Strong data-quality dimension, cost class) are
-**columns, not part of the code**, because they vary independently and can change
-per vignette.
+## Reference
+
+### Inputs (see [`action.yml`](./action.yml))
+
+| Input | Required | Default | Purpose |
+|-------|:--------:|---------|---------|
+| `github-token` | ✅ | — | Needs `models:read` + `pull-requests:write` (`secrets.GITHUB_TOKEN`). |
+| `pr-number` | ✅ | — | PR to comment on. |
+| `base-sha` / `head-sha` | ✅ | — | Diff endpoints for the changed-models set. |
+| `model` | | `openai/gpt-4o` | GitHub Models catalogue id (structured-output capable). |
+| `models-endpoint` | | `https://models.github.ai/inference` | Inference endpoint. |
+| `models-glob` | | `dbt-jaffleshop/models` | Path prefix holding the dbt models. |
+| `cost-per-1m-input` / `cost-per-1m-output` | | `2.5` / `10` | USD/1M tokens for the estimated-cost line. |
+
+### Files
+
+| File | Role |
+|------|------|
+| `action.yml` | Composite action: inputs + `setup-uv` + run. |
+| `review.py` | Engine (stdlib-only; `uv run --no-project`). Diff, batch, call, render, comment. |
+| `rules.json` | Machine-readable catalogue — single source of truth for the 29 rule codes. |
+| `review-output.schema.json` | Structured-output contract enforced on the model. |
+| `benchmarks/bench.py`, `benchmarks/MODELS.md` | Model trials + curated pricing/results. |
+
+### Rule-code scheme
+
+`<ROLE>[-<SUBROLE>]-<NN>` — a 2-letter role prefix, an optional sub-role segment (only `time`
+has one), then a zero-padded number. Roles are the **stable** axis; the Wang–Strong data-quality
+dimension and cost class are columns in `rules.json`, **not** part of the code.
 
 | Prefix | Role | Column behaviour that triggers it |
 |--------|------|-----------------------------------|
 | `EN-` | entity | Used in a `JOIN ON` (PK / surrogate / FK / compound grain) |
 | `DM-` | dimension | Used in a `GROUP BY` (categorical axis) |
 | `MS-` | measure | Inside an aggregate (`SUM`/`COUNT`/`AVG`) |
-| `TM-SC-` | time · event-time scalar | `WHERE` / arithmetic / window on a timestamp |
-| `TM-GR-` | time · time-grain dimension | `GROUP BY DATE_TRUNC` / a date spine |
-| `TM-AU-` | time · system-time / audit | `loaded_at` / `valid_from`+`valid_to` |
+| `TM-SC-` / `TM-GR-` / `TM-AU-` | time · scalar / grain / audit | timestamp in `WHERE`/window · `GROUP BY DATE_TRUNC` · `loaded_at`/SCD2 |
 | `MD-` | model | Cross-column / whole-model concerns |
 
-## The two heuristics (apply these first)
+The full catalogue (29 codes, summaries, framework choice, applies-when) lives in
+[`rules.json`](./rules.json); the long-form vignettes are in
+[`docs/guides/testing_taxonomy/`](../../../docs/guides/testing_taxonomy/README.md).
 
-1. **Grain Heuristic** — every model is defined by its grain (the column tuple that
-   uniquely identifies a row). Every model MUST have exactly one grain test
-   (**MD-01**). *If you cannot name the grain, the model isn't done.*
-2. **Role Multiplication Heuristic** — a column plays more than one role across the
-   DAG (`order_id` is an entity in `dim_orders`, an FK in `fct_order_items`, a
-   GROUP BY axis in `mart_orders_by_customer`). Its test budget is the **union** of
-   the role suites for every role it plays. Don't assign one role per column.
+### Decision framework (how codes are chosen)
 
-## Decision framework — which codes apply
+For each **column**, union the suites for every query role it plays (a column can play several):
+`JOIN ON` → entity `EN-*`; `GROUP BY` → dimension `DM-*`; inside an aggregate → measure `MS-*`;
+date/datetime → time `TM-SC/GR/AU-*`. For the **model**, always evaluate `MD-01` (grain test —
+the non-negotiable baseline), plus `MD-02` contract / `MD-04` refactor-parity / `MD-05` unit-tests
+as applicable. Package-preference ladder when several express the same intent:
+`dbt core → dbt-utils → dbt_expectations → elementary → audit_helper` (climb only when the lower
+tier can't express it; anomaly/freshness-anomaly → elementary, which is **prod-only** here).
 
-For each **column**, walk its query roles and union the suites:
+### Troubleshooting
 
-```
-JOIN ON it?            -> entity     -> EN-01..EN-06   (FK? EN-03/04; composite grain? EN-02; hash surrogate? EN-05)
-GROUP BY it?           -> dimension  -> DM-01..DM-05   (enum? DM-01; bounded cardinality? DM-02; shared? DM-03)
-Inside an aggregate?   -> measure    -> MS-01..MS-05   (money? MS-03; ratio? MS-04; additivity? MS-02)
-date/datetime/ts?      -> time
-   WHERE/arith/window  ->   scalar   -> TM-SC-01..03
-   GROUP BY DATE_TRUNC ->   grain    -> TM-GR-01
-   loaded_at / SCD2    ->   audit    -> TM-AU-01..02
-```
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `413 tokens_limit_reached` | A request exceeded the model's ~8000-token cap | Lower the batch budget (`REQUEST_TOKEN_CAP` in `review.py`) or pick a larger-context model. |
+| `429 Too many requests` | Free-tier rate/daily limit | Batching + backoff handle bursts; if the daily quota is exhausted, wait for reset or switch `model`. |
+| Job skipped on a PR | Fork PR (read-only token, no `models:` access) | Expected — the workflow `if:` restricts to same-repo PRs. |
+| Comment not updated | Marker mismatch | Each variant keys off its own `<!-- ttr:* -->` marker; don't edit those out of a comment. |
+| `400` on a non-OpenAI model | Model doesn't support `response_format: json_schema` | Use an OpenAI-family model, or extend the engine with a json_object fallback. |
 
-For the **model as a whole**, always evaluate:
-- **MD-01 grain test** — non-negotiable; flag any model lacking it as a `blocker`.
-- **MD-02 contract** / **MD-03 versioning** — if the model is published/consumed.
-- **MD-04 refactor-parity** — if the PR refactors SQL claiming no output change.
-- **MD-05 unit-tests** — if the model has branching logic (CASE/window/dedup).
-- **MD-06 row-count-band** / **MD-07 volume-anomaly** — volume guards (band first; Elementary anomaly when a fixed band is too brittle).
+## For maintainers
 
-### Package preference ladder (which framework to reach for)
-
-`dbt core → dbt-utils → dbt_expectations → elementary → audit_helper` — climb only
-when the lower tier can't express the intent. Notes that bind here:
-- **`dbt_expectations` is unmaintained (since 2026-05-21).** Reach for it only for
-  regex-with-flags, `row_condition` variants, or date-gap detection; prefer the
-  maintained alternative otherwise.
-- **Anomaly / drift / freshness-anomaly** → **elementary** (the maintained path),
-  not `dbt_expectations` distributional tests. *(Elementary models are PROD-only in
-  this project — `dbt_project.yml` — so `*-anomaly` rules are prod-scoped.)*
-- **Refactor parity** → **audit_helper** (cheap `quick_are_relations_identical` pre-check first).
-
-### Severity guidance (for review verdicts)
-
-- **blocker** — missing grain test (MD-01), missing FK integrity on a real FK (EN-03),
-  missing contract on a published model (MD-02), or any integrity gap that risks join
-  fanout / silent KPI corruption.
-- **warning** — an applicable role-suite test is absent but the gap is contained
-  (e.g. a missing `accepted_values` on a low-stakes categorical).
-- **info** — nice-to-have (anomaly monitoring not yet warranted) or a noted, deliberate
-  `not_applicable`.
-
-## Rule catalogue (29)
-
-Authoritative metadata + vignette links live in [`rules.json`](./rules.json). Summary:
-
-### EN — entity (JOIN keys)
-| Code | Rule | Wang–Strong | Cost | Applies when |
-|------|------|-------------|------|--------------|
-| EN-01 | unique + not_null on single-col grain | Uniqueness+Completeness | cheap | Single-column grain/PK or downstream JOIN key |
-| EN-02 | composite grain unique | Uniqueness | scan-bound | Grain spans 2+ columns |
-| EN-03 | FK referential integrity (`relationships`) | Consistency | scan-bound | Column is an FK in a JOIN ON |
-| EN-04 | soft-delete-scoped FK (`relationships_where`) | Consistency | scan-bound | FK target has soft-deletes |
-| EN-05 | surrogate hash-collision guard | Uniqueness | scan-bound | Surrogate is a hash of natural columns |
-| EN-06 | type-stable join key (contract `data_type`) | Validity | free | JOIN key could drift in type across models |
-
-### DM — dimension (GROUP BY axes)
-| Code | Rule | Wang–Strong | Cost | Applies when |
-|------|------|-------------|------|--------------|
-| DM-01 | accepted_values enum | Validity | cheap | Low-cardinality categorical (status/type/country) |
-| DM-02 | cardinality bound | Validity+Accuracy | cheap | Distinct-count should stay in a known band |
-| DM-03 | conformed dimension (shared seed) | Consistency | cheap | Same dimension appears across marts |
-| DM-04 | mutual exclusivity of sibling flags | Consistency | cheap | Mutually-exclusive booleans must not co-fire |
-| DM-05 | per-dimension anomaly (Elementary) | Accuracy+Timeliness | history-bound | Monitor a category's drift over time (prod) |
-
-### MS — measure (aggregated facts)
-| Code | Rule | Wang–Strong | Cost | Applies when |
-|------|------|-------------|------|--------------|
-| MS-01 | numeric range (`accepted_range`) | Validity | cheap | Numeric measure with known floor/ceiling |
-| MS-02 | additivity tag | Consistency | free | Measure mustn't be summed across a forbidden dim |
-| MS-03 | currency-pairing (amount + currency_code) | Validity+Accuracy | cheap | Monetary amount that could mix currencies |
-| MS-04 | NaN/Inf / divide-by-zero guard | Validity | cheap | Ratio/rate with a zeroable denominator |
-| MS-05 | distribution anomaly (Elementary) | Accuracy | history-bound | Monitor a headline measure's drift (prod) |
-
-### TM — time
-| Code | Rule | Wang–Strong | Cost | Applies when |
-|------|------|-------------|------|--------------|
-| TM-SC-01 | event-time bounds (no future/sentinels) | Validity | cheap | Event timestamp in WHERE/arith/window |
-| TM-SC-02 | monotonic timestamp pair | Consistency | cheap | Two timestamps with required ordering |
-| TM-SC-03 | TIMESTAMP vs DATETIME contract | Validity | free | TZ semantics matter and could drift |
-| TM-GR-01 | calendar spine has no gaps | Completeness+Timeliness | cheap | Date-grain dimension / date spine |
-| TM-AU-01 | source freshness + model recency | Timeliness | cheap | `loaded_at`/audit ts, or a source to monitor |
-| TM-AU-02 | SCD2 quartet | Consistency | scan-bound | Type-2 SCD with valid_from/valid_to |
-
-### MD — model-level
-| Code | Rule | Wang–Strong | Cost | Applies when |
-|------|------|-------------|------|--------------|
-| MD-01 | grain test (the baseline) | Uniqueness | scan-bound | **Always** — every model |
-| MD-02 | contract enforced | Validity | free | Published / consumed mart |
-| MD-03 | versioning cutover | Consistency | free | Shipping a breaking change |
-| MD-04 | refactor parity (audit_helper) | Accuracy | scan-bound | Refactor claiming zero output change |
-| MD-05 | unit tests (dbt 1.8) | Accuracy | free | Branching SQL logic |
-| MD-06 | row-count band | Accuracy+Completeness | cheap | Row count should sit in a band |
-| MD-07 | volume anomaly (Elementary) | Accuracy+Timeliness | history-bound | Volume monitored over time (prod) |
-
-> **Reserved / referenced:** the taxonomy README's reading order references
-> `dimension/accepted-values.md` (→ DM-01) and `dimension/cardinality-guard.md`
-> (→ DM-02); both now exist on disk and are coded above.
-
-## Reviewing a PR (procedure)
-
-1. Get the added/changed model files (`git diff --name-only <base>...HEAD -- '*/models/**.sql'`).
-2. For each model, read its SQL + its `.yml` schema (existing `data_tests:`).
-3. Apply the decision framework per column + the model-level MD rules.
-4. For each applicable rule, decide `applicable_present` (a matching test exists) vs
-   `applicable_missing` (a gap). Assign severity per the guidance above.
-5. Emit findings conforming to `review-output.schema.json` (the action enforces this).
-
-[`review.py`](./review.py) automates exactly this procedure in CI via GitHub Models —
-see [§ What it posts](#what-it-posts) for the comment variants it produces.
+Design rationale, the ADR log, the extension checklist, and known gotchas live in
+[`CLAUDE.md`](./CLAUDE.md). Model selection + empirical cost/latency trials are in
+[`benchmarks/MODELS.md`](./benchmarks/MODELS.md).
