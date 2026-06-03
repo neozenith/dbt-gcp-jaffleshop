@@ -1,10 +1,10 @@
 # Apply the four tests every SCD2 dimension needs
 
-> **Role:** time (system-time / audit) · **Wang–Strong dimension:** Consistency · **Cost class:** scan-bound
+> **Rule:** TM-AU-02 · **Role:** time (system-time / audit) · **Wang–Strong dimension:** Consistency · **Cost class:** scan-bound
 
 A Slowly Changing Dimension Type 2 keeps history by adding `valid_from`, `valid_to`, and `is_current` columns. Four invariants must hold *together* — testing any subset leaves a hole that the others can hide.
 
-## Smell
+## Symptoms
 
 - A point-in-time join from `fct_payroll` to `dim_employee` fans out: one employee's salary shows up twice in monthly aggregates.
 - The same employee has two rows where `is_current = TRUE`.

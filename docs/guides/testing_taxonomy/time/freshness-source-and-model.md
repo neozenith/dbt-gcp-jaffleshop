@@ -1,10 +1,10 @@
 # Assert freshness at source and at model
 
-> **Role:** time (system-time / audit) · **Wang–Strong dimension:** Timeliness · **Cost class:** cheap (filtered) / scan-bound (unfiltered)
+> **Rule:** TM-AU-01 · **Role:** time (system-time / audit) · **Wang–Strong dimension:** Timeliness · **Cost class:** cheap (filtered) / scan-bound (unfiltered)
 
 The pipeline ran successfully and the model rebuilt — but the upstream source hasn't been updated in 12 hours. Without a freshness contract, no test fires; the dashboard says "yesterday" but means "Tuesday".
 
-## Smell
+## Symptoms
 
 - A daily metric is stable but stale; the freshness card on a dashboard quietly went unchecked for weeks.
 - An incident review traces a Slack-reported "wrong number" to: the source extract had died days earlier, and dbt happily kept rebuilding stale data.

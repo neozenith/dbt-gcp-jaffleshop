@@ -1,6 +1,6 @@
 # Role: dimension
 
-> **Synonyms:** Dimensional (your brief) · Dimension attribute / junk dim (Kimball) · `dimension (categorical)` (MetricFlow) · Satellite attribute (Data Vault) · Attribute / Knot (Anchor)
+> **Synonyms:** Dimensional (informal) · Dimension attribute / junk dim (Kimball) · `dimension (categorical)` (MetricFlow) · Satellite attribute (Data Vault) · Attribute / Knot (Anchor)
 >
 > **Hue:** Violet · **Primary fill:** `#7c3aed` · **Stroke:** `#6d28d9` · **Subgraph fill:** `#ede9fe`
 
@@ -32,8 +32,8 @@ A column with 10 distinct values is a dimension. A column with 10 million distin
 
 ## Vignette index
 
-1. [`accepted-values.md`](./accepted-values.md) — enum contract on a categorical
-2. [`cardinality-guard.md`](./cardinality-guard.md) — `expect_column_unique_value_count_to_be_between`
-3. [`mutual-exclusivity.md`](./mutual-exclusivity.md) — sibling boolean flags do not co-fire
-4. [`conformed-dimension.md`](./conformed-dimension.md) — shared seed governs values across models
-5. [`dimension-anomalies.md`](./dimension-anomalies.md) — Elementary per-dimension count anomalies
+1. **DM-01** · [`accepted-values.md`](./accepted-values.md) — enum contract on a categorical
+2. **DM-02** · [`cardinality-guard.md`](./cardinality-guard.md) — `expect_column_unique_value_count_to_be_between`
+3. **DM-04** · [`mutual-exclusivity.md`](./mutual-exclusivity.md) — sibling boolean flags do not co-fire
+4. **DM-03** · [`conformed-dimension.md`](./conformed-dimension.md) — shared seed governs values across models
+5. **DM-05** · [`dimension-anomalies.md`](./dimension-anomalies.md) — Elementary per-dimension count anomalies

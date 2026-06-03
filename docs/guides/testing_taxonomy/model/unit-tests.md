@@ -1,10 +1,10 @@
 # Test branching SQL logic with unit tests
 
-> **Role:** model-level · **Wang–Strong dimension:** Accuracy (logic correctness) · **Cost class:** free (no warehouse scan)
+> **Rule:** MD-05 · **Role:** model-level · **Wang–Strong dimension:** Accuracy (logic correctness) · **Cost class:** free (no warehouse scan)
 
 dbt 1.8 introduced **unit tests** — tests that assert "this SQL transformation, given specific mock inputs, produces this specific expected output." They are distinct from data tests, which check real data. Use unit tests when the SQL has branching logic (`CASE`, regex, window functions, complex joins) that can break on edge cases real data may not exercise.
 
-## Smell
+## Symptoms
 
 - A `CASE WHEN order_status IN (...) AND amount > 0 THEN ... ELSE ... END` that you can't reason about without running it.
 - A regression that bucketed an edge case wrong (a return that should have become a refund, but the CASE arm fell through to "unknown") was caught three weeks after deploy.
@@ -157,4 +157,3 @@ Unit tests are dbt-core 1.8+ only. There's no package alternative. The decision 
 
 - [`refactor-parity.md`](./refactor-parity.md) — for refactors where the logic is unchanged but the SQL is rewritten
 - [`../time/timezone-contract.md`](../time/timezone-contract.md) — uses unit tests to lock timezone bucketing
-- Research source: dbt native tests report (§6)

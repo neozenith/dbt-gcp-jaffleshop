@@ -1,10 +1,10 @@
 # Tag a measure's additivity and enforce it in the semantic layer
 
-> **Role:** measure · **Wang–Strong dimension:** Consistency · **Cost class:** free (declaration) + runtime (cross-grain reconciliation)
+> **Rule:** MS-02 · **Role:** measure · **Wang–Strong dimension:** Consistency · **Cost class:** free (declaration) + runtime (cross-grain reconciliation)
 
 A `quantity` summed across time is correct. An `account_balance` summed across time is 30× the actual balance. A `gross_margin_pct` summed at all is a meaningless number. Tests alone cannot prevent the misuse — the fix is to *declare the additivity* in the semantic layer (MetricFlow) and let the layer pick the right aggregation.
 
-## Smell
+## Symptoms
 
 - Reported month-end inventory = ~30× the true value (daily inventory snapshots summed instead of last-day-of-month).
 - A dashboard shows "Average unit price" computed as `SUM(unit_price) / N` instead of weighted by `quantity`.

@@ -1,10 +1,10 @@
 # The one test every model must have: the grain test
 
-> **Role:** model-level · **Wang–Strong dimension:** Uniqueness · **Cost class:** scan-bound
+> **Rule:** MD-01 · **Role:** model-level · **Wang–Strong dimension:** Uniqueness · **Cost class:** scan-bound
 
 Every dbt model has a **grain** — the tuple of columns whose combination uniquely identifies a row. If the grain breaks, every downstream join fans out and every aggregate is wrong. This is the single most important test in the entire taxonomy.
 
-## Smell
+## Symptoms
 
 - A reviewer asks "what's the grain of this model?" and three engineers give three different answers.
 - A downstream join unexpectedly fans out and nobody knows where the duplicate came from.

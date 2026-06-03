@@ -1,10 +1,10 @@
 # Assert a date dimension has no gaps
 
-> **Role:** time (time-grain dimension) · **Wang–Strong dimension:** Completeness + Timeliness · **Cost class:** cheap
+> **Rule:** TM-GR-01 · **Role:** time (time-grain dimension) · **Wang–Strong dimension:** Completeness + Timeliness · **Cost class:** cheap
 
 A daily fact table — or a date-dimension table — must have one row per day (or per chosen grain) with no missing days. A missing row produces an empty bucket downstream; cumulative metrics undercount; year-over-year comparisons skip the gap.
 
-## Smell
+## Symptoms
 
 - A retention chart has a hole on a single date that nobody noticed for weeks.
 - `MAX(date_day)` in `dim_date` returns a date 5 days in the past — the spine wasn't extended.

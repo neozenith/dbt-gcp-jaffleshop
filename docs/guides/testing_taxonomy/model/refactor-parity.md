@@ -1,10 +1,10 @@
 # Prove refactor parity with audit_helper
 
-> **Role:** model-level · **Wang–Strong dimension:** Accuracy · **Cost class:** scan-bound
+> **Rule:** MD-04 · **Role:** model-level · **Wang–Strong dimension:** Accuracy · **Cost class:** scan-bound
 
 You are refactoring a model — rewriting the SQL to be cleaner / faster / cheaper. The output is supposed to be identical. The question every reviewer asks: "how do you *know* it's identical?". `audit_helper`'s `compare_and_classify_relation_rows` is the answer.
 
-## Smell
+## Symptoms
 
 - You rewrote the SQL of a 12-CTE mart into 4 cleaner CTEs. Row counts match. But are the *values* identical?
 - A vendor SQL migration moved 50 models from Redshift to BigQuery. How do you prove parity?
@@ -174,4 +174,3 @@ flowchart TD
 
 - [`versioning-cutover.md`](./versioning-cutover.md) — for breaking-change refactors that need a new version
 - [`grain-test.md`](./grain-test.md) — the `nonunique_pk` classification surfaces grain failures
-- Research source: audit_helper report

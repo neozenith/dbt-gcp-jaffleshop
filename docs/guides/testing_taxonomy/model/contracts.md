@@ -1,10 +1,10 @@
 # Lock the model's schema shape via contract
 
-> **Role:** model-level · **Wang–Strong dimension:** Validity · **Cost class:** free (compile-time)
+> **Rule:** MD-02 · **Role:** model-level · **Wang–Strong dimension:** Validity · **Cost class:** free (compile-time)
 
 A model contract declares the column names, data types, and constraints of a model — and enforces them at parse/compile time, before any DDL. It catches the silent type-drift bug that data tests can't see, because data tests only run *after* the schema has already drifted.
 
-## Smell
+## Symptoms
 
 - A staging model is rewritten to cast `id` as `STRING` instead of `INT64`. Downstream marts still build. The BI tool's cached metadata says `INT64`. Reports break a week later.
 - A vendor changes the upstream `amount` from `NUMERIC(10,2)` to `FLOAT64`. Sums look approximately right but reconciliation is off by pennies.
@@ -141,4 +141,3 @@ Contracts are dbt-core only — no package alternative exists. The choice is whe
 - [`versioning-cutover.md`](./versioning-cutover.md) — how to evolve a contract safely
 - [`../entity/type-stable-join.md`](../entity/type-stable-join.md) — the cross-model type-stability case
 - [`../time/timezone-contract.md`](../time/timezone-contract.md) — TIMESTAMP vs DATETIME contract
-- Research source: dbt model contracts report

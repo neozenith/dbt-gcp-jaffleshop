@@ -1,10 +1,10 @@
 # Detect anomalies per dimension value
 
-> **Role:** dimension · **Wang–Strong dimension:** Accuracy + Timeliness · **Cost class:** history-bound
+> **Rule:** DM-05 · **Role:** dimension · **Wang–Strong dimension:** Accuracy + Timeliness · **Cost class:** history-bound
 
 Total row count looks fine, but **one slice of a dimension** (one country, one tenant, one product category) has silently dropped to near-zero. A per-dimension anomaly test learns each slice's historical pattern and alerts when any slice diverges from its own history.
 
-## Smell
+## Symptoms
 
 - Daily row count is steady but the Slovenia revenue card on a dashboard reads $0 for a week.
 - A multi-tenant fact table is "healthy" at the global level but one tenant's data has stopped landing.
@@ -129,4 +129,4 @@ flowchart LR
 
 - [`cardinality-guard.md`](./cardinality-guard.md) — the deterministic alternative
 - [`../model/volume-anomaly.md`](../model/volume-anomaly.md) — global (un-grouped) anomaly detection
-- Elementary research source — [`anomaly_direction`](../README.md), [`exclude_final_results`](../README.md), [`anomaly_sensitivity`](../README.md)
+- [`../model/column-anomalies.md`](../model/column-anomalies.md) — automated per-column monitors (the table-wide counterpart)

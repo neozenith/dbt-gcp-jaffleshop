@@ -1,10 +1,10 @@
 # Detect volume anomalies with a learned band
 
-> **Role:** model-level · **Wang–Strong dimension:** Accuracy + Timeliness · **Cost class:** history-bound
+> **Rule:** MD-07 · **Role:** model-level · **Wang–Strong dimension:** Accuracy + Timeliness · **Cost class:** history-bound
 
 A fixed row-count band ([`row-count-band.md`](./row-count-band.md)) catches catastrophes; a learned-band anomaly detector catches the more subtle "today's count is 40% below the seasonal trend". Elementary maintains the metrics history incrementally, so subsequent runs only scan the detection window.
 
-## Smell
+## Symptoms
 
 - A model's daily row count quietly drifted from ~100k to ~70k over a quarter; no fixed band would have fired.
 - A holiday week's volume looks "anomalous" against a generic 14-day mean but is actually normal for that week-of-year — too many false positives from a naive Z-score.
@@ -158,4 +158,3 @@ flowchart LR
 - [`row-count-band.md`](./row-count-band.md) — fixed-band complement / fallback
 - [`../dimension/dimension-anomalies.md`](../dimension/dimension-anomalies.md) — per-slice version
 - [`../measure/distribution-anomaly.md`](../measure/distribution-anomaly.md) — same engine on measure columns
-- Research source: Elementary OSS report

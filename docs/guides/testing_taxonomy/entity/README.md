@@ -1,6 +1,6 @@
 # Role: entity
 
-> **Synonyms:** Identity (your brief) · Surrogate/natural key (Kimball) · `entity` (MetricFlow) · Hub/Link key (Data Vault) · Anchor/Tie (Anchor Modeling)
+> **Synonyms:** Identity (informal) · Surrogate/natural key (Kimball) · `entity` (MetricFlow) · Hub/Link key (Data Vault) · Anchor/Tie (Anchor Modeling)
 >
 > **Hue:** Blue · **Primary fill:** `#2563eb` · **Stroke:** `#1e40af` · **Subgraph fill:** `#dbeafe`
 
@@ -36,9 +36,9 @@ Entity columns frequently double as dimensions (`order_id` is an entity in `dim_
 
 ## Vignette index
 
-1. [`unique-key.md`](./unique-key.md) — single-column `unique` + `not_null`
-2. [`compound-grain.md`](./compound-grain.md) — `dbt_utils.unique_combination_of_columns`
-3. [`foreign-key-integrity.md`](./foreign-key-integrity.md) — `relationships`
-4. [`soft-delete-scoped-fk.md`](./soft-delete-scoped-fk.md) — `relationships_where`
-5. [`type-stable-join.md`](./type-stable-join.md) — contract `data_type` matches across joined relations
-6. [`surrogate-collision-guard.md`](./surrogate-collision-guard.md) — natural-key uniqueness alongside surrogate uniqueness
+1. **EN-01** · [`unique-key.md`](./unique-key.md) — single-column `unique` + `not_null`
+2. **EN-02** · [`compound-grain.md`](./compound-grain.md) — `dbt_utils.unique_combination_of_columns`
+3. **EN-03** · [`foreign-key-integrity.md`](./foreign-key-integrity.md) — `relationships`
+4. **EN-04** · [`soft-delete-scoped-fk.md`](./soft-delete-scoped-fk.md) — `relationships_where`
+5. **EN-06** · [`type-stable-join.md`](./type-stable-join.md) — contract `data_type` matches across joined relations
+6. **EN-05** · [`surrogate-collision-guard.md`](./surrogate-collision-guard.md) — natural-key uniqueness alongside surrogate uniqueness

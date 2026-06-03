@@ -1,10 +1,10 @@
 # Assert an enum contract on a categorical dimension
 
-> **Role:** dimension · **Wang–Strong dimension:** Validity · **Cost class:** cheap
+> **Rule:** DM-01 · **Role:** dimension · **Wang–Strong dimension:** Validity · **Cost class:** cheap
 
 A categorical column has a finite, business-defined set of values. `accepted_values` pins that set. The day a new value sneaks in from the source, the test fails and the engineer reviews whether downstream CASE statements need updating.
 
-## Smell
+## Symptoms
 
 - `pending` orders count suddenly looks anomalously high — the source added a new `returned` status, and the mart's `CASE WHEN status = ...` lumped it nowhere visible.
 - A status column's distinct values silently grew from 4 to 5 over a quarter.

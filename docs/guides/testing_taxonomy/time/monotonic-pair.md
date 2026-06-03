@@ -1,10 +1,10 @@
 # Assert causality on paired timestamps
 
-> **Role:** time (event-time scalar pair) · **Wang–Strong dimension:** Consistency · **Cost class:** cheap
+> **Rule:** TM-SC-02 · **Role:** time (event-time scalar pair) · **Wang–Strong dimension:** Consistency · **Cost class:** cheap
 
 When two timestamps describe sequential events (`ordered_at` → `shipped_at` → `delivered_at`; `created_at` → `updated_at`), causality requires the later one is at least as recent as the earlier one. A single `expression_is_true` test enforces the chain.
 
-## Smell
+## Symptoms
 
 - A negative `fulfillment_duration` appears on a row (`shipped_at - ordered_at` < 0).
 - A refund is recorded with `refunded_at < ordered_at` — impossible by business rule.

@@ -32,7 +32,7 @@ shell over an LLM + the GitHub API); correctness is proven by a live PR run, not
 |------|------|
 | `action.yml` | Composite action: inputs → env → `setup-uv` → run `review.py` via `${{ github.action_path }}`. |
 | `review.py` | Engine: diff changed models, batch, call GitHub Models (json_schema), render matrices, upsert comments, write usage summary. Stdlib-only. |
-| `rules.json` | Single source of truth: 29 rule codes + metadata. |
+| `rules.json` | Single source of truth: 33 rule codes + metadata. |
 | `review-output.schema.json` | Structured-output contract; its `rule_code` enum is overwritten from `rules.json` at runtime. |
 | `README.md` | Human consumer docs (usage, diagram, reference). |
 | `benchmarks/bench.py` · `benchmarks/MODELS.md` | Model trials + curated GitHub Models pricing/results. |

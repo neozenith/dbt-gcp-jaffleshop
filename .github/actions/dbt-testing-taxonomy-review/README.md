@@ -109,7 +109,7 @@ injected from [`rules.json`](./rules.json) at runtime so the schema and catalogu
 |------|------|
 | `action.yml` | Composite action: inputs + `setup-uv` + run. |
 | `review.py` | Engine (stdlib-only; `uv run --no-project`). Diff, batch, call, render, comment. |
-| `rules.json` | Machine-readable catalogue — single source of truth for the 29 rule codes. |
+| `rules.json` | Machine-readable catalogue — single source of truth for the 33 rule codes. |
 | `review-output.schema.json` | Structured-output contract enforced on the model. |
 | `benchmarks/bench.py`, `benchmarks/MODELS.md` | Model trials + curated pricing/results. |
 
@@ -127,7 +127,7 @@ dimension and cost class are columns in `rules.json`, **not** part of the code.
 | `TM-SC-` / `TM-GR-` / `TM-AU-` | time · scalar / grain / audit | timestamp in `WHERE`/window · `GROUP BY DATE_TRUNC` · `loaded_at`/SCD2 |
 | `MD-` | model | Cross-column / whole-model concerns |
 
-The full catalogue (29 codes, summaries, framework choice, applies-when) lives in
+The full catalogue (33 codes, summaries, framework choice, applies-when) lives in
 [`rules.json`](./rules.json); the long-form vignettes are in
 [`docs/guides/testing_taxonomy/`](../../../docs/guides/testing_taxonomy/README.md).
 
@@ -137,9 +137,11 @@ For each **column**, union the suites for every query role it plays (a column ca
 `JOIN ON` → entity `EN-*`; `GROUP BY` → dimension `DM-*`; inside an aggregate → measure `MS-*`;
 date/datetime → time `TM-SC/GR/AU-*`. For the **model**, always evaluate `MD-01` (grain test —
 the non-negotiable baseline), plus `MD-02` contract / `MD-04` refactor-parity / `MD-05` unit-tests
-as applicable. Package-preference ladder when several express the same intent:
+and, where relevant, `MD-08` schema-changes (a source you don't own), `MD-09` column-monitors, and
+`MD-10` json-shape. Package-preference ladder when several express the same intent:
 `dbt core → dbt-utils → dbt_expectations → elementary → audit_helper` (climb only when the lower
-tier can't express it; anomaly/freshness-anomaly → elementary, which is **prod-only** here).
+tier can't express it; anomaly / freshness / schema-change / column-monitor → elementary, which is
+**prod-only** here).
 
 ### Troubleshooting
 

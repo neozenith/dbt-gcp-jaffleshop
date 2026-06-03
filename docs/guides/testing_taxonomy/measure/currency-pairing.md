@@ -1,10 +1,10 @@
 # Pair every amount column with a currency column
 
-> **Role:** measure · **Wang–Strong dimension:** Validity + Accuracy · **Cost class:** free (contract) + cheap (test)
+> **Rule:** MS-03 · **Role:** measure · **Wang–Strong dimension:** Validity + Accuracy · **Cost class:** free (contract) + cheap (test)
 
 A column called `amount` can be a 5% silent revenue inflation waiting to happen. The day a new payment processor sends MXN amounts into a table where every other row was USD, every `SUM(amount)` query becomes a lie. The pattern: amount columns always travel with a `currency_code`, and every model contracts both.
 
-## Smell
+## Symptoms
 
 - Total revenue inflates by ~5% over several weeks; investigation finds Mexican rows were summed at 1:1 instead of converted.
 - The same metric reports different numbers in two BI tools because one is currency-aware and one is not.

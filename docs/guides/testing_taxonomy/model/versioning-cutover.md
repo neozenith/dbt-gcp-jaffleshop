@@ -1,10 +1,10 @@
 # Ship a breaking change via versioning
 
-> **Role:** model-level · **Wang–Strong dimension:** Consistency (governance) · **Cost class:** free (declaration)
+> **Rule:** MD-03 · **Role:** model-level · **Wang–Strong dimension:** Consistency (governance) · **Cost class:** free (declaration)
 
 When a public model needs a renamed column, dropped column, or grain change, **don't break consumers** — ship a new version. Keep the old version live during a deprecation window so downstream BI tools, reverse-ETL jobs, and ML feature stores can migrate at their own pace.
 
-## Smell
+## Symptoms
 
 - A column on `dim_customers` needs to be renamed to align with the new naming convention. Five dashboards bind to the old name.
 - A grain change is needed (`one row per order` → `one row per order line`) but two teams' marts depend on the current grain.
@@ -203,4 +203,3 @@ Versioning is dbt-core only. The choice is the *cadence* and *aggressiveness*.
 
 - [`contracts.md`](./contracts.md) — the foundation versioning builds on
 - [`refactor-parity.md`](./refactor-parity.md) — the equivalence test pattern
-- Research source: dbt model versioning report

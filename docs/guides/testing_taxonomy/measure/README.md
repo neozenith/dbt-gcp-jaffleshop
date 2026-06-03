@@ -1,6 +1,6 @@
 # Role: measure
 
-> **Synonyms:** Measure (your brief) · Fact (Kimball: additive / semi-additive / non-additive) · `measure` (MetricFlow) · Transactional satellite attribute (Data Vault)
+> **Synonyms:** Measure (informal) · Fact (Kimball: additive / semi-additive / non-additive) · `measure` (MetricFlow) · Transactional satellite attribute (Data Vault)
 >
 > **Hue:** Emerald · **Primary fill:** `#059669` · **Stroke:** `#047857` · **Subgraph fill:** `#d1fae5`
 
@@ -50,8 +50,8 @@ A `non-negative quantity` test might be valid only when `transaction_type = 'sal
 
 ## Vignette index
 
-1. [`numeric-range.md`](./numeric-range.md) — `accepted_range`, `expect_column_values_to_be_between`
-2. [`additivity-tag.md`](./additivity-tag.md) — additive / semi-additive / non-additive classification + semantic-layer enforcement
-3. [`currency-pairing.md`](./currency-pairing.md) — amount columns always travel with `currency_code`
-4. [`distribution-anomaly.md`](./distribution-anomaly.md) — mean/stdev anomaly detection
-5. [`nan-inf-guard.md`](./nan-inf-guard.md) — divide-by-zero, Inf, NaN traps
+1. **MS-01** · [`numeric-range.md`](./numeric-range.md) — `accepted_range`, `expect_column_values_to_be_between`
+2. **MS-02** · [`additivity-tag.md`](./additivity-tag.md) — additive / semi-additive / non-additive classification + semantic-layer enforcement
+3. **MS-03** · [`currency-pairing.md`](./currency-pairing.md) — amount columns always travel with `currency_code`
+4. **MS-05** · [`distribution-anomaly.md`](./distribution-anomaly.md) — mean/stdev anomaly detection
+5. **MS-04** · [`nan-inf-guard.md`](./nan-inf-guard.md) — divide-by-zero, Inf, NaN traps
