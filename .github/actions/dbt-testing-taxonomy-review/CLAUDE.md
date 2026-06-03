@@ -105,6 +105,16 @@ advisory; the free tier may bill $0, so the figure is an at-list-price compariso
 cost from the provider's own `usage` payload + its published multipliers; keep rates as inputs so a
 model swap re-prices without code changes.*
 
+### ADR-8 · Drop `temperature` when the model rejects it
+**Status** accepted · **Context** benchmarking the newest models surfaced that gpt-5/o-series
+return `400 — temperature does not support 0; only the default (1) is supported`, so a
+`MODEL=openai/gpt-5-mini` swap would have 400'd in production. **Decision** `call_model` sends
+`temperature: 0` by default but, on a 400 mentioning "temperature", retries once without it
+(model default). **Consequences** the `model` input is now safely swappable to reasoning models;
+determinism is lost only for those that forbid temperature control. **Lens** *treat a 4xx that
+names a specific parameter as a capability signal — strip that parameter and retry once before
+giving up; don't assume every OpenAI-compatible model accepts every OpenAI-compatible field.*
+
 ## Extension checklist
 
 - [ ] Adding a rule? Edit `rules.json` only (code + metadata + `doc`); the schema enum follows automatically. Run the dev-contract diff.

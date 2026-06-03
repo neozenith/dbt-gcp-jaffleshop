@@ -103,10 +103,12 @@ def bench_input() -> list[Path]:
     return sorted((Path("dbt-jaffleshop/models/marts")).glob("*.sql"))
 
 
-def _post(model: str, sys_p: str, usr_p: str, rformat: dict | None) -> dict:
-    payload: dict = {"model": model, "temperature": 0,
+def _post(model: str, sys_p: str, usr_p: str, rformat: dict | None, with_temp: bool) -> dict:
+    payload: dict = {"model": model,
                      "messages": [{"role": "system", "content": sys_p},
                                   {"role": "user", "content": usr_p}]}
+    if with_temp:
+        payload["temperature"] = 0  # deterministic; reasoning models (gpt-5/o*) reject this
     if rformat is not None:
         payload["response_format"] = rformat
     req = urllib.request.Request(
@@ -118,19 +120,24 @@ def _post(model: str, sys_p: str, usr_p: str, rformat: dict | None) -> dict:
 
 
 def call_with_fallback(model: str, sys_p: str, usr_p: str) -> tuple[dict, str | None, str | None]:
-    """Try json_schema → json_object → plain. Return (usage, mode_used, error)."""
+    """Try json_schema → json_object → plain; drop temperature if the model rejects it
+    (gpt-5/o-series only allow the default). Return (usage, mode_used, error)."""
     modes = [("json_schema", review.response_format()), ("json_object", {"type": "json_object"}), ("plain", None)]
     last_err = None
     for name, rf in modes:
-        for attempt in range(4):
+        with_temp = True
+        for attempt in range(5):
             try:
-                return _post(model, sys_p, usr_p, rf), name, None
+                return _post(model, sys_p, usr_p, rf, with_temp), name, None
             except urllib.error.HTTPError as e:
-                detail = e.read().decode("utf-8", "replace")[:140]
-                if e.code == 429 and attempt < 3:
+                detail = e.read().decode("utf-8", "replace")
+                if e.code == 429 and attempt < 4:
                     time.sleep(min(60, 10 * (2 ** attempt)))
                     continue
-                last_err = f"{e.code} ({name}): {detail}"
+                if e.code == 400 and with_temp and "temperature" in detail.lower():
+                    with_temp = False  # retry same mode without temperature
+                    continue
+                last_err = f"{e.code} ({name}): {detail[:140]}"
                 break  # non-429: downgrade response_format and retry
             except Exception as e:  # noqa: BLE001
                 last_err = f"{name}: {e}"

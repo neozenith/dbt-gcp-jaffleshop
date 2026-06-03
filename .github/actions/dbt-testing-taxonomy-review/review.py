@@ -183,19 +183,25 @@ def response_format() -> dict:
 
 def call_model(endpoint: str, token: str, model: str, sys_p: str, usr_p: str) -> tuple[dict, dict]:
     """Return (parsed_content, usage). usage = {prompt_tokens, completion_tokens, total_tokens}."""
-    body = json.dumps({
-        "model": model,
-        "temperature": 0,
-        "messages": [{"role": "system", "content": sys_p}, {"role": "user", "content": usr_p}],
-        "response_format": response_format(),
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        f"{endpoint.rstrip('/')}/chat/completions", data=body,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                 "Accept": "application/json"}, method="POST")
+    with_temp = True  # gpt-5/o-series reject temperature != default; drop it if rejected.
+
+    def _body() -> bytes:
+        payload: dict = {
+            "model": model,
+            "messages": [{"role": "system", "content": sys_p}, {"role": "user", "content": usr_p}],
+            "response_format": response_format(),
+        }
+        if with_temp:
+            payload["temperature"] = 0
+        return json.dumps(payload).encode("utf-8")
+
     # GitHub Models free tier rate-limits requests; back off on 429 (honour Retry-After).
     attempts = 6
     for attempt in range(attempts):
+        req = urllib.request.Request(
+            f"{endpoint.rstrip('/')}/chat/completions", data=_body(),
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
+                     "Accept": "application/json"}, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=240) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
@@ -208,6 +214,10 @@ def call_model(endpoint: str, token: str, model: str, sys_p: str, usr_p: str) ->
                 wait = int(retry_after) if (retry_after and retry_after.isdigit()) else min(60, 10 * (2 ** attempt))
                 print(f"  rate-limited (429); retrying in {wait}s (attempt {attempt + 1}/{attempts})")
                 time.sleep(wait)
+                continue
+            if e.code == 400 and with_temp and "temperature" in detail.lower():
+                print("  model rejects temperature=0; retrying with model default")
+                with_temp = False
                 continue
             sys.exit(f"error: GitHub Models call failed ({e.code}): {detail}")
     sys.exit("error: GitHub Models call failed after retries")
