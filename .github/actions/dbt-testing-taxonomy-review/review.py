@@ -143,8 +143,13 @@ def user_prompt(models: list[Path]) -> str:
 
 
 def est_tokens(text: str) -> int:
-    """Rough token estimate (~4 chars/token) for greedy batching."""
-    return len(text) // 4 + 1
+    """Conservative token estimate (~3 chars/token, over-counting on purpose) for batching."""
+    return len(text) // 3 + 1
+
+
+# Stay comfortably under GitHub Models' ~8000-token request cap (system prompt + the
+# response_format schema + the model blocks all count as input).
+REQUEST_TOKEN_CAP = 7000
 
 
 def batch_models(models: list[Path], budget_tokens: int = 5000) -> list[list[Path]]:
@@ -225,7 +230,12 @@ def review_models(endpoint: str, token: str, model: str, models: list[Path]) -> 
     merged: dict = {"models": []}
     totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "calls": 0}
     sys_p = system_prompt()
-    batches = batch_models(models)
+    # Reserve room for the fixed per-request overhead (system prompt + the JSON schema that
+    # response_format sends) so a batch's model blocks can't push the request over the cap.
+    overhead = est_tokens(sys_p) + est_tokens(json.dumps(response_format()))
+    budget = max(1500, REQUEST_TOKEN_CAP - overhead)
+    batches = batch_models(models, budget)
+    print(f"  overhead≈{overhead} tok · per-request model budget≈{budget} tok · {len(batches)} batch(es)")
     for i, batch in enumerate(batches):
         names = ", ".join(s.stem for s in batch)
         print(f"  [batch {i + 1}/{len(batches)}] {len(batch)} model(s): {names}")
