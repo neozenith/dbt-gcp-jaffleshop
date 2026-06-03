@@ -137,43 +137,61 @@ not hand-maintained. Refresh: `gh workflow run "github models catalog" --ref mai
 
 <!-- BENCH_RESULTS -->
 Trial date **2026-06-03** (free tier). Workload: review the **7 mart models** (`customers,
-locations, metricflow_time_spine, order_items, orders, products, supplies`), batched. Sorted
-cheapest-first among successful runs; `API calls` = batches.
+locations, metricflow_time_spine, order_items, orders, products, supplies`), batched as in
+production. `calls` = request batches; `Tok/s` = output tokens ÷ wall (generation throughput);
+tier/context from the catalogue. Run `bench.py` with `BENCH_SET=priced|newest`.
 
-| Model | resp_format | API calls | Input tok | Output tok | Total tok | Wall (s) | Est. cost | Status |
-|-------|:-----------:|:---------:|----------:|-----------:|----------:|---------:|----------:|--------|
-| `microsoft/phi-4-mini-instruct` | plain | 3 | 5,269 | 1,154 | 6,423 | 293.9 | $0.0007 | ✓ |
-| `microsoft/phi-4` | json_object | 3 | 11,969 | 5,301 | 17,270 | 397.9 | $0.0041 | ✓ |
-| `openai/gpt-4o-mini` | json_schema | 3 | 13,663 | 3,601 | 17,264 | 82.7 | $0.0042 | ✓ |
-| `meta/llama-3.3-70b-instruct` | json_schema | 3 | 12,041 | 7,096 | 19,137 | 54.2 | $0.0136 | ✓ |
-| `openai/gpt-4.1-mini` | json_schema | 3 | 13,663 | 8,003 | 21,666 | 139.7 | $0.0183 | ✓ |
-| `meta/llama-4-maverick-17b-128e-instruct-fp8` | json_schema | 3 | 11,921 | 18,818 | 30,739 | 198.6 | $0.0218 | ✓ |
-| `openai/gpt-4o` | json_schema | 3 | 13,663 | 2,472 | 16,135 | 37.3 | $0.0589 | ✓ |
-| `deepseek/deepseek-v3-0324` | json_object | 1 of 3 | 3,840 | 3,045 | 6,885 | 38.0 | partial | ⚠️ 413 — per-model cap is **4000 tok** (< 8000); later batches overflow |
-| `xai/grok-3-mini` | — | 0 | — | — | — | 3.7 | — | ⚠️ 400 `unknown_model` — not available for inference on this account |
-| `xai/grok-3` | — | 0 | — | — | — | 3.6 | — | ⚠️ 400 `unknown_model` |
+#### Priced set (cheapest-first)
+
+| Model | tier | ctx in | resp_format | calls | In tok | Out tok | Wall (s) | Tok/s | Est. cost | Notes |
+|-------|:----:|-------:|:-----------:|:-----:|------:|-------:|--------:|------:|----------:|-------|
+| `microsoft/phi-4-mini-instruct` | low | 128,000 | plain | 3 | 5,269 | 1,154 | 293.9 | 3.9 | $0.0007 | ✓ (plain only) |
+| `microsoft/phi-4` | low | 16,384 | json_object | 3 | 11,969 | 5,301 | 397.9 | 13.3 | $0.0041 | ✓ |
+| `openai/gpt-4o-mini` | low | 131,072 | json_schema | 3 | 13,663 | 3,601 | 82.7 | 43.5 | $0.0042 | ✓ |
+| `meta/llama-3.3-70b-instruct` | high | 128,000 | json_schema | 3 | 12,041 | 7,096 | 54.2 | 130.9 | $0.0136 | ✓ fastest non-OpenAI |
+| `openai/gpt-4.1-mini` | low | 1,048,576 | json_schema | 3 | 13,663 | 8,003 | 139.7 | 57.3 | $0.0183 | ✓ |
+| `meta/llama-4-maverick-17b-128e-instruct-fp8` | high | 1,000,000 | json_schema | 3 | 11,921 | 18,818 | 198.6 | 94.8 | $0.0218 | ✓ verbose output |
+| `openai/gpt-4o` | high | 131,072 | json_schema | 3 | 13,663 | 2,472 | 37.3 | 66.3 | $0.0589 | ✓ fastest wall |
+| `deepseek/deepseek-v3-0324` | high | 128,000 | json_object | 1/3 | 3,840 | 3,045 | 38.0 | 80.1 | partial | ⚠️ 413 — 4000-tok request cap |
+| `xai/grok-3-mini` | custom | 131,072 | — | 0 | — | — | 3.7 | — | — | ⚠️ 400 `unknown_model` |
+| `xai/grok-3` | custom | 131,072 | — | 0 | — | — | 3.6 | — | — | ⚠️ 400 `unknown_model` |
+
+#### Newest set (8 newest/flagship; throughput-first — most are unpriced)
+
+| Model | tier | ctx in | resp_format | calls | In tok | Out tok | Wall (s) | Tok/s | Est. cost | Notes |
+|-------|:----:|-------:|:-----------:|:-----:|------:|-------:|--------:|------:|----------:|-------|
+| `openai/gpt-5-nano` | custom | 200,000 | json_object | 1/3 | 3,733 | 16,752 | 142.7 | **117.4** | — | ⚠️ 413 4000-tok cap; unpriced; very verbose |
+| `openai/o4-mini` | custom | 200,000 | json_object | 1/3 | 3,733 | 8,912 | 87.4 | 102.0 | — | ⚠️ 413 4000-tok cap; unpriced |
+| `openai/o3` | custom | 200,000 | plain | 2/3 | 7,593 | 11,987 | 118.2 | 101.4 | — | ⚠️ 413 4000-tok cap; unpriced |
+| `openai/gpt-5-mini` | custom | 200,000 | json_object | 1/3 | 3,733 | 6,849 | 99.7 | 68.7 | — | ⚠️ 413 4000-tok cap; unpriced |
+| `meta/llama-4-scout-17b-16e-instruct` | high | 10,000,000 | json_schema | 3 | 11,921 | 3,795 | 56.8 | 66.8 | — | ✓ full run; unpriced |
+| `deepseek/deepseek-r1-0528` | custom | 128,000 | json_object | 1/3 | 3,840 | 9,230 | 172.9 | 53.4 | $0.0550 | ⚠️ 413 4000-tok cap; **priced** |
+| `openai/gpt-5` | custom | 200,000 | plain | 1/3 | 3,733 | 9,878 | 428.5 | 23.1 | — | ⚠️ 413 4000-tok cap; unpriced; slowest |
+| `xai/grok-3` | custom | 131,072 | — | 0 | — | — | 4.1 | — | — | ⚠️ 400 `unknown_model` |
 
 ### Findings
 
 - **Best default — `openai/gpt-4o-mini`**: native `json_schema`, **$0.0042** (≈14× cheaper than
-  `gpt-4o`'s $0.0589 for the same work), ~83 s. Strong balance of cost, speed, and structure.
-- **Fastest — `openai/gpt-4o`** (37 s) but the most expensive by far; reserve for max-quality needs.
-- **Cheapest — `microsoft/phi-4-mini-instruct`** ($0.0007) but only in **plain** mode (it rejected
-  both `json_schema` and `json_object`), so it relies on prompt-only JSON — riskier for the strict
-  contract. `microsoft/phi-4` ($0.0041, `json_object`) is the cheap-but-structured middle.
-- **Non-OpenAI structured output works** — `meta/llama-3.3-70b-instruct` accepted `json_schema`
-  ($0.0136, fastest non-OpenAI at 54 s).
-- **Output verbosity drives cost** — `llama-4-maverick` emitted **18.8k** output tokens (vs gpt-4o's
-  2.5k), making it slower and pricier than its low rate suggests.
-- **Per-model request caps differ** — `deepseek-v3-0324` caps requests at **4000 tokens** (half of
-  gpt-4o's 8000); the engine's fixed 7000 budget overflows it. To use a small-cap model, lower
-  `REQUEST_TOKEN_CAP` (ideally make the budget per-model).
-- **Catalogue ≠ inference availability** — `xai/grok-3*` are listed in the catalogue but return
-  `unknown_model` at the inference endpoint; verify a model answers before adopting it.
-- **Throughput varies** — the Phi models were slow on the free tier (~300–400 s); OpenAI + Llama
-  returned in 40–140 s.
+  `gpt-4o`'s $0.0589 for the same work), 44 tok/s, fits the 8000-tok batch budget. Balanced winner.
+- **Throughput ≠ cost ≠ wall.** Fastest *generators*: `gpt-5-nano` (117 tok/s), `o4-mini`/`o3`
+  (~102), `llama-3.3-70b` (131 among priced). Fastest *wall*: `gpt-4o` (37 s). Cheapest:
+  `phi-4-mini` ($0.0007, but plain-only and only 4 tok/s). Different winners per axis.
+- **The newest reasoning models hit a 4000-token request cap** (free-tier `custom` tier — half of
+  gpt-4o/4.1's 8000), so the action's 7000-tok budget 413s them after the first batch. To use them,
+  drop `REQUEST_TOKEN_CAP` to ≤ ~3000 (ideally per-model). `deepseek-v3` shares this 4000 cap.
+- **`temperature=0` is rejected by gpt-5/o-series** ("only the default is supported"); the engine now
+  retries without it (ADR-8). Without that fix they 400 outright.
+- **Most newest models are UNPRICED** — only `deepseek-r1-0528` has a published multiplier
+  ($0.0550 here); `gpt-5*`, `o3`, `o4-mini`, `llama-4-scout` have none, so cost reads `—`.
+- **Reasoning models are verbose + slow** — `gpt-5-nano` emitted **16.7k** output tokens; `gpt-5`
+  took **428 s**. High output-token counts would dominate cost if/when these get priced.
+- **`xai/grok-3*` is catalogued but not inferenceable** (`unknown_model`) — catalogue ≠ availability.
+- **Structured output beyond OpenAI** — `llama-3.3-70b` and `llama-4-scout` accept strict
+  `json_schema`; gpt-5/o-series accepted only `json_object`/plain here; Phi models only plain.
 
-> **Recommendation:** default the action to **`openai/gpt-4o-mini`** (`model` input) — structured,
-> cheap, fast-enough. Keep `gpt-4o` as a quality escalation. Re-run `bench.py` periodically; rates
-> and availability change.
+> **Recommendation:** keep the action default at **`openai/gpt-4o-mini`** — priced, structured
+> (`json_schema`), 8000-tok cap fits the batch budget, balanced cost/throughput. The newest
+> reasoning models are unpriced, slower, verbose, and 4000-tok-capped → poor fit as the default
+> (and `cost-per-1m-*` can't be set meaningfully until GitHub publishes their multipliers). Re-run
+> `bench.py` periodically — rates, availability, and caps change.
 <!-- /BENCH_RESULTS -->
