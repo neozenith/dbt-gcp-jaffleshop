@@ -47,11 +47,15 @@ TOKEN = os.environ.get("GITHUB_TOKEN", "")
 PRICING: dict[str, tuple[float, float]] = {
     "openai/gpt-4o": (2.50, 10.00),
     "openai/gpt-4o-mini": (0.15, 0.60),
+    "openai/gpt-4.1": (2.00, 8.00),
     "openai/gpt-4.1-mini": (0.40, 1.60),
     "microsoft/phi-4": (0.125, 0.50),
     "microsoft/phi-4-mini-instruct": (0.075, 0.30),
-    "deepseek/deepseek-v3-0324": (1.14, 4.56),
+    "microsoft/phi-4-multimodal-instruct": (0.08, 0.32),
+    "microsoft/mai-ds-r1": (1.35, 5.40),
+    "deepseek/deepseek-r1": (1.35, 5.40),
     "deepseek/deepseek-r1-0528": (1.35, 5.40),
+    "deepseek/deepseek-v3-0324": (1.14, 4.56),
     "meta/llama-3.3-70b-instruct": (0.71, 0.71),
     "meta/llama-4-maverick-17b-128e-instruct-fp8": (0.25, 1.00),
 }
