@@ -17,32 +17,46 @@ GitHub Models charges **$0.00001 per token unit**. Token units = actual tokens �
 $ / 1M tokens  =  multiplier × 1,000,000 × $0.00001  =  multiplier × $10
 ```
 
-> The **free tier may bill $0** (rate-limited). The cost column below is the at-list-price
+> The **free tier may bill $0** (rate-limited). The prices below are the at-list-price
 > equivalent, so models are comparable regardless of which tier actually runs them.
-> Source: [Costs for GitHub Models](https://docs.github.com/en/billing/reference/costs-for-github-models) (fetched 2026-06-03).
 
-## Catalogue + pricing (models with published multipliers)
+### Where the multipliers come from (and how we extract them)
 
-| Model id | Provider | Input mult. | Output mult. | ≈ $/1M in | ≈ $/1M out |
-|----------|----------|------------:|-------------:|----------:|-----------:|
-| `openai/gpt-4o` | OpenAI | 0.25 | 1.0 | $2.50 | $10.00 |
-| `openai/gpt-4o-mini` | OpenAI | 0.015 | 0.06 | $0.15 | $0.60 |
-| `openai/gpt-4.1` | OpenAI | 0.2 | 0.8 | $2.00 | $8.00 |
-| `openai/gpt-4.1-mini` | OpenAI | 0.04 | 0.16 | $0.40 | $1.60 |
-| `microsoft/phi-4` | Microsoft | 0.0125 | 0.05 | $0.125 | $0.50 |
-| `microsoft/phi-4-mini-instruct` | Microsoft | 0.0075 | 0.03 | $0.075 | $0.30 |
-| `microsoft/phi-4-multimodal-instruct` | Microsoft | 0.008 | 0.032 | $0.08 | $0.32 |
-| `deepseek/deepseek-v3-0324` | DeepSeek | 0.114 | 0.456 | $1.14 | $4.56 |
-| `deepseek/deepseek-r1` | DeepSeek | 0.135 | 0.54 | $1.35 | $5.40 |
-| `microsoft/mai-ds-r1` | Microsoft | 0.135 | 0.54 | $1.35 | $5.40 |
-| `xai/grok-3` | xAI | 0.3 | 1.5 | $3.00 | $15.00 |
-| `xai/grok-3-mini` | xAI | 0.025 | 0.127 | $0.25 | $1.27 |
-| `meta/llama-3.3-70b-instruct` | Meta | 0.071 | 0.071 | $0.71 | $0.71 |
-| `meta/llama-4-maverick-17b-128e-instruct-fp8` | Meta | 0.025 | 0.1 | $0.25 | $1.00 |
+The catalogue API has **no pricing**. The authoritative multipliers live in GitHub's **docs
+source** — `github/docs` → `content/billing/reference/costs-for-github-models.md` (the data
+rendered at docs.github.com), which is public and parseable. The
+[`github models catalog`](../../../workflows/github-models-catalog.yml) workflow fetches both
+(catalogue via `GITHUB_TOKEN`, multipliers via that doc) and prints them to the run log / job
+summary / artifact. Working backwards: **`$/1M = multiplier × $10`** (the doc also lists
+precomputed prices, which match). Refresh: `gh workflow run "github models catalog" --ref main`.
 
-> Other catalogue families (Cohere, Mistral AI, AI21 Labs, OpenAI `gpt-5`/`o`-series) are
-> available for inference but did **not** have published billing multipliers at fetch time, so
-> their at-list-price cost can't be stated here.
+### Billing multipliers (GHA-extracted, all priced models)
+
+The complete table as published by GitHub — extracted from run `26885409627`. `$/1M = mult × $10`.
+Cached-input applies only where the model supports prompt caching.
+
+| Model id | Provider | In mult | Cached-in mult | Out mult | $/1M in | $/1M cached-in | $/1M out |
+|----------|----------|--------:|---------------:|---------:|--------:|---------------:|--------:|
+| `openai/gpt-4o` | OpenAI | 0.25 | 0.125 | 1.0 | $2.50 | $1.25 | $10.00 |
+| `openai/gpt-4o-mini` | OpenAI | 0.015 | 0.0075 | 0.06 | $0.15 | $0.08 | $0.60 |
+| `openai/gpt-4.1` | OpenAI | 0.2 | 0.05 | 0.8 | $2.00 | $0.50 | $8.00 |
+| `openai/gpt-4.1-mini` | OpenAI | 0.04 | 0.01 | 0.16 | $0.40 | $0.10 | $1.60 |
+| `microsoft/phi-4` | Microsoft | 0.0125 | — | 0.05 | $0.13 | — | $0.50 |
+| `microsoft/phi-4-mini-instruct` | Microsoft | 0.0075 | — | 0.03 | $0.08 | — | $0.30 |
+| `microsoft/phi-4-multimodal-instruct` | Microsoft | 0.008 | — | 0.032 | $0.08 | — | $0.32 |
+| `deepseek/deepseek-r1` | DeepSeek | 0.135 | — | 0.54 | $1.35 | — | $5.40 |
+| `deepseek/deepseek-r1-0528` | DeepSeek | 0.135 | — | 0.54 | $1.35 | — | $5.40 |
+| `deepseek/deepseek-v3-0324` | DeepSeek | 0.114 | — | 0.456 | $1.14 | — | $4.56 |
+| `microsoft/mai-ds-r1` | Microsoft | 0.135 | — | 0.54 | $1.35 | — | $5.40 |
+| `xai/grok-3-mini` | xAI | 0.025 | — | 0.127 | $0.25 | — | $1.27 |
+| `xai/grok-3` | xAI | 0.3 | — | 1.5 | $3.00 | — | $15.00 |
+| `meta/llama-4-maverick-17b-128e-instruct-fp8` | Meta | 0.025 | — | 0.1 | $0.25 | — | $1.00 |
+| `meta/llama-3.3-70b-instruct` | Meta | 0.071 | — | 0.071 | $0.71 | — | $0.71 |
+
+> Only these 15 models have published multipliers. The other ~26 catalogue entries (Cohere,
+> Mistral AI, AI21 Labs, the OpenAI `gpt-5`/`o`-series, `llama-4-scout`, Grok via some ids, …)
+> are inferenceable but **unpriced** in the doc — so their at-list-price cost can't be stated,
+> and they show `—` in the trial results below.
 
 ### Full live catalogue (authoritative, via GHA)
 
