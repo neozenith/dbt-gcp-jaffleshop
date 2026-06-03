@@ -14,6 +14,20 @@ DBT_BQ_METHOD := $(or $(DBT_BQ_METHOD),oauth)
 DBT_BQ_DATASET_DEV := $(or $(DBT_BQ_DATASET_DEV),dbt_dev)
 DBT_BQ_DATASET_TEST := $(or $(DBT_BQ_DATASET_TEST),dbt_test)
 DBT_BQ_DATASET_PROD := $(or $(DBT_BQ_DATASET_PROD),analytics)
+# Elementary models land in the `elementary` custom schema → upper-cased to ELEMENTARY in
+# PROD by generate_schema_name (no slice prefix). This is the dataset `edr` reads from.
+DBT_BQ_DATASET_ELEMENTARY := $(or $(DBT_BQ_DATASET_ELEMENTARY),ELEMENTARY)
+# Dedicated, narrowly-scoped SA for local Elementary reporting (infra/dbt.tf): prod read +
+# create/drop ONLY within the prod ELEMENTARY dataset (edr needs scratch tables; it is not a
+# read-only tool). Impersonated via the developer's own ADC, so the global gcloud config is
+# never repointed. profiles.yml hardcodes this email in the prod-impersonate outputs; the var
+# is here for visibility / `make help`.
+ELEMENTARY_SA := $(or $(ELEMENTARY_SA),dbt-dev-elementary@dbt-dev-jaffleshop.iam.gserviceaccount.com)
+# Canonical prod GCP project, supplied INLINE by the read-only prod targets below (not a
+# global default): profiles.yml keeps DBT_BQ_PROJECT_PROD fail-loud so a stray prod-target
+# `build`/`run` write still errors out — only the read-only docs/report recipes hardcode it,
+# mirroring what dbt-docs.yml does in CI.
+ELEMENTARY_PROD_PROJECT := dbt-prod-jaffleshop
 DBT_BQ_LOCATION := $(or $(DBT_BQ_LOCATION),US)
 DBT_BQ_THREADS := $(or $(DBT_BQ_THREADS),4)
 DBT_BQ_TIMEOUT_SECS := $(or $(DBT_BQ_TIMEOUT_SECS),300)
@@ -32,7 +46,7 @@ export
 
 export DBT_PROFILES_DIR := $(CURDIR)
 
-.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage doc-columns-coverage tests-coverage checks boundaries system-boundaries-check sdag sdag-serve pytest deploy-dev
+.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage doc-columns-coverage tests-coverage checks boundaries system-boundaries-check sdag sdag-serve pytest deploy-dev elementary-init elementary-report gha-docs
 
 help:
 	@echo "Targets:"
@@ -47,6 +61,10 @@ help:
 	@echo "  test      dbt test"
 	@echo "  compile   dbt compile"
 	@echo "  docs      dbt docs generate && dbt docs serve"
+	@echo "  elementary-report  generate the Elementary observability dashboard from PROD"
+	@echo "                     (impersonates dbt-dev for read-only prod access; single target)"
+	@echo "  gha-docs  simulate .github/workflows/dbt-docs.yml locally: build the static docs +"
+	@echo "            sdag viewer + Elementary report into tmp/_site, then serve them"
 	@echo "  format    sqlfluff format ALL models (auto-fix layout + keyword case)"
 	@echo "  format-check  formatter check on CHANGED models (subset of rules; vs BASE_REF=$(BASE_REF))"
 	@echo "  lint      full sqlfluff lint on CHANGED models, all rules (vs BASE_REF=$(BASE_REF))"
@@ -107,6 +125,61 @@ docs:
 
 docs-serve: docs
 	uv run dbt docs serve
+
+# --- Elementary observability report -----------------------------------------
+# `edr report` renders the Elementary telemetry tables (dbt run/test results, model
+# run-times, anomaly history) into one self-contained HTML dashboard.
+#
+# This is the single, self-contained target the project goal calls for. It impersonates the
+# dedicated dbt-dev-elementary SA (the elementary profile's prod-impersonate output): prod
+# read + create/drop ONLY within the prod ELEMENTARY dataset (edr materializes scratch tables,
+# so it is not a read-only tool — hence a purpose-built SA rather than widening read-only
+# dbt-dev). One-time setup is ordinary user ADC — NOT a repointed global ADC:
+#   gcloud auth application-default login    # as a developer listed in infra/dbt-developers.yml
+# BigQuery mints the short-lived SA token itself, so your global gcloud config is untouched
+# (contrast `make login`, which repoints application-default credentials).
+#
+# PREREQUISITE: the dbt-dev-elementary SA must be provisioned first (infra/dbt.tf, applied via
+# the Terraform pipeline). Until then this target fails with a BigQuery permission error.
+#
+# DBT_BQ_PROJECT_PROD is supplied inline (profiles.yml keeps it fail-loud); the elementary
+# dataset defaults to ELEMENTARY. Output: edr_target/elementary_report.html (gitignored).
+# Override ELEMENTARY_REPORT_PATH to write elsewhere (gha-docs points it into the site dir).
+ELEMENTARY_REPORT_PATH ?= $(CURDIR)/edr_target/elementary_report.html
+elementary-report: deps
+	DBT_BQ_PROJECT_PROD=$(ELEMENTARY_PROD_PROJECT) \
+	uv run edr report \
+	  --profiles-dir "$(CURDIR)" \
+	  --profile-target prod-impersonate \
+	  --target-path "$(CURDIR)/edr_target" \
+	  --file-path "$(ELEMENTARY_REPORT_PATH)"
+
+# --- gha-docs: local fidelity-run of .github/workflows/dbt-docs.yml ------------
+# Reproduces the Pages build job's three published artefacts as siblings, then serves
+# them — so you can eyeball exactly what a tag/dispatch will publish, without a release.
+#   1. dbt docs generate --static   → static_index.html copied to <site>/index.html
+#   2. cicd_cli products generate   → <site>/sdag.html (+ graph JSON) lineage viewer
+#   3. edr report                   → <site>/elementary_report.html observability dashboard
+# Prod reads here impersonate dbt-dev (parity with CI's dbt-prod SA, minus the WIF path).
+# Because target.name 'prod-impersonate' is not a valid DBT_ENV_TYPE, DBT_ENV_TYPE=PROD is
+# set so data_environment() resolves PROD (unsliced, upper-cased datasets) — see profiles.yml.
+GHA_SITE := $(CURDIR)/tmp/_site
+gha-docs: deps
+	rm -rf "$(GHA_SITE)"
+	mkdir -p "$(GHA_SITE)"
+	DBT_TARGET=prod-impersonate DBT_ENV_TYPE=PROD DBT_BQ_PROJECT_PROD=$(ELEMENTARY_PROD_PROJECT) \
+	  uv run dbt docs generate --target prod-impersonate --static
+	cp target/static_index.html "$(GHA_SITE)/index.html"
+	DBT_TARGET=prod-impersonate DBT_ENV_TYPE=PROD DBT_BQ_PROJECT_PROD=$(ELEMENTARY_PROD_PROJECT) \
+	  uv run -m cicd_cli products generate -o "$(GHA_SITE)"
+	$(MAKE) elementary-report ELEMENTARY_REPORT_PATH="$(GHA_SITE)/elementary_report.html"
+	@echo ""
+	@echo "Simulated GitHub Pages site assembled in $(GHA_SITE):"
+	@echo "  http://localhost:8089/index.html              (dbt docs)"
+	@echo "  http://localhost:8089/sdag.html               (data-product lineage)"
+	@echo "  http://localhost:8089/elementary_report.html  (Elementary observability)"
+	@echo "Ctrl-C to stop."
+	uv run python -m http.server 8089 --directory "$(GHA_SITE)"
 
 # --- cicd_cli: all CHANGED-model gates (SQLFluff, dbt-autofix, coverage) -------
 # The shell that used to live here now lives in the cicd_cli Python package

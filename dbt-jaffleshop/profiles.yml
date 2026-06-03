@@ -33,3 +33,71 @@ jaffle_shop:
       priority: batch
       job_execution_timeout_seconds: "{{ env_var('DBT_BQ_TIMEOUT_SECS', '600') | int }}"
       job_retries: 2
+
+    # Local-only READ path into PROD. Identical to `prod` but BigQuery impersonates the
+    # dedicated dbt-dev-elementary SA (infra/dbt.tf): read-only on prod business data
+    # (dataViewer + jobUser) plus create/drop ONLY within the prod ELEMENTARY dataset.
+    # A developer authenticates with their own gcloud ADC (must be listed in
+    # infra/dbt-developers.yml so they have tokenCreator on dbt-dev-elementary) and BigQuery
+    # mints a short-lived token — no keyfiles, and the developer's global ADC is NOT repointed
+    # at the SA. Used by `make gha-docs` for the docs catalog query (a read-only operation, so
+    # the read scope alone suffices here). NEVER selected in CI (the prod job authenticates as
+    # dbt-prod via WIF and uses the `prod` target above).
+    # target.name 'prod-impersonate' is not a valid DBT_ENV_TYPE, so callers MUST set
+    # DBT_ENV_TYPE=PROD (data_environment() would otherwise raise) — the make target does.
+    prod-impersonate:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('DBT_BQ_PROJECT_PROD') }}"
+      dataset: "{{ env_var('DBT_BQ_DATASET_PROD', 'analytics') }}"
+      location: "{{ env_var('DBT_BQ_LOCATION', 'US') }}"
+      threads: "{{ env_var('DBT_BQ_THREADS', '4') | int }}"
+      priority: interactive
+      job_execution_timeout_seconds: "{{ env_var('DBT_BQ_TIMEOUT_SECS', '600') | int }}"
+      job_retries: 2
+      impersonate_service_account: dbt-dev-elementary@dbt-dev-jaffleshop.iam.gserviceaccount.com
+
+# =============================================================================
+# Elementary CLI (`edr`) connection profile.
+#
+# `edr report` reads the Elementary telemetry tables that the elementary dbt
+# package writes (run results, test results, model run-times, anomaly history)
+# and renders them into a single self-contained observability dashboard.
+#
+# edr requires a dbt-format profile literally named `elementary` whose dataset
+# is the schema those tables live in. In this project the elementary models are
+# configured `+schema: elementary` (dbt_project.yml); generate_schema_name
+# upper-cases custom schemas in PROD with no slice prefix, so in prod they land
+# in the `ELEMENTARY` dataset of dbt-prod-jaffleshop. DBT_BQ_DATASET_ELEMENTARY
+# defaults to that; override only if the elementary schema is renamed.
+#
+# IMPORTANT: edr is NOT read-only — it creates and drops intermediate tables in this dataset
+# while assembling the report. So the connecting identity needs create/drop on ELEMENTARY:
+#   prod              — CI (dbt-docs.yml) is authenticated as dbt-prod via WIF (writes its own project).
+#   prod-impersonate  — local (`make elementary-report`): your ADC impersonates the dedicated
+#                       dbt-dev-elementary SA, scoped to prod read + create/drop on ELEMENTARY only
+#                       (infra/dbt.tf). dbt-dev itself stays strictly read-only on prod.
+# =============================================================================
+elementary:
+  target: "{{ env_var('DBT_TARGET', 'prod-impersonate') }}"
+  outputs:
+    prod:
+      type: bigquery
+      method: "{{ env_var('DBT_BQ_METHOD', 'oauth') }}"
+      project: "{{ env_var('DBT_BQ_PROJECT_PROD') }}"
+      dataset: "{{ env_var('DBT_BQ_DATASET_ELEMENTARY', 'ELEMENTARY') }}"
+      location: "{{ env_var('DBT_BQ_LOCATION', 'US') }}"
+      threads: "{{ env_var('DBT_BQ_THREADS', '4') | int }}"
+      priority: interactive
+      job_execution_timeout_seconds: "{{ env_var('DBT_BQ_TIMEOUT_SECS', '300') | int }}"
+
+    prod-impersonate:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('DBT_BQ_PROJECT_PROD') }}"
+      dataset: "{{ env_var('DBT_BQ_DATASET_ELEMENTARY', 'ELEMENTARY') }}"
+      location: "{{ env_var('DBT_BQ_LOCATION', 'US') }}"
+      threads: "{{ env_var('DBT_BQ_THREADS', '4') | int }}"
+      priority: interactive
+      job_execution_timeout_seconds: "{{ env_var('DBT_BQ_TIMEOUT_SECS', '300') | int }}"
+      impersonate_service_account: dbt-dev-elementary@dbt-dev-jaffleshop.iam.gserviceaccount.com

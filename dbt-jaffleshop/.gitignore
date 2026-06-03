@@ -6,6 +6,8 @@ env
 target/
 dbt_packages/
 logs/
+# Elementary CLI (`edr report`) output dir — generated dashboard + edr logs.
+edr_target/
 # profiles.yml is intentionally committed — values are env_var()-templated, no secrets.
 
 .DS_Store
