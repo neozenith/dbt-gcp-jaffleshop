@@ -41,10 +41,9 @@ import review  # noqa: E402  (reuse system_prompt/user_prompt/batch_models/est_t
 ENDPOINT = os.environ.get("MODELS_ENDPOINT", "https://models.github.ai/inference")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
 
-# Curated set: >=8 models across 5 providers, every one with a published GitHub Models
-# multiplier. (input $/1M, output $/1M) = multiplier * $10.
 # (input $/1M, output $/1M) = GitHub Models multiplier × $10. Only models with a published
 # multiplier appear here; others → cost shown as "—" (no published rate).
+# NB: Grok (xai/grok-3*) is excluded everywhere — it returns unknown_model at inference.
 PRICING: dict[str, tuple[float, float]] = {
     "openai/gpt-4o": (2.50, 10.00),
     "openai/gpt-4o-mini": (0.15, 0.60),
@@ -53,25 +52,22 @@ PRICING: dict[str, tuple[float, float]] = {
     "microsoft/phi-4-mini-instruct": (0.075, 0.30),
     "deepseek/deepseek-v3-0324": (1.14, 4.56),
     "deepseek/deepseek-r1-0528": (1.35, 5.40),
-    "xai/grok-3-mini": (0.25, 1.27),
-    "xai/grok-3": (3.00, 15.00),
     "meta/llama-3.3-70b-instruct": (0.71, 0.71),
     "meta/llama-4-maverick-17b-128e-instruct-fp8": (0.25, 1.00),
 }
 
-# Selectable benchmark sets (BENCH_SET=priced|newest, default priced).
+# Selectable benchmark sets (BENCH_SET=priced|newest, default priced). Grok excluded (unknown_model).
 SETS: dict[str, list[str]] = {
     "priced": [
         "openai/gpt-4o", "openai/gpt-4o-mini", "openai/gpt-4.1-mini",
         "microsoft/phi-4", "microsoft/phi-4-mini-instruct", "deepseek/deepseek-v3-0324",
-        "xai/grok-3-mini", "xai/grok-3", "meta/llama-3.3-70b-instruct",
-        "meta/llama-4-maverick-17b-128e-instruct-fp8",
+        "meta/llama-3.3-70b-instruct", "meta/llama-4-maverick-17b-128e-instruct-fp8",
     ],
-    # The 8 newest / flagship models (mostly reasoning, "custom" rate tier; several have no
+    # The newest / flagship models (mostly reasoning, "custom" rate tier; several have no
     # published price multiplier yet — cost will read "—").
     "newest": [
         "openai/gpt-5", "openai/gpt-5-mini", "openai/gpt-5-nano",
-        "openai/o3", "openai/o4-mini", "xai/grok-3",
+        "openai/o3", "openai/o4-mini",
         "meta/llama-4-scout-17b-16e-instruct", "deepseek/deepseek-r1-0528",
     ],
 }

@@ -47,7 +47,7 @@ both the 429s and the 413s the trials hit:
 | **Low** | 15 | **150** | 8000 in / 4000 out | 5 |
 | **High** | 10 | **50** | 8000 in / 4000 out | 2 |
 | **Embedding** | 15 | 150 | 64000 | 5 |
-| **Custom** (per-model; reasoning, gpt-5/o*, deepseek, grok) | model-specific & much tighter (e.g. `o1-preview` = 1 rpm) | — | observed **4000 in** | — |
+| **Custom** (per-model; reasoning, gpt-5/o*, deepseek) | model-specific & much tighter (e.g. `o1-preview` = 1 rpm) | — | observed **4000 in** | — |
 
 Implications for this action:
 - **High-tier models get only 50 requests/day on the free tier** — `gpt-4o`, `gpt-4.1`,
@@ -78,15 +78,14 @@ Cached-input applies only where the model supports prompt caching.
 | `deepseek/deepseek-r1-0528` | DeepSeek | 0.135 | — | 0.54 | $1.35 | — | $5.40 |
 | `deepseek/deepseek-v3-0324` | DeepSeek | 0.114 | — | 0.456 | $1.14 | — | $4.56 |
 | `microsoft/mai-ds-r1` | Microsoft | 0.135 | — | 0.54 | $1.35 | — | $5.40 |
-| `xai/grok-3-mini` | xAI | 0.025 | — | 0.127 | $0.25 | — | $1.27 |
-| `xai/grok-3` | xAI | 0.3 | — | 1.5 | $3.00 | — | $15.00 |
 | `meta/llama-4-maverick-17b-128e-instruct-fp8` | Meta | 0.025 | — | 0.1 | $0.25 | — | $1.00 |
 | `meta/llama-3.3-70b-instruct` | Meta | 0.071 | — | 0.071 | $0.71 | — | $0.71 |
 
-> Only these 15 models have published multipliers. The other ~26 catalogue entries (Cohere,
-> Mistral AI, AI21 Labs, the OpenAI `gpt-5`/`o`-series, `llama-4-scout`, Grok via some ids, …)
-> are inferenceable but **unpriced** in the doc — so their at-list-price cost can't be stated,
-> and they show `—` in the trial results below.
+> GitHub publishes multipliers for 15 models; the 2 Grok ids (`xai/grok-3`, `xai/grok-3-mini`) are
+> **omitted everywhere** in this doc because they return `unknown_model` at the inference endpoint
+> (priced but not usable), leaving the 13 shown. The other ~26 catalogue entries (Cohere, Mistral
+> AI, AI21 Labs, the OpenAI `gpt-5`/`o`-series, `llama-4-scout`, …) are inferenceable but
+> **unpriced** in the doc — so their at-list-price cost can't be stated, shown as `—` below.
 
 ### Full live catalogue (authoritative, via GHA)
 
@@ -101,7 +100,7 @@ not hand-maintained. Refresh: `gh workflow run "github models catalog" --ref mai
 > multipliers above (multiplier × $10) — there is no single endpoint with both.
 
 <details>
-<summary>43 models — GHA-extracted 2026-06-03 (run 26883567820)</summary>
+<summary>41 models — GHA-extracted 2026-06-03 (run 26883567820); <code>xai/grok-3</code>/<code>-mini</code> omitted (return unknown_model)</summary>
 
 | id | publisher | tier | ctx in | ctx out | input | capabilities |
 |----|-----------|------|-------:|--------:|-------|--------------|
@@ -146,8 +145,6 @@ not hand-maintained. Refresh: `gh workflow run "github models catalog" --ref mai
 | `openai/o4-mini` | OpenAI | custom | 200000 | 100000 | text+image | agents, agentsV2, reasoning, tool-calling, streaming |
 | `openai/text-embedding-3-large` | OpenAI | embeddings | 8191 | — | text | — |
 | `openai/text-embedding-3-small` | OpenAI | embeddings | 8191 | — | text | — |
-| `xai/grok-3` | xAI | custom | 131072 | 4096 | text | agentsV2 |
-| `xai/grok-3-mini` | xAI | custom | 131072 | 4096 | text | agentsV2 |
 
 </details>
 
@@ -191,10 +188,8 @@ Run `bench.py` with `BENCH_SET=priced|newest`. Both tables sorted by true throug
 | `meta/llama-3.3-70b-instruct` | high | 128,000 | json_schema | 2,508 | 1,725 | 35.7 | 48.3 | 0 | $0.0030 | ✓ |
 | `microsoft/phi-4` | low | 16,384 | json_object | 2,484 | 664 | 20.5 | 32.4 | 0 | $0.0006 | ✓ |
 | `microsoft/phi-4-mini-instruct` | low | 128,000 | json_object | 244 | 91 | 5.6 | 16.2 | 0 | ~$0.0000 | ⚠️ in=244 (sparse/likely truncated) |
-| `xai/grok-3-mini` | custom | 131,072 | — | 0 | 0 | 0.0 | — | 0 | — | ⚠️ 400 `unknown_model` |
-| `xai/grok-3` | custom | 131,072 | — | 0 | 0 | 0.0 | — | 0 | — | ⚠️ 400 `unknown_model` |
 
-#### Newest set (8 newest/flagship; true-throughput-first — most unpriced)
+#### Newest set (7 newest/flagship; true-throughput-first — most unpriced)
 
 All ran the standardised example in **one `json_schema` request** (the temperature fix + the small
 example unblocked them). The reasoning models each ate **2–3 rate-limit retries / 60–70 s of wait**
@@ -209,7 +204,6 @@ on the free `custom` tier — excluded from `Req (s)`/`Tok/s` below.
 | `openai/gpt-5-nano` | custom | 200,000 | json_schema | 3,038 | 7,577 | 85.3 | 88.8 | 3 (70.0) | — | ✓ unpriced; verbose |
 | `openai/gpt-5-mini` | custom | 200,000 | json_schema | 3,038 | 5,084 | 67.8 | 75.0 | 2 (60.0) | — | ✓ unpriced |
 | `openai/gpt-5` | custom | 200,000 | json_schema | 3,038 | 7,668 | 158.5 | 48.4 | 3 (70.0) | — | ✓ unpriced; slowest |
-| `xai/grok-3` | custom | 131,072 | — | 0 | 0 | 0.0 | — | 0 | — | ⚠️ 400 `unknown_model` |
 
 ### Findings (on the standardised `locations` example, corrected timing)
 
@@ -231,7 +225,8 @@ on the free `custom` tier — excluded from `Req (s)`/`Tok/s` below.
 - **Most newest models are UNPRICED** — only `deepseek-r1-0528` has a multiplier ($0.0291 here);
   `gpt-5*`, `o3`, `o4-mini`, `llama-4-scout` show `—` (cost can't be stated until GitHub publishes
   multipliers).
-- **`xai/grok-3*` is catalogued but not inferenceable** (`unknown_model`).
+- **Grok omitted** — `xai/grok-3` / `-mini` return `unknown_model` at the inference endpoint
+  (catalogued and priced, but not usable), so they're excluded from every table here.
 - **`phi-4-mini-instruct` anomaly** — reported `in=244` (vs ~2,500 for every other model on the same
   input) and a 91-token output; likely silent input truncation. Treat its numbers as unreliable.
 
