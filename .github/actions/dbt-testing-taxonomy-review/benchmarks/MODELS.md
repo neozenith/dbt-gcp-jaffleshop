@@ -9,63 +9,21 @@ Reference for choosing the `model` input of the
    running ONE standardised review request against a provider-diverse set of models (via
    [`bench.py`](./bench.py)).
 
-> **👉 The one table is right below.** Everything is `LEFT JOIN`ed per model there; the sections
-> after it (billing, rate limits, full catalogue, per-set results) are the source breakdowns.
-
 ## Canonical model table — all sources joined
 
-The single source of truth: every catalogue model `LEFT JOIN`ed with pricing and benchmark results.
-**Generated** by [`join.py`](./join.py) (live catalogue + embedded multipliers + the `results-*.md`
-bench outputs) — regenerate with `GITHUB_TOKEN=$(gh auth token) uv run --no-project .github/actions/dbt-testing-taxonomy-review/benchmarks/join.py`.
-`—` = not priced / not benchmarked.
+**👉 The single joined table is [`canonical.md`](./canonical.md)** — all **39 chat models**
+(embeddings + Grok excluded) `LEFT JOIN`ed with pricing (**13 priced**) and benchmark results
+(**19 trialled**), including a **Findings** completeness column. It's **generated** by
+[`join.py`](./join.py) (live catalogue + multipliers + the `results-*.md` bench outputs):
 
-Canonical table — 41 catalogue models LEFT-JOINed with pricing (13 priced) and benchmark results (15 trialled). Grok excluded (`unknown_model`).
+```bash
+GITHUB_TOKEN=$(gh auth token) uv run --no-project \
+  .github/actions/dbt-testing-taxonomy-review/benchmarks/join.py
+```
 
-| Model | Provider | Tier | Ctx in | Input modes | $/1M in | $/1M out | Bench resp_format | Bench out tok | Bench req (s) | Bench tok/s | Bench cost | Bench status |
-|---|---|:--:|--:|---|--:|--:|:--:|--:|--:|--:|--:|---|
-| `ai21-labs/ai21-jamba-1.5-large` | AI21 Labs | high | 262,144 | text | — | — | — | — | — | — | — | — |
-| `cohere/cohere-command-a` | Cohere | low | 131,072 | text | — | — | — | — | — | — | — | — |
-| `cohere/cohere-command-r-08-2024` | Cohere | low | 131,072 | text | — | — | — | — | — | — | — | — |
-| `cohere/cohere-command-r-plus-08-2024` | Cohere | high | 131,072 | text | — | — | — | — | — | — | — | — |
-| `deepseek/deepseek-r1` | DeepSeek | custom | 128,000 | text | $1.35 | $5.40 | — | — | — | — | — | — |
-| `deepseek/deepseek-r1-0528` | DeepSeek | custom | 128,000 | text | $1.35 | $5.40 | json_schema | 4,770 | 47.3 | 100.8 | $0.0291 | ✓ |
-| `deepseek/deepseek-v3-0324` | DeepSeek | high | 128,000 | text | $1.14 | $4.56 | json_schema | 1,008 | 9.6 | 105.0 | $0.0075 | ✓ |
-| `meta/llama-3.2-11b-vision-instruct` | Meta | low | 128,000 | text+image+audio | — | — | — | — | — | — | — | — |
-| `meta/llama-3.2-90b-vision-instruct` | Meta | high | 128,000 | text+image+audio | — | — | — | — | — | — | — | — |
-| `meta/llama-3.3-70b-instruct` | Meta | high | 128,000 | text | $0.71 | $0.71 | json_schema | 1,725 | 35.7 | 48.3 | $0.0030 | ✓ |
-| `meta/llama-4-maverick-17b-128e-instruct-fp8` | Meta | high | 1,000,000 | text+image | $0.25 | $1.00 | json_schema | 1,987 | 21.0 | 94.6 | $0.0026 | ✓ |
-| `meta/llama-4-scout-17b-16e-instruct` | Meta | high | 10,000,000 | text+image | — | — | json_schema | 2,105 | 19.5 | 107.9 | — | ✓ |
-| `meta/meta-llama-3.1-405b-instruct` | Meta | high | 131,072 | text | — | — | — | — | — | — | — | — |
-| `meta/meta-llama-3.1-8b-instruct` | Meta | low | 131,072 | text | — | — | — | — | — | — | — | — |
-| `microsoft/mai-ds-r1` | Microsoft | custom | 128,000 | text | $1.35 | $5.40 | — | — | — | — | — | — |
-| `microsoft/phi-4` | Microsoft | low | 16,384 | text | $0.13 | $0.50 | json_object | 664 | 20.5 | 32.4 | $0.0006 | ✓ |
-| `microsoft/phi-4-mini-instruct` | Microsoft | low | 128,000 | text | $0.08 | $0.30 | json_object | 91 | 5.6 | 16.2 | $0.0000 | ✓ |
-| `microsoft/phi-4-mini-reasoning` | Microsoft | low | 128,000 | text | — | — | — | — | — | — | — | — |
-| `microsoft/phi-4-multimodal-instruct` | Microsoft | low | 128,000 | audio+image+text | $0.08 | $0.32 | — | — | — | — | — | — |
-| `microsoft/phi-4-reasoning` | Microsoft | low | 32,768 | text | — | — | — | — | — | — | — | — |
-| `mistral-ai/codestral-2501` | Mistral AI | low | 256,000 | text | — | — | — | — | — | — | — | — |
-| `mistral-ai/ministral-3b` | Mistral AI | low | 131,072 | text | — | — | — | — | — | — | — | — |
-| `mistral-ai/mistral-medium-2505` | Mistral AI | low | 128,000 | text+image | — | — | — | — | — | — | — | — |
-| `mistral-ai/mistral-small-2503` | Mistral AI | low | 128,000 | text+image | — | — | — | — | — | — | — | — |
-| `openai/gpt-4.1` | OpenAI | high | 1,048,576 | text+image | $2.00 | $8.00 | — | — | — | — | — | — |
-| `openai/gpt-4.1-mini` | OpenAI | low | 1,048,576 | text+image | $0.40 | $1.60 | json_schema | 1,341 | 16.5 | 81.3 | $0.0034 | ✓ |
-| `openai/gpt-4.1-nano` | OpenAI | low | 1,048,576 | text+image | — | — | — | — | — | — | — | — |
-| `openai/gpt-4o` | OpenAI | high | 131,072 | text+image+audio | $2.50 | $10.00 | json_schema | 1,409 | 9.7 | 145.3 | $0.0217 | ✓ |
-| `openai/gpt-4o-mini` | OpenAI | low | 131,072 | text+image+audio | $0.15 | $0.60 | json_schema | 299 | 5.3 | 56.4 | $0.0006 | ✓ |
-| `openai/gpt-5` | OpenAI | custom | 200,000 | text+image | — | — | json_schema | 7,668 | 158.5 | 48.4 | — | ✓ |
-| `openai/gpt-5-chat` | OpenAI | custom | 200,000 | text+image | — | — | — | — | — | — | — | — |
-| `openai/gpt-5-mini` | OpenAI | custom | 200,000 | text+image | — | — | json_schema | 5,084 | 67.8 | 75.0 | — | ✓ |
-| `openai/gpt-5-nano` | OpenAI | custom | 200,000 | text+image | — | — | json_schema | 7,577 | 85.3 | 88.8 | — | ✓ |
-| `openai/o1` | OpenAI | custom | 200,000 | text+image | — | — | — | — | — | — | — | — |
-| `openai/o1-mini` | OpenAI | custom | 128,000 | text | — | — | — | — | — | — | — | — |
-| `openai/o1-preview` | OpenAI | custom | 128,000 | text | — | — | — | — | — | — | — | — |
-| `openai/o3` | OpenAI | custom | 200,000 | text+image | — | — | json_schema | 3,563 | 28.6 | 124.6 | — | ✓ |
-| `openai/o3-mini` | OpenAI | custom | 200,000 | text | — | — | — | — | — | — | — | — |
-| `openai/o4-mini` | OpenAI | custom | 200,000 | text+image | — | — | json_schema | 6,112 | 43.3 | 141.2 | — | ✓ |
-| `openai/text-embedding-3-large` | OpenAI | embeddings | 8,191 | text | — | — | — | — | — | — | — | — |
-| `openai/text-embedding-3-small` | OpenAI | embeddings | 8,191 | text | — | — | — | — | — | — | — | — |
-
----
+`—` = not priced / not benchmarked. **Always read `cost`/`tok/s` alongside `findings`** — a model
+that emitted few findings under-reviewed, so its "cheap/fast" is not real value (see [Findings](#findings--corrected-with-a-completeness-signal)).
+The sections below are the source breakdowns that feed the canonical table.
 
 ## How GitHub Models bills
 
@@ -216,79 +174,36 @@ not hand-maintained. Refresh: `gh workflow run "github models catalog" --ref mai
   model's daily quota may have been partially consumed by other runs. Re-run with
   `GITHUB_TOKEN=$(gh auth token) uv run --no-project --directory . benchmarks/bench.py`.
 
-## Empirical results
+## Findings — corrected with a completeness signal
 
-<!-- BENCH_RESULTS -->
-Trial date **2026-06-03** (free tier). **Standardised example:** review the small `locations` mart
-in **ONE request** (~3,000 input tokens — under the 4000 cap, so *every* model, including the
-4000-capped reasoning models, completes it in a single request and is directly comparable).
+Numbers are from the standardised **one-request `locations` review** (pure request latency; rate-limit
+waits excluded; full per-model data in [`canonical.md`](./canonical.md)). **Output volume varies
+hugely, so cost and tok/s are only comparable at similar completeness** — hence the `findings` count
+(parsed from each response), which reframes the comparison as *cost per actual review*.
 
-- **`Req (s)`** = pure request latency (network + generation) — **excludes** rate-limit waits and
-  inter-model spacing.
-- **`Tok/s`** = output tokens ÷ `Req (s)` — **true** generation throughput (the prior wall-based
-  figure was inflated by 429 backoff + batch spacing; this fixes that).
-- **`429 retries (wait s)`** = rate-limit hits and the seconds spent waiting on them, tracked
-  **separately** (not in `Req (s)`/`Tok/s`).
+- **`gpt-4o-mini` under-reviewed — 8 findings** vs `gpt-4o` / `gpt-4.1` / `llama-4-maverick` at **29**.
+  It looked "cheapest/fastest" only because it did ~¼ of the work — not real value.
+- **Best value (priced): `meta/llama-4-maverick-17b-128e-instruct-fp8`** — **29 findings at $0.0026**,
+  same completeness as `gpt-4o` ($0.0222) for ~9× less, `json_schema`, ~100 tok/s. Runner-up:
+  `gpt-4.1-mini` (26 findings, $0.0038).
+- **Most complete (priced): `gpt-4o` / `gpt-4.1`** (29 findings) — thorough but priciest (~$0.022–0.023).
+- **Zero-findings — do NOT use for this task.** `phi-4`, `phi-4-mini-instruct` (json_object) and,
+  more worryingly, `llama-3.3-70b` + `deepseek-v3-0324` (strict `json_schema`) returned **0 findings** —
+  structurally-valid-but-empty / wrong-shaped output. Cheap and fast, but they didn't actually review.
+- **Unverifiable (findings `—`): the DeepSeek-R1 reasoners** returned content that didn't parse as the
+  review JSON (reasoning prose / fences), so completeness can't be confirmed; `deepseek-r1-0528` is
+  also the priciest priced run (~$0.034–0.045).
+- **Newest set (unpriced) is capable but throttled.** `llama-4-scout` **53 findings** (most thorough),
+  `gpt-5-mini` / `o3` **33**, `gpt-5-nano` 28 — all genuine reviews. But `custom`-tier rate limits bite:
+  `gpt-5` failed outright (**429** after 12 retries / 390 s wait), and none are priced.
+- **Consistency caveat.** `temperature=0` (non-reasoning) is ~reproducible run-to-run; reasoning
+  models (gpt-5/o-series, temp=1) vary. Counts are single-run — treat ±a few findings as noise.
 
-Run `bench.py` with `BENCH_SET=priced|newest`. Both tables sorted by true throughput.
+> **Recommendation (revised):** make the action default **`meta/llama-4-maverick-17b-128e-instruct-fp8`**
+> — a full 29-finding review at $0.0026, `json_schema`, high-tier (8000-in cap) — **not** `gpt-4o-mini`,
+> which under-reviews. Escalate to `gpt-4o`/`gpt-4.1` only when maximum completeness justifies ~10× cost.
+> Avoid the 0-finding models. Re-run `bench.py` then `join.py` to refresh — **findings is the quality gate.**
 
-#### Priced set (true-throughput-first)
-
-| Model | tier | ctx in | resp_format | In tok | Out tok | Req (s) | Tok/s | 429 retries (wait s) | Est. cost | Notes |
-|-------|:----:|-------:|:-----------:|------:|-------:|--------:|------:|:--------------------:|----------:|-------|
-| `openai/gpt-4o` | high | 131,072 | json_schema | 3,042 | 1,409 | 9.7 | **145.3** | 0 | $0.0217 | ✓ priciest |
-| `deepseek/deepseek-v3-0324` | high | 128,000 | json_schema | 2,511 | 1,008 | 9.6 | 105.0 | 0 | $0.0075 | ✓ |
-| `meta/llama-4-maverick-17b-128e-instruct-fp8` | high | 1,000,000 | json_schema | 2,461 | 1,987 | 21.0 | 94.6 | 0 | $0.0026 | ✓ |
-| `openai/gpt-4.1-mini` | low | 1,048,576 | json_schema | 3,042 | 1,341 | 16.5 | 81.3 | 0 | $0.0034 | ✓ |
-| `openai/gpt-4o-mini` | low | 131,072 | json_schema | 3,042 | 299 | 5.3 | 56.4 | 0 | **$0.0006** | ✓ cheapest structured |
-| `meta/llama-3.3-70b-instruct` | high | 128,000 | json_schema | 2,508 | 1,725 | 35.7 | 48.3 | 0 | $0.0030 | ✓ |
-| `microsoft/phi-4` | low | 16,384 | json_object | 2,484 | 664 | 20.5 | 32.4 | 0 | $0.0006 | ✓ |
-| `microsoft/phi-4-mini-instruct` | low | 128,000 | json_object | 244 | 91 | 5.6 | 16.2 | 0 | ~$0.0000 | ⚠️ in=244 (sparse/likely truncated) |
-
-#### Newest set (7 newest/flagship; true-throughput-first — most unpriced)
-
-All ran the standardised example in **one `json_schema` request** (the temperature fix + the small
-example unblocked them). The reasoning models each ate **2–3 rate-limit retries / 60–70 s of wait**
-on the free `custom` tier — excluded from `Req (s)`/`Tok/s` below.
-
-| Model | tier | ctx in | resp_format | In tok | Out tok | Req (s) | Tok/s | 429 retries (wait s) | Est. cost | Notes |
-|-------|:----:|-------:|:-----------:|------:|-------:|--------:|------:|:--------------------:|----------:|-------|
-| `openai/o4-mini` | custom | 200,000 | json_schema | 3,038 | 6,112 | 43.3 | **141.2** | 3 (70.0) | — | ✓ unpriced |
-| `openai/o3` | custom | 200,000 | json_schema | 3,038 | 3,563 | 28.6 | 124.6 | 0 | — | ✓ unpriced |
-| `meta/llama-4-scout-17b-16e-instruct` | high | 10,000,000 | json_schema | 2,461 | 2,105 | 19.5 | 107.9 | 0 | — | ✓ unpriced |
-| `deepseek/deepseek-r1-0528` | custom | 128,000 | json_schema | 2,511 | 4,770 | 47.3 | 100.8 | 3 (70.0) | $0.0291 | ✓ **priced** |
-| `openai/gpt-5-nano` | custom | 200,000 | json_schema | 3,038 | 7,577 | 85.3 | 88.8 | 3 (70.0) | — | ✓ unpriced; verbose |
-| `openai/gpt-5-mini` | custom | 200,000 | json_schema | 3,038 | 5,084 | 67.8 | 75.0 | 2 (60.0) | — | ✓ unpriced |
-| `openai/gpt-5` | custom | 200,000 | json_schema | 3,038 | 7,668 | 158.5 | 48.4 | 3 (70.0) | — | ✓ unpriced; slowest |
-
-### Findings (on the standardised `locations` example, corrected timing)
-
-- **Throughput ≠ cost ≠ latency** (different winners per axis). True generation throughput:
-  `gpt-4o` 145, `o4-mini` 141, `o3` 125, `llama-4-scout` 108, `deepseek-v3` 105 tok/s. Cheapest
-  with structured output: **`gpt-4o-mini` & `phi-4` at $0.0006**. `gpt-4o` is fast *and* priciest
-  ($0.0217). For this small example, `gpt-4o-mini` does the least work (out=299) → low cost.
-- **Rate-limit wait is now separated from request time.** The newest `custom`-tier models each spent
-  **60–70 s in 429 backoff** (2–3 retries) before a successful call — that wait is excluded, so
-  their `Tok/s` reflects real generation speed. But for *wall-clock* CI cost, that backoff is real:
-  custom-tier models are heavily throttled (very low rpm + 50-ish/day) → poor for routine PR review.
-- **`json_schema` works broadly now** — at this size, gpt-5/o-series and `deepseek-r1` all accepted
-  strict `json_schema` (earlier failures were the `temperature=0` 400, now auto-dropped — ADR-8).
-  Only the **Phi** models fell back to `json_object`.
-- **Per-request input cap bites the big models.** Reasoning/`custom`-tier models cap at **4000 input
-  tokens**; the standardised `locations` request (~3,000 in) fits, but reviewing a *large* mart
-  (`orders` ≈ 4,457 in) does **not** — so on a 4000-cap model the action must keep `REQUEST_TOKEN_CAP`
-  ≤ ~3000 (and even then can't fit big models in one batch).
-- **Most newest models are UNPRICED** — only `deepseek-r1-0528` has a multiplier ($0.0291 here);
-  `gpt-5*`, `o3`, `o4-mini`, `llama-4-scout` show `—` (cost can't be stated until GitHub publishes
-  multipliers).
-- **Grok omitted** — `xai/grok-3` / `-mini` return `unknown_model` at the inference endpoint
-  (catalogued and priced, but not usable), so they're excluded from every table here.
-- **`phi-4-mini-instruct` anomaly** — reported `in=244` (vs ~2,500 for every other model on the same
-  input) and a 91-token output; likely silent input truncation. Treat its numbers as unreliable.
-
-> **Recommendation:** keep the action default at **`openai/gpt-4o-mini`** — priced ($0.0006 on this
-> example), strict `json_schema`, *low* tier (150 req/day vs high tier's 50), 8000-tok cap fits the
-> batch budget. The newest reasoning models are fast per-request but **unpriced, custom-tier
-> rate-limited (60–70 s backoff/run here), and 4000-in-capped** → poor fit for routine CI. Re-run
-> `bench.py` (`BENCH_SET=priced|newest`) periodically — rates, availability, and caps change.
-<!-- /BENCH_RESULTS -->
+> **Parser caveat.** `findings` counts entries in the `{ "models": [ { "findings": [] } ] }` shape.
+> A `0` from a json_object/plain model may be a *shape* mismatch (findings produced differently);
+> a `0` from a strict-`json_schema` model is a genuine empty review; `—` = response didn't parse as JSON.

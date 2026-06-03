@@ -1,3 +1,2 @@
-# Generated artifacts — the curated/joined tables live in MODELS.md
+# Raw per-run bench outputs (the joined/curated table is the committed canonical.md)
 results*.md
-canonical.md
