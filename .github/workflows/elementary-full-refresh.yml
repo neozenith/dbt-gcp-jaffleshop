@@ -5,11 +5,12 @@ name: elementary full-refresh
 # incremental models in the warehouse.
 #
 # WHY THIS EXISTS SEPARATELY
-# Normal deploys (dbt-deploy-prod.yml / dbt-deploy-test.yml) run `dbt build`, which
-# already builds Elementary's models incrementally — so a pre-build step on every
-# deploy was redundant. A FULL refresh (drop + rebuild the incremental tables) is
-# only occasionally needed — e.g. after upgrading the elementary dbt package when
-# its table schemas change, or to recover from corrupted incremental state. That is
+# Normal deploys (dbt-deploy-prod.yml / dbt-deploy-test.yml) still run a plain
+# `dbt run -s elementary` to bootstrap Elementary's result tables (its on-run-end hooks
+# log into them, so they must exist before the seed step). What they no longer do on
+# every deploy is FORCE a --full-refresh. A full refresh (drop + rebuild the incremental
+# tables) is only occasionally needed — e.g. after upgrading the elementary dbt package
+# when its table schemas change, or to recover from corrupted incremental state. That is
 # a deliberate, infrequent maintenance action, so it lives here as workflow_dispatch
 # only — never on push/PR/tag.
 #
