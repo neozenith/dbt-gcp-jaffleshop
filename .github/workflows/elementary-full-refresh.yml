@@ -1,0 +1,103 @@
+name: elementary full-refresh
+
+# =============================================================================
+# On-demand maintenance task: force a `--full-refresh` rebuild of Elementary's
+# incremental models in the warehouse.
+#
+# WHY THIS EXISTS SEPARATELY
+# Normal deploys (dbt-deploy-prod.yml / dbt-deploy-test.yml) still run a plain
+# `dbt run -s elementary` to bootstrap Elementary's result tables (its on-run-end hooks
+# log into them, so they must exist before the seed step). What they no longer do on
+# every deploy is FORCE a --full-refresh. A full refresh (drop + rebuild the incremental
+# tables) is only occasionally needed — e.g. after upgrading the elementary dbt package
+# when its table schemas change, or to recover from corrupted incremental state. That is
+# a deliberate, infrequent maintenance action, so it lives here as workflow_dispatch
+# only — never on push/PR/tag.
+#
+# WHY PROD-ONLY (the `target` input has a single option today)
+# A standalone workflow_dispatch run can only authenticate as a dbt SA whose WIF
+# binding admits the workflow_dispatch event — and only dbt-prod has that
+# (infra/dbt.tf: dbt-prod WIF on attribute.event_name/workflow_dispatch). dbt-test's
+# WIF binding is pull_request-only, and dbt-dev has no WIF at all (humans-only by
+# design). On top of that, a non-PROD target with no PR/branch slice would fail the
+# generate_schema_name "non-PROD requires a slice" guard. So prod is the only target
+# a clean dispatch can refresh; dev/test elementary state is handled in their normal
+# (sliced, ephemeral) flows. The `target` input is kept as a choice so the surface is
+# obvious and future targets can be added if their WIF/slice prerequisites are wired.
+#
+# Auth: Workload Identity Federation only; no keyfiles — same dbt-prod path as
+# dbt-deploy-prod.yml.
+# =============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "dbt target to full-refresh Elementary in (prod is the only WIF-reachable dispatch target)."
+        type: choice
+        options:
+          - prod
+        default: prod
+
+permissions:
+  contents: read
+
+# Serialize against itself so two maintenance runs can't refresh the same tables at once.
+concurrency:
+  group: elementary-full-refresh-${{ inputs.target }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: dbt-jaffleshop
+
+jobs:
+  full-refresh:
+    name: dbt run -s elementary --full-refresh (${{ inputs.target }})
+    # Belt-and-suspenders with the WIF binding: dispatch must come from main, matching
+    # dbt-deploy-prod.yml's prod gate. The WIF binding itself is the hard gate.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: prod          # same required-reviewers / branch gate as deploy-prod
+    permissions:
+      contents: read
+      id-token: write          # required for WIF (google-github-actions/auth)
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt-jaffleshop
+      DBT_TARGET: ${{ inputs.target }}
+      DBT_ENV_TYPE: PROD       # explicit; decouples env from target.name in data_environment
+      DBT_BQ_PROJECT_PROD: dbt-prod-jaffleshop
+      # DBT_BQ_DATASET_PROD left unset — profiles.yml default 'analytics' applies.
+      # PROD is unsliced, so no DBT_PR_ID / DBT_RUN_ID / DBT_GIT_BRANCH.
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to GCP (WIF → dbt-prod SA)
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: dbt-prod@dbt-prod-jaffleshop.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "dbt-jaffleshop/uv.lock"
+
+      - name: Cache virtual environment
+        uses: actions/cache@v5
+        with:
+          path: dbt-jaffleshop/.venv
+          key: venv-${{ runner.os }}-${{ hashFiles('dbt-jaffleshop/uv.lock') }}
+          restore-keys: venv-${{ runner.os }}-
+
+      - name: Install Python deps
+        run: uv sync
+
+      - name: Install dbt packages
+        run: uv run dbt deps
+
+      - name: dbt run -s elementary --full-refresh
+        run: uv run dbt run -s elementary --full-refresh --target ${{ inputs.target }}

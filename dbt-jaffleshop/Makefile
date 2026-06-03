@@ -46,7 +46,7 @@ export
 
 export DBT_PROFILES_DIR := $(CURDIR)
 
-.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage doc-columns-coverage tests-coverage checks boundaries system-boundaries-check sdag sdag-serve pytest deploy-dev elementary-init elementary-report gha-docs
+.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage doc-columns-coverage tests-coverage checks boundaries system-boundaries-check sdag sdag-serve pytest deploy-dev elementary-report gha-docs
 
 help:
 	@echo "Targets:"
@@ -248,9 +248,6 @@ pytest:
 # is the comprehensive SQL gate and subsumes format-check; compile + pytest validate
 # the whole project.
 ci: lint compile pytest
-
-elementary-init:
-	uv run dbt run -s elementary --full-refresh
 
 # Local-only "deploy" — dbt-dev SA is humans-only per infra/dbt.tf, so dev never
 # gets a CI deploy. This target gives developers parity with what CI does for

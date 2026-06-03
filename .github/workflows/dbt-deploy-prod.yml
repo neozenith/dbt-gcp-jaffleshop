@@ -133,9 +133,14 @@ jobs:
       - name: Install dbt packages
         run: uv run dbt deps
 
+      # Bootstrap Elementary's models first so its result tables exist before any other
+      # invocation's on-run-end hook logs to them (the `dbt seed` step's elementary hook
+      # errors if they're missing). This is a plain incremental run; a forced --full-refresh
+      # is an occasional maintenance task, moved to the dispatch-only
+      # .github/workflows/elementary-full-refresh.yml instead of every deploy.
       - name: run dbt build
         run: |
-          uv run dbt run -s elementary --full-refresh --target prod   # pre-build Elementary's models so the manifest has them, for the checks that need it
+          uv run dbt run -s elementary --target prod
           uv run dbt seed --target prod --vars '{"load_source_data": true}'
           uv run dbt build --target prod
 
