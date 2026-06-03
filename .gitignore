@@ -219,7 +219,29 @@ __marimo__/
 
 
 .claude/
-.agents/
+
+# .agents/ is the local agent-skill toolkit and stays ignored by default (personal
+# skills like 5ys, ais, coach, vite-*, playwright-* are not repo artifacts). EXCEPTION:
+# the dbt-relevant skills this repo curates/vendors ARE committed so agents can review
+# and manage the dbt project — the vendored dbt-labs/dbt-agent-skills set (see
+# .agents/skills/dbt-agent-skills.VENDORED.md) and the project's own testing-taxonomy-review.
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/dbt-agent-skills.VENDORED.md
+!.agents/skills/testing-taxonomy-review/
+!.agents/skills/using-dbt-for-analytics-engineering/
+!.agents/skills/building-dbt-semantic-layer/
+!.agents/skills/working-with-dbt-mesh/
+!.agents/skills/adding-dbt-unit-test/
+!.agents/skills/running-dbt-commands/
+!.agents/skills/troubleshooting-dbt-job-errors/
+!.agents/skills/fetching-dbt-docs/
+!.agents/skills/configuring-dbt-mcp-server/
+!.agents/skills/answering-natural-language-questions-with-dbt/
+!.agents/skills/creating-mermaid-dbt-dag/
+!.agents/skills/migrating-dbt-core-to-fusion/
+!.agents/skills/migrating-dbt-project-across-platforms/
 
 # Terraform
 .terraform/

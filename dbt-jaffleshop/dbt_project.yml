@@ -27,6 +27,19 @@ vars:
   #   uv run dbt run --vars "git_branch: $(git rev-parse --abbrev-ref HEAD)"
   "git_branch": ""
 
+  # Elementary observability is PROD-ONLY. dev/test are ephemeral (24h-TTL, PR-sliced), so
+  # persisting run/test telemetry there is noise. The elementary models are gated off below
+  # (+enabled), and these vars mute Elementary's on-run-end upload hooks in non-prod — otherwise
+  # a non-prod `dbt seed`/`build` would try to write artifacts into the (now-absent) elementary
+  # tables and fail. Elementary's get_config_var coerces the rendered "True"/"False" string back
+  # to a real bool. The env check mirrors data_environment() (DBT_ENV_TYPE wins, else target.name;
+  # prod builds set DBT_ENV_TYPE=PROD) because dbt_project.yml Jinja can't call project macros.
+  "disable_dbt_artifacts_autoupload": "{{ env_var('DBT_ENV_TYPE', target.name) | upper != 'PROD' }}"
+  "disable_run_results": "{{ env_var('DBT_ENV_TYPE', target.name) | upper != 'PROD' }}"
+  "disable_tests_results": "{{ env_var('DBT_ENV_TYPE', target.name) | upper != 'PROD' }}"
+  "disable_dbt_invocation_autoupload": "{{ env_var('DBT_ENV_TYPE', target.name) | upper != 'PROD' }}"
+  "disable_freshness_results": "{{ env_var('DBT_ENV_TYPE', target.name) | upper != 'PROD' }}"
+
 # Ephemeral-data hygiene: in NON-prod targets (dev / test — including the PR-sliced datasets CI
 # spins up), every dbt-created table gets a 24h BigQuery expiry so they self-clean; prod tables are
 # permanent. `{{ 24 if … else none }}` renders to "24" for dev/test and "" otherwise, and
@@ -56,3 +69,8 @@ models:
   elementary:
     +database: jaffleshop
     +schema: elementary
+    # PROD-only: dev/test are ephemeral, so Elementary's models are disabled there (and its
+    # upload hooks are muted via the disable_* vars above). The restricted +enabled Jinja context
+    # can't call data_environment(), so inline the same DBT_ENV_TYPE→target.name fallback. This
+    # also treats the `prod-impersonate` target (gha-docs / elementary-report) as prod.
+    +enabled: "{{ env_var('DBT_ENV_TYPE', target.name) | upper == 'PROD' }}"
