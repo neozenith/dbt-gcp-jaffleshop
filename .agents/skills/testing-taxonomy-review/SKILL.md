@@ -166,5 +166,14 @@ Authoritative metadata + vignette links live in [`rules.json`](./rules.json). Su
 5. Emit findings conforming to `review-output.schema.json` (the GHA enforces this).
 
 The CI implementation lives in
-[`.github/workflows/testing-taxonomy-review.yml`](../../../.github/workflows/testing-taxonomy-review.yml),
-which runs this framework over PR-changed models and posts a tabular comment.
+[`.github/workflows/testing-taxonomy-review.yml`](../../../.github/workflows/testing-taxonomy-review.yml)
+(engine: [`review.py`](./review.py)), which runs this framework via GitHub Models and upserts
+four sticky PR-comment variants so the output formats can be compared:
+
+1. **coverage matrix — changed models** — rows = changed models, columns = applicable rule
+   codes, cells = ✅ present / ❌ missing / ➖ n/a.
+2. **failures — changed models** — narrowed to rules that apply *and* fail somewhere.
+3. **coverage matrix — all models** — variant 1 over every model in the project.
+4. **failures — all models** — variant 2 over every model.
+
+Each variant carries its own HTML-comment marker (`<!-- ttr:* -->`) so it updates in place.

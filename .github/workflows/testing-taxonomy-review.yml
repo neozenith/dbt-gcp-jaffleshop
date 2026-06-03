@@ -1,9 +1,11 @@
 name: testing-taxonomy review
 
 # =============================================================================
-# Reviews the dbt models added/changed in a PR against this project's testing
-# taxonomy (.agents/skills/testing-taxonomy-review) and posts a single sticky PR
-# comment summarising the findings in a table.
+# Reviews dbt models against this project's testing taxonomy
+# (.agents/skills/testing-taxonomy-review) and upserts FOUR sticky PR-comment variants
+# so the output formats can be compared: a coverage matrix (models × rule codes, ✅/❌/➖)
+# and a failures-only view, each for the PR's changed models AND for all models in the
+# project. Each variant has its own marker so it updates in place on re-run.
 #
 # LLM runner: GitHub Models — GitHub-hosted inference reached with the workflow's
 # built-in GITHUB_TOKEN (permissions: models: read). No vendor API key, no secret,
