@@ -224,3 +224,94 @@ output "dbt_artefacts_bucket" {
   description = "GCS bucket holding dbt manifest.json / run_results.json / catalog.json."
   value       = google_storage_bucket.dbt_artefacts.name
 }
+
+# =============================================================================
+# Dedicated Elementary-reporting SA  (dbt-dev-elementary)
+#
+# The Elementary CLI (`edr report`) is NOT a read-only tool: to assemble the
+# observability dashboard it CREATEs and DROPs intermediate tables inside the
+# elementary dataset (BigQuery has no session-temp tables in dbt's execution
+# model, so each "temp" relation is a real table that is written then dropped).
+#
+# The humans-only dbt-dev SA holds only READ on prod (dataViewer via
+# cross_env_readers), so it cannot run edr. Rather than widen dbt-dev — which
+# would erode the "humans read prod, never write" guarantee for ALL of prod — we
+# curate a SEPARATE, purpose-built SA whose ONLY power beyond read is create/drop
+# WITHIN the prod ELEMENTARY dataset. Business data (RAW / STAGING / MARTS /
+# ANALYTICS) stays read-only for it, exactly like dbt-dev.
+#
+# Lifecycle mirrors dbt-dev (humans-only, no WIF): created once in the DEV
+# project, impersonated by the developers in dbt-developers.yml, and granted
+# cross-project into prod by the prod apply.
+#   DEV apply : create SA + developer tokenCreator/serviceAccountUser bindings.
+#   PROD apply: dataViewer + jobUser on prod  +  dataEditor on prod ELEMENTARY only.
+# CI does NOT use this SA — the dbt-docs.yml report step runs as dbt-prod (which
+# already has write on its own project). This SA is purely the LOCAL
+# `make elementary-report` / `make gha-docs` path.
+# =============================================================================
+
+locals {
+  # Always lives in the DEV project, whichever env is applying — so the PROD apply
+  # can grant it by email with no cross-state reference (same pattern as
+  # cross_env_reader_emails). Keep in lock-step with the email hardcoded in
+  # dbt-jaffleshop/profiles.yml's prod-impersonate outputs.
+  dbt_dev_elementary_email = "dbt-dev-elementary@dbt-dev-jaffleshop.iam.gserviceaccount.com"
+}
+
+# --- DEV apply: the SA itself + human impersonation --------------------------
+resource "google_service_account" "dbt_dev_elementary" {
+  count        = var.environment == "dev" ? 1 : 0
+  account_id   = "dbt-dev-elementary"
+  display_name = "dbt-dev-elementary (local Elementary report: prod read + ELEMENTARY scratch)"
+  description  = "Impersonated by developers to run `edr report` locally against prod. Read-only on prod business data; create/drop ONLY within the prod ELEMENTARY dataset."
+}
+
+resource "google_service_account_iam_member" "dbt_dev_elementary_impersonators" {
+  for_each           = var.environment == "dev" ? toset(local.developer_members) : toset([])
+  service_account_id = google_service_account.dbt_dev_elementary[0].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = each.key
+}
+
+resource "google_service_account_iam_member" "dbt_dev_elementary_sa_users" {
+  for_each           = var.environment == "dev" ? toset(local.developer_members) : toset([])
+  service_account_id = google_service_account.dbt_dev_elementary[0].name
+  role               = "roles/iam.serviceAccountUser"
+  member             = each.key
+}
+
+# --- PROD apply: read prod + write ONLY the ELEMENTARY dataset ---------------
+# Project-level read (business data for test-row samples + the ELEMENTARY tables)
+# and jobUser (edr runs query/create/drop jobs in the prod project).
+resource "google_project_iam_member" "dbt_dev_elementary_prod_bq_data_viewer" {
+  count   = var.environment == "prod" ? 1 : 0
+  project = local.project_id
+  role    = "roles/bigquery.dataViewer"
+  member  = "serviceAccount:${local.dbt_dev_elementary_email}"
+}
+
+resource "google_project_iam_member" "dbt_dev_elementary_prod_bq_job_user" {
+  count   = var.environment == "prod" ? 1 : 0
+  project = local.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${local.dbt_dev_elementary_email}"
+}
+
+# Dataset-scoped editor: the ONLY write this SA gets on prod — create/drop edr's
+# scratch tables inside ELEMENTARY. NON-authoritative binding (does not clobber
+# other members). The ELEMENTARY dataset is created by dbt (the prod deploy
+# pre-builds Elementary's models), NOT Terraform; it must exist at apply time,
+# which holds once any prod release has run. If a fresh prod project has never
+# deployed dbt, apply this after the first prod deploy.
+resource "google_bigquery_dataset_iam_member" "dbt_dev_elementary_prod_elementary_editor" {
+  count      = var.environment == "prod" ? 1 : 0
+  project    = local.project_id
+  dataset_id = "ELEMENTARY"
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${local.dbt_dev_elementary_email}"
+}
+
+output "dbt_dev_elementary_sa_email" {
+  description = "Email of the dedicated local Elementary-report SA (created in the dev project)."
+  value       = var.environment == "dev" ? google_service_account.dbt_dev_elementary[0].email : local.dbt_dev_elementary_email
+}

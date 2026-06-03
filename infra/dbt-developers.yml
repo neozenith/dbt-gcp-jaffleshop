@@ -12,6 +12,11 @@
 #       short-lived tokens to RUN dbt locally AS the dbt-dev SA (see
 #       dbt-jaffleshop/Makefile `deploy-dev`).
 #     - roles/iam.serviceAccountUser        on the dbt-dev SA  -> attach/act-as.
+#     - roles/iam.serviceAccountTokenCreator + serviceAccountUser on the
+#       dbt-dev-elementary SA -> mint tokens to RUN the Elementary CLI locally
+#       AS that SA (see dbt-jaffleshop/Makefile `elementary-report`). That SA is
+#       read-only on prod business data but may create/drop scratch tables in the
+#       prod ELEMENTARY dataset (edr needs them); see dbt.tf.
 #     - roles/bigquery.dataViewer + jobUser on dbt-dev-jaffleshop (direct).
 #
 #   TEST apply (var.environment == "test"):
