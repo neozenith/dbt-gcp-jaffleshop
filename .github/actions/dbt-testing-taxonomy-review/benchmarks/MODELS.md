@@ -9,6 +9,64 @@ Reference for choosing the `model` input of the
    running ONE standardised review request against a provider-diverse set of models (via
    [`bench.py`](./bench.py)).
 
+> **👉 The one table is right below.** Everything is `LEFT JOIN`ed per model there; the sections
+> after it (billing, rate limits, full catalogue, per-set results) are the source breakdowns.
+
+## Canonical model table — all sources joined
+
+The single source of truth: every catalogue model `LEFT JOIN`ed with pricing and benchmark results.
+**Generated** by [`join.py`](./join.py) (live catalogue + embedded multipliers + the `results-*.md`
+bench outputs) — regenerate with `GITHUB_TOKEN=$(gh auth token) uv run --no-project .github/actions/dbt-testing-taxonomy-review/benchmarks/join.py`.
+`—` = not priced / not benchmarked.
+
+Canonical table — 41 catalogue models LEFT-JOINed with pricing (13 priced) and benchmark results (15 trialled). Grok excluded (`unknown_model`).
+
+| Model | Provider | Tier | Ctx in | Input modes | $/1M in | $/1M out | Bench resp_format | Bench out tok | Bench req (s) | Bench tok/s | Bench cost | Bench status |
+|---|---|:--:|--:|---|--:|--:|:--:|--:|--:|--:|--:|---|
+| `ai21-labs/ai21-jamba-1.5-large` | AI21 Labs | high | 262,144 | text | — | — | — | — | — | — | — | — |
+| `cohere/cohere-command-a` | Cohere | low | 131,072 | text | — | — | — | — | — | — | — | — |
+| `cohere/cohere-command-r-08-2024` | Cohere | low | 131,072 | text | — | — | — | — | — | — | — | — |
+| `cohere/cohere-command-r-plus-08-2024` | Cohere | high | 131,072 | text | — | — | — | — | — | — | — | — |
+| `deepseek/deepseek-r1` | DeepSeek | custom | 128,000 | text | $1.35 | $5.40 | — | — | — | — | — | — |
+| `deepseek/deepseek-r1-0528` | DeepSeek | custom | 128,000 | text | $1.35 | $5.40 | json_schema | 4,770 | 47.3 | 100.8 | $0.0291 | ✓ |
+| `deepseek/deepseek-v3-0324` | DeepSeek | high | 128,000 | text | $1.14 | $4.56 | json_schema | 1,008 | 9.6 | 105.0 | $0.0075 | ✓ |
+| `meta/llama-3.2-11b-vision-instruct` | Meta | low | 128,000 | text+image+audio | — | — | — | — | — | — | — | — |
+| `meta/llama-3.2-90b-vision-instruct` | Meta | high | 128,000 | text+image+audio | — | — | — | — | — | — | — | — |
+| `meta/llama-3.3-70b-instruct` | Meta | high | 128,000 | text | $0.71 | $0.71 | json_schema | 1,725 | 35.7 | 48.3 | $0.0030 | ✓ |
+| `meta/llama-4-maverick-17b-128e-instruct-fp8` | Meta | high | 1,000,000 | text+image | $0.25 | $1.00 | json_schema | 1,987 | 21.0 | 94.6 | $0.0026 | ✓ |
+| `meta/llama-4-scout-17b-16e-instruct` | Meta | high | 10,000,000 | text+image | — | — | json_schema | 2,105 | 19.5 | 107.9 | — | ✓ |
+| `meta/meta-llama-3.1-405b-instruct` | Meta | high | 131,072 | text | — | — | — | — | — | — | — | — |
+| `meta/meta-llama-3.1-8b-instruct` | Meta | low | 131,072 | text | — | — | — | — | — | — | — | — |
+| `microsoft/mai-ds-r1` | Microsoft | custom | 128,000 | text | $1.35 | $5.40 | — | — | — | — | — | — |
+| `microsoft/phi-4` | Microsoft | low | 16,384 | text | $0.13 | $0.50 | json_object | 664 | 20.5 | 32.4 | $0.0006 | ✓ |
+| `microsoft/phi-4-mini-instruct` | Microsoft | low | 128,000 | text | $0.08 | $0.30 | json_object | 91 | 5.6 | 16.2 | $0.0000 | ✓ |
+| `microsoft/phi-4-mini-reasoning` | Microsoft | low | 128,000 | text | — | — | — | — | — | — | — | — |
+| `microsoft/phi-4-multimodal-instruct` | Microsoft | low | 128,000 | audio+image+text | $0.08 | $0.32 | — | — | — | — | — | — |
+| `microsoft/phi-4-reasoning` | Microsoft | low | 32,768 | text | — | — | — | — | — | — | — | — |
+| `mistral-ai/codestral-2501` | Mistral AI | low | 256,000 | text | — | — | — | — | — | — | — | — |
+| `mistral-ai/ministral-3b` | Mistral AI | low | 131,072 | text | — | — | — | — | — | — | — | — |
+| `mistral-ai/mistral-medium-2505` | Mistral AI | low | 128,000 | text+image | — | — | — | — | — | — | — | — |
+| `mistral-ai/mistral-small-2503` | Mistral AI | low | 128,000 | text+image | — | — | — | — | — | — | — | — |
+| `openai/gpt-4.1` | OpenAI | high | 1,048,576 | text+image | $2.00 | $8.00 | — | — | — | — | — | — |
+| `openai/gpt-4.1-mini` | OpenAI | low | 1,048,576 | text+image | $0.40 | $1.60 | json_schema | 1,341 | 16.5 | 81.3 | $0.0034 | ✓ |
+| `openai/gpt-4.1-nano` | OpenAI | low | 1,048,576 | text+image | — | — | — | — | — | — | — | — |
+| `openai/gpt-4o` | OpenAI | high | 131,072 | text+image+audio | $2.50 | $10.00 | json_schema | 1,409 | 9.7 | 145.3 | $0.0217 | ✓ |
+| `openai/gpt-4o-mini` | OpenAI | low | 131,072 | text+image+audio | $0.15 | $0.60 | json_schema | 299 | 5.3 | 56.4 | $0.0006 | ✓ |
+| `openai/gpt-5` | OpenAI | custom | 200,000 | text+image | — | — | json_schema | 7,668 | 158.5 | 48.4 | — | ✓ |
+| `openai/gpt-5-chat` | OpenAI | custom | 200,000 | text+image | — | — | — | — | — | — | — | — |
+| `openai/gpt-5-mini` | OpenAI | custom | 200,000 | text+image | — | — | json_schema | 5,084 | 67.8 | 75.0 | — | ✓ |
+| `openai/gpt-5-nano` | OpenAI | custom | 200,000 | text+image | — | — | json_schema | 7,577 | 85.3 | 88.8 | — | ✓ |
+| `openai/o1` | OpenAI | custom | 200,000 | text+image | — | — | — | — | — | — | — | — |
+| `openai/o1-mini` | OpenAI | custom | 128,000 | text | — | — | — | — | — | — | — | — |
+| `openai/o1-preview` | OpenAI | custom | 128,000 | text | — | — | — | — | — | — | — | — |
+| `openai/o3` | OpenAI | custom | 200,000 | text+image | — | — | json_schema | 3,563 | 28.6 | 124.6 | — | ✓ |
+| `openai/o3-mini` | OpenAI | custom | 200,000 | text | — | — | — | — | — | — | — | — |
+| `openai/o4-mini` | OpenAI | custom | 200,000 | text+image | — | — | json_schema | 6,112 | 43.3 | 141.2 | — | ✓ |
+| `openai/text-embedding-3-large` | OpenAI | embeddings | 8,191 | text | — | — | — | — | — | — | — | — |
+| `openai/text-embedding-3-small` | OpenAI | embeddings | 8,191 | text | — | — | — | — | — | — | — | — |
+
+---
+
 ## How GitHub Models bills
 
 GitHub Models charges **$0.00001 per token unit**. Token units = actual tokens × the model's
