@@ -128,18 +128,42 @@ def system_prompt() -> str:
     )
 
 
+def model_block(sql: Path) -> str:
+    return (f"### MODEL: {sql.stem}\nFILE: {sql}\n\n--- SQL ---\n{sql.read_text(encoding='utf-8')}\n\n"
+            f"--- YAML (existing tests/contract) ---\n{sibling_yaml(sql) or '(no schema yml found)'}\n")
+
+
 def user_prompt(models: list[Path]) -> str:
-    parts = []
-    for sql in models:
-        parts.append(
-            f"### MODEL: {sql.stem}\nFILE: {sql}\n\n--- SQL ---\n{sql.read_text(encoding='utf-8')}\n\n"
-            f"--- YAML (existing tests/contract) ---\n{sibling_yaml(sql) or '(no schema yml found)'}\n"
-        )
     return (
         "Review the following dbt models. For each, emit a finding for EVERY rule you "
         "evaluated — applicable_present, applicable_missing, AND not_applicable — so a full "
-        "coverage matrix can be built. Emit schema-conforming JSON.\n\n" + "\n".join(parts)
+        "coverage matrix can be built. Emit schema-conforming JSON.\n\n"
+        + "\n".join(model_block(sql) for sql in models)
     )
+
+
+def est_tokens(text: str) -> int:
+    """Rough token estimate (~4 chars/token) for greedy batching."""
+    return len(text) // 4 + 1
+
+
+def batch_models(models: list[Path], budget_tokens: int = 5000) -> list[list[Path]]:
+    """Pack models into batches whose combined size stays under budget_tokens, so each
+    request (system prompt ~1.6k + batch) stays under GitHub Models' ~8000-token cap while
+    making far fewer requests than one-per-model (which trips the free-tier rate limit)."""
+    batches: list[list[Path]] = []
+    cur: list[Path] = []
+    cur_tok = 0
+    for sql in models:
+        t = est_tokens(model_block(sql))
+        if cur and cur_tok + t > budget_tokens:
+            batches.append(cur)
+            cur, cur_tok = [], 0
+        cur.append(sql)
+        cur_tok += t
+    if cur:
+        batches.append(cur)
+    return batches
 
 
 def response_format() -> dict:
@@ -164,8 +188,9 @@ def call_model(endpoint: str, token: str, model: str, sys_p: str, usr_p: str) ->
         f"{endpoint.rstrip('/')}/chat/completions", data=body,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
                  "Accept": "application/json"}, method="POST")
-    # GitHub Models free tier rate-limits requests; back off on 429.
-    for attempt in range(4):
+    # GitHub Models free tier rate-limits requests; back off on 429 (honour Retry-After).
+    attempts = 6
+    for attempt in range(attempts):
         try:
             with urllib.request.urlopen(req, timeout=240) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
@@ -173,9 +198,10 @@ def call_model(endpoint: str, token: str, model: str, sys_p: str, usr_p: str) ->
             return content, (payload.get("usage") or {})
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", "replace")
-            if e.code == 429 and attempt < 3:
-                wait = 5 * (2 ** attempt)
-                print(f"  rate-limited (429); retrying in {wait}s")
+            if e.code == 429 and attempt < attempts - 1:
+                retry_after = e.headers.get("Retry-After") if e.headers else None
+                wait = int(retry_after) if (retry_after and retry_after.isdigit()) else min(60, 10 * (2 ** attempt))
+                print(f"  rate-limited (429); retrying in {wait}s (attempt {attempt + 1}/{attempts})")
                 time.sleep(wait)
                 continue
             sys.exit(f"error: GitHub Models call failed ({e.code}): {detail}")
@@ -199,17 +225,19 @@ def review_models(endpoint: str, token: str, model: str, models: list[Path]) -> 
     merged: dict = {"models": []}
     totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "calls": 0}
     sys_p = system_prompt()
-    for i, sql in enumerate(models):
-        print(f"  [{i + 1}/{len(models)}] reviewing {sql.stem}")
-        result, usage = call_model(endpoint, token, model, sys_p, user_prompt([sql]))
+    batches = batch_models(models)
+    for i, batch in enumerate(batches):
+        names = ", ".join(s.stem for s in batch)
+        print(f"  [batch {i + 1}/{len(batches)}] {len(batch)} model(s): {names}")
+        result, usage = call_model(endpoint, token, model, sys_p, user_prompt(batch))
         validate(result)
         merged["models"].extend(result.get("models", []))
         for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
             totals[k] += int(usage.get(k, 0) or 0)
         totals["calls"] += 1
         print(f"      tokens: in={usage.get('prompt_tokens', 0)} out={usage.get('completion_tokens', 0)}")
-        if i + 1 < len(models):
-            time.sleep(2)  # courtesy spacing for the free-tier per-minute limit
+        if i + 1 < len(batches):
+            time.sleep(5)  # courtesy spacing for the free-tier per-minute limit
     return merged, totals
 
 

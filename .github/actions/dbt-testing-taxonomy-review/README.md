@@ -46,8 +46,9 @@ inputs; the GitHub Models free tier may bill $0).
 ## Files
 
 - **`action.yml`** — composite action definition (inputs + `setup-uv` + run).
-- **`review.py`** — the engine (stdlib-only; run via `uv run --no-project`). Reviews each
-  model in its own GitHub Models request (the API caps a request at ~8000 input tokens).
+- **`review.py`** — the engine (stdlib-only; run via `uv run --no-project`). Greedily
+  batches models under a per-request token budget (GitHub Models caps a request at ~8000
+  input tokens) to minimise calls, and backs off on rate limits (429, honouring `Retry-After`).
 - **`rules.json`** — machine-readable catalogue: single source of truth for the 29 rule
   codes + metadata. The engine injects the codes into the schema enum at runtime.
 - **`review-output.schema.json`** — the structured-output contract.
