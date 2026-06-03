@@ -1,11 +1,12 @@
 # GitHub-hosted models — pricing & empirical trials
 
 Reference for choosing the `model` input of the
-[`dbt-testing-taxonomy-review`](../README.md) action. Two parts:
+[`dbt-testing-taxonomy-review`](../README.md) action:
 
-1. **Pricing** — the GitHub Models catalogue + GitHub's own cost multipliers.
-2. **Empirical trials** — real token/call/latency/cost measurements running this action's
-   review workload against a curated, provider-diverse set of models (via
+1. **Pricing & rate limits** — the GitHub Models catalogue, GitHub's cost multipliers, and the
+   free-tier rate limits + per-request token caps (all from authoritative GitHub sources).
+2. **Empirical trials** — real token / pure-request-latency / true-throughput / cost measurements
+   running ONE standardised review request against a provider-diverse set of models (via
    [`bench.py`](./bench.py)).
 
 ## How GitHub Models bills
@@ -20,15 +21,44 @@ $ / 1M tokens  =  multiplier × 1,000,000 × $0.00001  =  multiplier × $10
 > The **free tier may bill $0** (rate-limited). The prices below are the at-list-price
 > equivalent, so models are comparable regardless of which tier actually runs them.
 
-### Where the multipliers come from (and how we extract them)
+### Sources — how to get the raw markdown
 
-The catalogue API has **no pricing**. The authoritative multipliers live in GitHub's **docs
-source** — `github/docs` → `content/billing/reference/costs-for-github-models.md` (the data
-rendered at docs.github.com), which is public and parseable. The
-[`github models catalog`](../../../workflows/github-models-catalog.yml) workflow fetches both
-(catalogue via `GITHUB_TOKEN`, multipliers via that doc) and prints them to the run log / job
-summary / artifact. Working backwards: **`$/1M = multiplier × $10`** (the doc also lists
-precomputed prices, which match). Refresh: `gh workflow run "github models catalog" --ref main`.
+The catalogue API has **no pricing or rate-limit data**. Those live only in GitHub's docs, but
+every docs page has a parseable source: **`docs.github.com/en/<path>` → `raw.githubusercontent.com/github/docs/main/content/<path>.md`**. The three relevant sources:
+
+| Docs page | Raw markdown (`…/github/docs/main/content/…`) | Gives |
+|-----------|-----------------------------------------------|-------|
+| `billing/reference/costs-for-github-models` | `…/billing/reference/costs-for-github-models.md` | input/cached/output **multipliers** + prices |
+| `github-models/use-github-models/prototyping-with-ai-models` (#rate-limits) | `…/github-models/use-github-models/prototyping-with-ai-models.md` | **rate limits** (rpm/rpd/tokens-per-request/concurrent) per plan |
+| `copilot/reference/copilot-billing/models-and-pricing` | `…/copilot/reference/copilot-billing/models-and-pricing.md` | Copilot-IDE **premium-request** multipliers — a *separate* billing axis, **not** the Models-API direct cost used here |
+
+The [`github models catalog`](../../../workflows/github-models-catalog.yml) workflow fetches the
+catalogue (via `GITHUB_TOKEN`) **and** the multipliers (via the docs source) and prints both to the
+run log / job summary / artifact. Working backwards from a multiplier: **`$/1M = multiplier × $10`**
+(the doc also lists precomputed prices, which match). Refresh: `gh workflow run "github models catalog" --ref main`.
+
+### Rate limits & per-request token caps (free tier)
+
+From the prototyping-with-ai-models source (column = **Copilot Free**, the free tier). This explains
+both the 429s and the 413s the trials hit:
+
+| Model tier | Requests/min | Requests/**day** | Tokens per request | Concurrent |
+|------------|-------------:|-----------------:|--------------------|-----------:|
+| **Low** | 15 | **150** | 8000 in / 4000 out | 5 |
+| **High** | 10 | **50** | 8000 in / 4000 out | 2 |
+| **Embedding** | 15 | 150 | 64000 | 5 |
+| **Custom** (per-model; reasoning, gpt-5/o*, deepseek, grok) | model-specific & much tighter (e.g. `o1-preview` = 1 rpm) | — | observed **4000 in** | — |
+
+Implications for this action:
+- **High-tier models get only 50 requests/day on the free tier** — `gpt-4o`, `gpt-4.1`,
+  `deepseek-v3`, the Llamas are *high* tier, so heavy use exhausts the daily quota fast (the source
+  of the 429s here). *Low*-tier (`gpt-4o-mini`, `gpt-4.1-mini`, Phi) gets 150/day.
+- **Per-request cap is 8000 in / 4000 out** for Low/High; **reasoning/custom models cap at 4000 in**
+  (observed via `413 tokens_limit_reached`). The action's batch budget (`REQUEST_TOKEN_CAP`) must
+  stay under the cap of the chosen model — 7000 works for 8000-cap models, but a 4000-cap model
+  needs ≤ ~3000.
+- Paid tiers (Pro/Business/Enterprise) raise requests/day (and Enterprise raises tokens/request to
+  16000 in / 8000 out on High). Re-run the catalogue workflow to refresh if the plan changes.
 
 ### Billing multipliers (GHA-extracted, all priced models)
 
