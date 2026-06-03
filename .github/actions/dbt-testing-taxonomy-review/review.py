@@ -57,7 +57,7 @@ MARKERS = {
     "fails_all": "<!-- ttr:fails-all -->",
 }
 LEGEND = "✅ present · ❌ missing (gap) · ➖ n/a"
-FOOTER = "<sub>Rule codes: [`rules.json`](.agents/skills/testing-taxonomy-review/rules.json) · vignettes in `docs/guides/testing_taxonomy/`.</sub>"
+FOOTER = "<sub>Rule codes: [`rules.json`](.github/actions/dbt-testing-taxonomy-review/rules.json) · vignettes in `docs/guides/testing_taxonomy/`.</sub>"
 
 
 def env(name: str, default: str | None = None) -> str:
