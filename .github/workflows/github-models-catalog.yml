@@ -33,7 +33,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # The catalogue shares the Models rate limit; retry on 429/5xx, honouring Retry-After.
           curl -sS --fail \
+            --retry 6 --retry-delay 30 --retry-all-errors --retry-max-time 600 \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/json" \
             https://models.github.ai/catalog/models > catalog.json
