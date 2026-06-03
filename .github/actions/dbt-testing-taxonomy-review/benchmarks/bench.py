@@ -102,11 +102,14 @@ def load_catalogue() -> dict[str, dict]:
     return {}
 
 
-# THE standardised code-review example: review ONE model (the orders fact table + its YAML) in a
-# SINGLE request. Kept small enough (system catalogue + one model ≈ <4000 input tokens) that every
-# model — including the reasoning models capped at 4000 input tokens/request — completes it in one
-# request. This makes timing clean (no batching, no inter-batch sleeps) and every model comparable.
-STANDARD_INPUT = [Path("dbt-jaffleshop/models/marts/orders.sql")]
+# THE standardised code-review example: review ONE small mart (`locations`) + its YAML in a SINGLE
+# request. `locations` is deliberately chosen so the whole request (system catalogue + schema +
+# model ≈ 2,950 input tokens) stays well under 4000 — the tightest per-request input cap (reasoning
+# models on the free tier). That way EVERY model completes the example in exactly one request, with
+# no batching and no inter-batch sleeps, so req-time and tok/s are clean and directly comparable.
+# (The big marts — orders/customers/order_items — exceed 4000 input alone, so they can't be a
+# common baseline across the 4000-cap models; that limitation is itself a finding in MODELS.md.)
+STANDARD_INPUT = [Path("dbt-jaffleshop/models/marts/locations.sql")]
 
 
 def _post(model: str, sys_p: str, usr_p: str, rformat: dict | None, with_temp: bool) -> tuple[dict, float]:
