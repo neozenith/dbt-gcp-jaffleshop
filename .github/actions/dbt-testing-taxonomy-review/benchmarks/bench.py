@@ -39,6 +39,8 @@ TOKEN = os.environ.get("GITHUB_TOKEN", "")
 
 # Curated set: >=8 models across 5 providers, every one with a published GitHub Models
 # multiplier. (input $/1M, output $/1M) = multiplier * $10.
+# (input $/1M, output $/1M) = GitHub Models multiplier × $10. Only models with a published
+# multiplier appear here; others → cost shown as "—" (no published rate).
 PRICING: dict[str, tuple[float, float]] = {
     "openai/gpt-4o": (2.50, 10.00),
     "openai/gpt-4o-mini": (0.15, 0.60),
@@ -46,12 +48,54 @@ PRICING: dict[str, tuple[float, float]] = {
     "microsoft/phi-4": (0.125, 0.50),
     "microsoft/phi-4-mini-instruct": (0.075, 0.30),
     "deepseek/deepseek-v3-0324": (1.14, 4.56),
+    "deepseek/deepseek-r1-0528": (1.35, 5.40),
     "xai/grok-3-mini": (0.25, 1.27),
     "xai/grok-3": (3.00, 15.00),
     "meta/llama-3.3-70b-instruct": (0.71, 0.71),
     "meta/llama-4-maverick-17b-128e-instruct-fp8": (0.25, 1.00),
 }
-MODELS = list(PRICING)
+
+# Selectable benchmark sets (BENCH_SET=priced|newest, default priced).
+SETS: dict[str, list[str]] = {
+    "priced": [
+        "openai/gpt-4o", "openai/gpt-4o-mini", "openai/gpt-4.1-mini",
+        "microsoft/phi-4", "microsoft/phi-4-mini-instruct", "deepseek/deepseek-v3-0324",
+        "xai/grok-3-mini", "xai/grok-3", "meta/llama-3.3-70b-instruct",
+        "meta/llama-4-maverick-17b-128e-instruct-fp8",
+    ],
+    # The 8 newest / flagship models (mostly reasoning, "custom" rate tier; several have no
+    # published price multiplier yet — cost will read "—").
+    "newest": [
+        "openai/gpt-5", "openai/gpt-5-mini", "openai/gpt-5-nano",
+        "openai/o3", "openai/o4-mini", "xai/grok-3",
+        "meta/llama-4-scout-17b-16e-instruct", "deepseek/deepseek-r1-0528",
+    ],
+}
+MODELS = SETS.get(os.environ.get("BENCH_SET", "priced"), SETS["priced"])
+
+
+def load_catalogue() -> dict[str, dict]:
+    """Fetch the live catalogue once → {id: {tier, ctx_in, capabilities}} for annotation."""
+    req = urllib.request.Request(
+        "https://models.github.ai/catalog/models",
+        headers={"Authorization": f"Bearer {TOKEN}", "Accept": "application/json"})
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                data = json.loads(r.read().decode("utf-8"))
+            return {m["id"]: {"tier": m.get("rate_limit_tier", "?"),
+                              "ctx_in": (m.get("limits") or {}).get("max_input_tokens"),
+                              "caps": "+".join(m.get("capabilities") or []) or "—"}
+                    for m in data}
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 4:
+                time.sleep(20 * (attempt + 1))
+                continue
+            break
+        except Exception:  # noqa: BLE001
+            break
+    print("  (catalogue metadata unavailable — proceeding without tier/ctx/caps)")
+    return {}
 
 
 def bench_input() -> list[Path]:
@@ -94,7 +138,7 @@ def call_with_fallback(model: str, sys_p: str, usr_p: str) -> tuple[dict, str | 
     return {}, None, last_err
 
 
-def bench_model(model: str, models: list[Path]) -> dict:
+def bench_model(model: str, models: list[Path], meta: dict) -> dict:
     sys_p = review.system_prompt()
     overhead = review.est_tokens(sys_p) + review.est_tokens(json.dumps(review.response_format()))
     budget = max(1500, review.REQUEST_TOKEN_CAP - overhead)
@@ -113,39 +157,47 @@ def bench_model(model: str, models: list[Path]) -> dict:
         pout += int(usage.get("completion_tokens", 0) or 0)
         calls += 1
         time.sleep(6)  # spacing for free-tier per-minute limits
-    wall = time.perf_counter() - t0
-    in_p, out_p = PRICING[model]
-    cost = pin / 1e6 * in_p + pout / 1e6 * out_p
-    return {"model": model, "mode": mode, "calls": calls, "in": pin, "out": pout,
-            "total": pin + pout, "wall_s": round(wall, 1), "cost": cost, "error": err}
+    wall = round(time.perf_counter() - t0, 1)
+    price = PRICING.get(model)
+    cost = (pin / 1e6 * price[0] + pout / 1e6 * price[1]) if price else None
+    tok_s = round(pout / wall, 1) if wall > 0 and pout else 0.0  # output throughput
+    m = meta.get(model, {})
+    return {"model": model, "tier": m.get("tier", "?"), "ctx_in": m.get("ctx_in"),
+            "caps": m.get("caps", "—"), "mode": mode, "calls": calls, "in": pin, "out": pout,
+            "total": pin + pout, "wall_s": wall, "tok_s": tok_s, "cost": cost, "error": err}
 
 
 def main() -> None:
     if not TOKEN:
         sys.exit("error: set GITHUB_TOKEN (e.g. GITHUB_TOKEN=$(gh auth token))")
+    set_name = os.environ.get("BENCH_SET", "priced")
+    meta = load_catalogue()
     models = bench_input()
-    print(f"benchmark input: {len(models)} models — {', '.join(m.stem for m in models)}\n")
+    print(f"set={set_name} · benchmark input: {len(models)} models — {', '.join(m.stem for m in models)}\n")
     rows = []
     for i, model in enumerate(MODELS):
         print(f"[{i + 1}/{len(MODELS)}] {model} …", flush=True)
-        r = bench_model(model, models)
+        r = bench_model(model, models, meta)
         rows.append(r)
-        print(f"    -> mode={r['mode']} calls={r['calls']} in={r['in']} out={r['out']} "
-              f"wall={r['wall_s']}s cost=${r['cost']:.4f}" + (f" ERROR={r['error']}" if r['error'] else ""))
+        cost_s = "—" if r["cost"] is None else f"${r['cost']:.4f}"
+        print(f"    -> tier={r['tier']} mode={r['mode']} calls={r['calls']} in={r['in']} out={r['out']} "
+              f"wall={r['wall_s']}s tok/s={r['tok_s']} cost={cost_s}" + (f" ERROR={r['error']}" if r['error'] else ""))
         if i + 1 < len(MODELS):
             time.sleep(8)
-    # Markdown results table, cheapest-first among successful runs.
-    rows.sort(key=lambda r: (r["error"] is not None, r["cost"]))
-    out = ["| Model | resp_format | API calls | Input tok | Output tok | Total tok | Wall (s) | Est. cost (USD) | Notes |",
-           "|---|:---:|:---:|---:|---:|---:|---:|---:|---|"]
+    # Sort: successful first, then by cost (unpriced/None last within success).
+    rows.sort(key=lambda r: (r["error"] is not None, r["cost"] is None, r["cost"] or 0.0))
+    hdr = ("| Model | tier | ctx in | resp_format | calls | In tok | Out tok | Wall (s) | "
+           "Tok/s (out) | Est. cost | Capabilities / notes |")
+    out = [hdr, "|---|:---:|--:|:---:|:---:|--:|--:|--:|--:|--:|---|"]
     for r in rows:
-        notes = "✓" if not r["error"] else f"⚠️ {r['error']}"
-        cost = "—" if r["error"] else f"${r['cost']:.4f}"
-        out.append(f"| `{r['model']}` | {r['mode'] or '—'} | {r['calls']} | {r['in']:,} | {r['out']:,} | "
-                   f"{r['total']:,} | {r['wall_s']} | {cost} | {notes} |")
+        cost = "—" if r["cost"] is None else f"${r['cost']:.4f}"
+        ctx = f"{r['ctx_in']:,}" if r["ctx_in"] else "?"
+        note = r["caps"] if not r["error"] else f"⚠️ {r['error']}"
+        out.append(f"| `{r['model']}` | {r['tier']} | {ctx} | {r['mode'] or '—'} | {r['calls']} | "
+                   f"{r['in']:,} | {r['out']:,} | {r['wall_s']} | {r['tok_s']} | {cost} | {note} |")
     table = "\n".join(out)
     print("\n" + table)
-    results_path = Path(__file__).resolve().parent / "results.md"
+    results_path = Path(__file__).resolve().parent / f"results-{set_name}.md"
     results_path.write_text(table + "\n", encoding="utf-8")
     print(f"\nwrote {results_path}")
 
