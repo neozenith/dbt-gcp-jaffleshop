@@ -36,6 +36,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -162,12 +163,21 @@ def call_model(endpoint: str, token: str, model: str, sys_p: str, usr_p: str) ->
         f"{endpoint.rstrip('/')}/chat/completions", data=body,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
                  "Accept": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=240) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        sys.exit(f"error: GitHub Models call failed ({e.code}): {e.read().decode('utf-8', 'replace')}")
-    return json.loads(payload["choices"][0]["message"]["content"])
+    # GitHub Models free tier rate-limits requests; back off on 429.
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=240) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            return json.loads(payload["choices"][0]["message"]["content"])
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")
+            if e.code == 429 and attempt < 3:
+                wait = 5 * (2 ** attempt)
+                print(f"  rate-limited (429); retrying in {wait}s")
+                time.sleep(wait)
+                continue
+            sys.exit(f"error: GitHub Models call failed ({e.code}): {detail}")
+    sys.exit("error: GitHub Models call failed after retries")
 
 
 def validate(result: dict) -> None:
@@ -180,13 +190,20 @@ def validate(result: dict) -> None:
                 sys.exit(f"error: model emitted unknown rule_code {f.get('rule_code')!r}")
 
 
-def review_set(endpoint: str, token: str, model: str, models: list[Path]) -> dict:
-    if not models:
-        return {"models": []}
-    print(f"  reviewing {len(models)} model(s): {', '.join(m.stem for m in models)}")
-    result = call_model(endpoint, token, model, system_prompt(), user_prompt(models))
-    validate(result)
-    return result
+def review_models(endpoint: str, token: str, model: str, models: list[Path]) -> dict:
+    """Review each model in its OWN request — GitHub Models caps a request at ~8000 input
+    tokens, so batching the whole project overflows. One model + the catalogue fits easily.
+    Results are merged into a single {"models": [...]} payload."""
+    merged: dict = {"models": []}
+    sys_p = system_prompt()
+    for i, sql in enumerate(models):
+        print(f"  [{i + 1}/{len(models)}] reviewing {sql.stem}")
+        result = call_model(endpoint, token, model, sys_p, user_prompt([sql]))
+        validate(result)
+        merged["models"].extend(result.get("models", []))
+        if i + 1 < len(models):
+            time.sleep(2)  # courtesy spacing for the free-tier per-minute limit
+    return merged
 
 
 # --- renderers ---------------------------------------------------------------
@@ -272,10 +289,12 @@ def main() -> None:
     endpoint = env("MODELS_ENDPOINT", "https://models.github.ai/inference")
     glob_prefix = env("MODELS_GLOB", "dbt-jaffleshop/models")
 
-    print("changed-model set:")
-    res_changed = review_set(endpoint, token, model, changed_models(base, head, glob_prefix))
-    print("all-model set:")
-    res_all = review_set(endpoint, token, model, all_models(glob_prefix))
+    # Review every model once (per-model requests), then derive the changed subset by name.
+    # Avoids reviewing changed models twice and keeps the "changed" and "all" matrices consistent.
+    changed_names = {p.stem for p in changed_models(base, head, glob_prefix)}
+    print(f"changed models: {', '.join(sorted(changed_names)) or '(none)'}")
+    res_all = review_models(endpoint, token, model, all_models(glob_prefix))
+    res_changed = {"models": [m for m in res_all["models"] if m["model"] in changed_names]}
 
     upsert_comment(repo, pr, token, MARKERS["matrix_changed"],
                    matrix_comment(res_changed, MARKERS["matrix_changed"], "changed models"))
