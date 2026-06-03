@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "testing_taxonomy_review",
+  "description": "Structured output contract for the testing-taxonomy-review GHA. The reviewing model MUST return exactly this shape. The rule_code enum is the single source of truth in rules.json; the review script overwrites the enum below from rules.json at runtime so the two cannot drift.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["models"],
+  "properties": {
+    "models": {
+      "type": "array",
+      "description": "One entry per added/changed dbt model in the PR.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["model", "verdict", "findings"],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "dbt model name (file stem), e.g. 'orders'."
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["pass", "gaps", "blocker"],
+            "description": "pass = no applicable rule unmet; gaps = warnings only; blocker = at least one blocker-severity gap."
+          },
+          "findings": {
+            "type": "array",
+            "description": "Every taxonomy rule the reviewer evaluated for this model. Include applicable_present (covered) and applicable_missing (gap); omit not_applicable unless it clarifies a deliberate skip.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["rule_code", "status", "severity", "column", "rationale", "recommendation"],
+              "properties": {
+                "rule_code": {
+                  "type": "string",
+                  "description": "Taxonomy rule code. Enum is injected from rules.json at runtime.",
+                  "enum": [
+                    "EN-01", "EN-02", "EN-03", "EN-04", "EN-05", "EN-06",
+                    "DM-01", "DM-02", "DM-03", "DM-04", "DM-05",
+                    "MS-01", "MS-02", "MS-03", "MS-04", "MS-05",
+                    "TM-SC-01", "TM-SC-02", "TM-SC-03", "TM-GR-01", "TM-AU-01", "TM-AU-02",
+                    "MD-01", "MD-02", "MD-03", "MD-04", "MD-05", "MD-06", "MD-07"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["applicable_present", "applicable_missing", "not_applicable"],
+                  "description": "applicable_present = rule applies and a matching test exists; applicable_missing = rule applies but no test found (a gap); not_applicable = rule does not apply to this model."
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": ["blocker", "warning", "info"],
+                  "description": "blocker = grain/contract/integrity gap that should block merge; warning = should-fix coverage gap; info = nice-to-have or a noted not_applicable."
+                },
+                "column": {
+                  "type": "string",
+                  "description": "Column the finding concerns, or '(model)' for model-level rules. Empty string if not column-specific."
+                },
+                "rationale": {
+                  "type": "string",
+                  "description": "One sentence: why this rule does/doesn't apply to this model, grounded in the column's role (JOIN key / GROUP BY axis / aggregate / time / model-level)."
+                },
+                "recommendation": {
+                  "type": "string",
+                  "description": "Concrete next step: the specific test to add (and package), or 'covered' if applicable_present, or 'n/a'."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

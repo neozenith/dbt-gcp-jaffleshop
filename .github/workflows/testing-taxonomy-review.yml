@@ -1,0 +1,63 @@
+name: testing-taxonomy review
+
+# =============================================================================
+# Reviews the dbt models added/changed in a PR against this project's testing
+# taxonomy (.agents/skills/testing-taxonomy-review) and posts a single sticky PR
+# comment summarising the findings in a table.
+#
+# LLM runner: GitHub Models — GitHub-hosted inference reached with the workflow's
+# built-in GITHUB_TOKEN (permissions: models: read). No vendor API key, no secret,
+# no Anthropic/OpenAI/Codex plugin — it leverages the GitHub subscription already
+# available, matching this repo's keyless/secrets-averse stance. The model id is a
+# GitHub Models *catalogue* id (openai/gpt-4o is GitHub-hosted, not the OpenAI API);
+# swap MODEL to any structured-output-capable GitHub Models id without code changes.
+#
+# The model is forced to emit JSON conforming to review-output.schema.json
+# (response_format: json_schema, strict). The rule_code enum is injected from
+# rules.json at runtime so the schema and the catalogue cannot drift.
+#
+# Advisory only: it posts a comment, it does not block merge.
+# =============================================================================
+
+on:
+  pull_request:
+    paths:
+      - 'dbt-jaffleshop/models/**'
+      - '.agents/skills/testing-taxonomy-review/**'
+      - '.github/workflows/testing-taxonomy-review.yml'
+
+# Least privilege: read the repo, call GitHub Models, write the PR comment.
+permissions:
+  contents: read
+  pull-requests: write
+  models: read
+
+concurrency:
+  group: taxonomy-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: review changed models
+    runs-on: ubuntu-latest
+    # GITHUB_TOKEN on fork PRs is read-only (can't comment) and lacks models access.
+    # Restrict to same-repo PRs so we fail clearly only on real errors, not perms.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0          # base..head diff needs both commits present
+
+      - uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Run testing-taxonomy review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MODEL: openai/gpt-4o
+          MODELS_ENDPOINT: https://models.github.ai/inference
+          MODELS_GLOB: dbt-jaffleshop/models
+        run: uv run --no-project .agents/skills/testing-taxonomy-review/review.py

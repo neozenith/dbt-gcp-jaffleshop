@@ -139,15 +139,11 @@ jobs:
       - name: Install dbt packages
         run: uv run dbt deps
 
-      # Bootstrap Elementary's models first so its result tables exist before any other
-      # invocation's on-run-end hook logs to them. A fresh PR-sliced dataset has none yet,
-      # and the `dbt seed` step's elementary on-run-end hook errors if they're missing. This
-      # is a plain incremental run (first run on a fresh slice = full build automatically);
-      # a forced --full-refresh is an occasional maintenance task, moved to the dispatch-only
-      # .github/workflows/elementary-full-refresh.yml instead of every deploy.
+      # Elementary is PROD-only — disabled in dev/test via dbt_project.yml (its models are gated
+      # off and its on-run-end upload hooks are muted with disable_* vars). So no Elementary
+      # bootstrap is needed here; `dbt build` runs only the project's own models/tests in the slice.
       - name: run dbt build
         run: |
-          uv run dbt run -s elementary --target test
           uv run dbt seed --target test --vars '{"load_source_data": true}'
           uv run dbt build --target test
 
