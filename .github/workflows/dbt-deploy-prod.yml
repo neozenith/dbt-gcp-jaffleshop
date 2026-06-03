@@ -133,9 +133,12 @@ jobs:
       - name: Install dbt packages
         run: uv run dbt deps
 
+      # `dbt build` runs every model — including Elementary's — incrementally, so no
+      # separate pre-build step is needed. A forced --full-refresh of Elementary's
+      # incremental tables is an occasional maintenance task, moved to the dispatch-only
+      # .github/workflows/elementary-full-refresh.yml instead of every deploy.
       - name: run dbt build
         run: |
-          uv run dbt run -s elementary --full-refresh --target prod   # pre-build Elementary's models so the manifest has them, for the checks that need it
           uv run dbt seed --target prod --vars '{"load_source_data": true}'
           uv run dbt build --target prod
 
