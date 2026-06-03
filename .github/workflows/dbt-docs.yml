@@ -32,6 +32,16 @@ name: dbt docs
 # The emitted JSONs carry only graph metadata (node names, resource types, tags, lineage,
 # selector membership) — NOT compiled SQL — so they keep the same "no exposed SQL" stance.
 #
+# We ALSO publish the Elementary observability dashboard (elementary_report.html) as a third
+# SIBLING, reachable at <pages-url>/elementary_report.html. `edr report` reads the Elementary
+# telemetry tables in dbt-prod-jaffleshop.ELEMENTARY (run/test results, model run-times,
+# anomaly history — written on every prod test run via the re-exported test materialization)
+# and renders one self-contained HTML file. NOTE: edr is NOT a read-only tool — it creates and
+# drops intermediate tables in ELEMENTARY while assembling the report. Here that is fine: the
+# step runs as the dbt-prod SA already authenticated for the catalog query, which has write on
+# its own project. (The LOCAL `make elementary-report` path instead impersonates a dedicated,
+# narrowly-scoped dbt-dev-elementary SA — see dbt-jaffleshop/Makefile and infra/dbt.tf.)
+#
 # PREREQUISITE: repo Settings → Pages → Source must be set to "GitHub Actions"
 # (one-time, manual). The deploy-pages action fails clearly if it isn't.
 # =============================================================================
@@ -123,6 +133,19 @@ jobs:
       # (no warehouse query). Fail-loud (no `|| true`) to match the docs-generate step's stance.
       - name: Build sdag data-product viewer (sibling of index.html)
         run: uv run -m cicd_cli products generate -o "${{ github.workspace }}/_site"
+
+      # Elementary observability dashboard → <pages-url>/elementary_report.html. Runs as the
+      # dbt-prod SA authenticated above (edr materializes scratch tables in ELEMENTARY, so it
+      # needs prod write — which dbt-prod has on its own project). edr loads ONLY the
+      # `elementary` profile, so DBT_BQ_PROJECT_PROD (set on this job) is the only project var
+      # it reads; DBT_BQ_DATASET_ELEMENTARY defaults to ELEMENTARY. Fail-loud (no `|| true`).
+      - name: Build Elementary report (sibling of index.html)
+        run: |
+          uv run edr report \
+            --profiles-dir "${{ github.workspace }}/dbt-jaffleshop" \
+            --profile-target prod \
+            --target-path "${{ github.workspace }}/edr_target" \
+            --file-path "${{ github.workspace }}/_site/elementary_report.html"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
