@@ -58,11 +58,8 @@ PRICING: dict[str, tuple[float, float]] = {
 
 # Selectable benchmark sets (BENCH_SET=priced|newest, default priced). Grok excluded (unknown_model).
 SETS: dict[str, list[str]] = {
-    "priced": [
-        "openai/gpt-4o", "openai/gpt-4o-mini", "openai/gpt-4.1-mini",
-        "microsoft/phi-4", "microsoft/phi-4-mini-instruct", "deepseek/deepseek-v3-0324",
-        "meta/llama-3.3-70b-instruct", "meta/llama-4-maverick-17b-128e-instruct-fp8",
-    ],
+    # Every model with a published multiplier (so all priced models get benchmarked).
+    "priced": list(PRICING),
     # The newest / flagship models (mostly reasoning, "custom" rate tier; several have no
     # published price multiplier yet — cost will read "—").
     "newest": [
@@ -108,9 +105,10 @@ def load_catalogue() -> dict[str, dict]:
 STANDARD_INPUT = [Path("dbt-jaffleshop/models/marts/locations.sql")]
 
 
-def _post(model: str, sys_p: str, usr_p: str, rformat: dict | None, with_temp: bool) -> tuple[dict, float]:
-    """POST one request; return (usage, request_seconds) where request_seconds is the PURE network +
-    generation latency of this call (excludes any retry/backoff waits, which happen outside _post)."""
+def _post(model: str, sys_p: str, usr_p: str, rformat: dict | None,
+          with_temp: bool) -> tuple[dict, str, float]:
+    """POST one request; return (usage, content, request_seconds). request_seconds is the PURE
+    network + generation latency (excludes retry/backoff waits, which happen outside _post)."""
     payload: dict = {"model": model,
                      "messages": [{"role": "system", "content": sys_p},
                                   {"role": "user", "content": usr_p}]}
@@ -124,8 +122,20 @@ def _post(model: str, sys_p: str, usr_p: str, rformat: dict | None, with_temp: b
                  "Accept": "application/json"}, method="POST")
     t0 = time.perf_counter()
     with urllib.request.urlopen(req, timeout=300) as resp:
-        usage = json.loads(resp.read().decode("utf-8")).get("usage") or {}
-    return usage, time.perf_counter() - t0
+        raw = json.loads(resp.read().decode("utf-8"))
+    elapsed = time.perf_counter() - t0
+    content = ((raw.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+    return (raw.get("usage") or {}), content, elapsed
+
+
+def count_findings(content: str) -> int | None:
+    """Parse the review JSON and count total findings — a completeness signal so a model that
+    emits a near-empty review (cheap/fast but useless) is visible. None if unparseable."""
+    try:
+        data = json.loads(content)
+        return sum(len(m.get("findings", []) or []) for m in data.get("models", []) or [])
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def call_with_fallback(model: str, sys_p: str, usr_p: str) -> dict:
@@ -140,8 +150,8 @@ def call_with_fallback(model: str, sys_p: str, usr_p: str) -> dict:
         with_temp = True
         for attempt in range(5):
             try:
-                usage, req_s = _post(model, sys_p, usr_p, rf, with_temp)
-                return {"usage": usage, "mode": name, "req_s": req_s,
+                usage, content, req_s = _post(model, sys_p, usr_p, rf, with_temp)
+                return {"usage": usage, "content": content, "mode": name, "req_s": req_s,
                         "retries": retries, "rl_wait_s": rl_wait, "error": None}
             except urllib.error.HTTPError as e:
                 detail = e.read().decode("utf-8", "replace")
@@ -159,11 +169,14 @@ def call_with_fallback(model: str, sys_p: str, usr_p: str) -> dict:
             except Exception as e:  # noqa: BLE001
                 last_err = f"{name}: {e}"
                 break
-    return {"usage": {}, "mode": None, "req_s": 0.0, "retries": retries, "rl_wait_s": rl_wait, "error": last_err}
+    return {"usage": {}, "content": "", "mode": None, "req_s": 0.0,
+            "retries": retries, "rl_wait_s": rl_wait, "error": last_err}
 
 
 def bench_model(model: str, meta: dict) -> dict:
-    """Run THE standardised example (one request) and measure pure request latency + true tok/s."""
+    """Run THE standardised example (one request) and measure pure request latency, true tok/s,
+    AND a completeness signal (findings count) — so a model that under-reviews (cheap/fast but
+    near-empty output) is distinguishable from one that did a thorough review."""
     sys_p = review.system_prompt()
     r = call_with_fallback(model, sys_p, review.user_prompt(STANDARD_INPUT))
     usage = r["usage"]
@@ -173,11 +186,12 @@ def bench_model(model: str, meta: dict) -> dict:
     price = PRICING.get(model)
     cost = (pin / 1e6 * price[0] + pout / 1e6 * price[1]) if price else None
     tok_s = round(pout / req_s, 1) if req_s > 0 and pout else 0.0  # TRUE output throughput
+    findings = count_findings(r["content"]) if not r["error"] else None
     m = meta.get(model, {})
     return {"model": model, "tier": m.get("tier", "?"), "ctx_in": m.get("ctx_in"),
-            "mode": r["mode"], "in": pin, "out": pout, "req_s": req_s, "tok_s": tok_s,
-            "retries": r["retries"], "rl_wait_s": round(r["rl_wait_s"], 1), "cost": cost,
-            "error": r["error"]}
+            "mode": r["mode"], "in": pin, "out": pout, "findings": findings, "req_s": req_s,
+            "tok_s": tok_s, "retries": r["retries"], "rl_wait_s": round(r["rl_wait_s"], 1),
+            "cost": cost, "error": r["error"]}
 
 
 def main() -> None:
@@ -193,22 +207,25 @@ def main() -> None:
         rows.append(r)
         cost_s = "—" if r["cost"] is None else f"${r['cost']:.4f}"
         print(f"    -> tier={r['tier']} mode={r['mode']} in={r['in']} out={r['out']} "
-              f"req={r['req_s']}s tok/s={r['tok_s']} retries={r['retries']} (rl_wait={r['rl_wait_s']}s) "
-              f"cost={cost_s}" + (f" ERROR={r['error']}" if r['error'] else ""))
+              f"findings={r['findings']} req={r['req_s']}s tok/s={r['tok_s']} "
+              f"retries={r['retries']} (rl_wait={r['rl_wait_s']}s) cost={cost_s}"
+              + (f" ERROR={r['error']}" if r['error'] else ""))
         if i + 1 < len(MODELS):
             time.sleep(8)  # spacing between models (NOT counted in any model's req time)
-    # Sort: successful first, then fastest generator (tok/s desc), then cheapest.
-    rows.sort(key=lambda r: (r["error"] is not None, -r["tok_s"], r["cost"] is None, r["cost"] or 0.0))
-    hdr = ("| Model | tier | ctx in | resp_format | In tok | Out tok | Req (s) | Tok/s | "
+    # Sort: successful first, then by completeness (findings desc) — cost/speed are only
+    # comparable at similar findings counts, so lead with how much review each model did.
+    rows.sort(key=lambda r: (r["error"] is not None, -(r["findings"] or 0), r["cost"] or 1e9))
+    hdr = ("| Model | tier | ctx in | resp_format | In tok | Out tok | Findings | Req (s) | Tok/s | "
            "429 retries (wait s) | Est. cost | Notes |")
-    out = [hdr, "|---|:---:|--:|:---:|--:|--:|--:|--:|:--:|--:|---|"]
+    out = [hdr, "|---|:---:|--:|:---:|--:|--:|--:|--:|--:|:--:|--:|---|"]
     for r in rows:
         cost = "—" if r["cost"] is None else f"${r['cost']:.4f}"
         ctx = f"{r['ctx_in']:,}" if r["ctx_in"] else "?"
         rl = f"{r['retries']} ({r['rl_wait_s']})" if r["retries"] else "0"
+        fnd = "—" if r["findings"] is None else str(r["findings"])
         note = "✓" if not r["error"] else f"⚠️ {r['error']}"
         out.append(f"| `{r['model']}` | {r['tier']} | {ctx} | {r['mode'] or '—'} | "
-                   f"{r['in']:,} | {r['out']:,} | {r['req_s']} | {r['tok_s']} | {rl} | {cost} | {note} |")
+                   f"{r['in']:,} | {r['out']:,} | {fnd} | {r['req_s']} | {r['tok_s']} | {rl} | {cost} | {note} |")
     table = "\n".join(out)
     print("\n" + table)
     results_path = Path(__file__).resolve().parent / f"results-{set_name}.md"

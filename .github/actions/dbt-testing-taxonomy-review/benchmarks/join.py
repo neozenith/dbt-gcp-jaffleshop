@@ -30,7 +30,12 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
-EXCLUDE = {"xai/grok-3", "xai/grok-3-mini"}  # catalogued but return unknown_model at inference
+# Excluded from the canonical table: Grok (unknown_model at inference) + embedding models
+# (not chat-completions — irrelevant to a code-review benchmark).
+EXCLUDE = {
+    "xai/grok-3", "xai/grok-3-mini",
+    "openai/text-embedding-3-large", "openai/text-embedding-3-small",
+}
 
 # Published billing multipliers → $/1M = multiplier × $10 (github/docs costs-for-github-models).
 PRICING: dict[str, tuple[float, float]] = {
@@ -71,12 +76,12 @@ def parse_results(path: Path) -> dict[str, dict]:
         if not m:
             continue
         cells = [c.strip() for c in m.group(2).split("|")]
-        # cols after model: tier, ctx_in, resp_format, in, out, req_s, tok_s, rl, cost, notes
-        if len(cells) < 10:
+        # cols after model: tier, ctx_in, resp_format, in, out, findings, req_s, tok_s, rl, cost, notes
+        if len(cells) < 11:
             continue
         out[m.group(1)] = {"resp_format": cells[2], "in": cells[3], "out": cells[4],
-                           "req_s": cells[5], "tok_s": cells[6], "rl": cells[7],
-                           "cost": cells[8], "notes": cells[9]}
+                           "findings": cells[5], "req_s": cells[6], "tok_s": cells[7],
+                           "rl": cells[8], "cost": cells[9], "notes": cells[10]}
     return out
 
 
@@ -99,13 +104,14 @@ def main() -> None:
             f"{lim.get('max_input_tokens', '?'):,}" if isinstance(lim.get("max_input_tokens"), int) else "?",
             "+".join(m.get("supported_input_modalities") or []) or "—",
             in_p, out_p,
-            b.get("resp_format", "—"), b.get("out", "—"), b.get("req_s", "—"),
-            b.get("tok_s", "—"), b.get("cost", "—"), b.get("notes", "—"),
+            b.get("resp_format", "—"), b.get("out", "—"), b.get("findings", "—"),
+            b.get("req_s", "—"), b.get("tok_s", "—"), b.get("cost", "—"), b.get("notes", "—"),
         ]) + " |")
 
     header = ("| Model | Provider | Tier | Ctx in | Input modes | $/1M in | $/1M out | "
-              "Bench resp_format | Bench out tok | Bench req (s) | Bench tok/s | Bench cost | Bench status |")
-    sep = "|---|---|:--:|--:|---|--:|--:|:--:|--:|--:|--:|--:|---|"
+              "Bench resp_format | Bench out tok | Bench findings | Bench req (s) | Bench tok/s | "
+              "Bench cost | Bench status |")
+    sep = "|---|---|:--:|--:|---|--:|--:|:--:|--:|--:|--:|--:|--:|---|"
     benchmarked = sum(1 for m in catalogue if m["id"] in bench)
     priced = sum(1 for m in catalogue if m["id"] in PRICING)
     caption = (f"Canonical table — {len(catalogue)} catalogue models LEFT-JOINed with pricing "
