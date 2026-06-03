@@ -158,7 +158,7 @@ not hand-maintained. Refresh: `gh workflow run "github models catalog" --ref mai
 > multipliers above (multiplier × $10) — there is no single endpoint with both.
 
 <details>
-<summary>41 models — GHA-extracted 2026-06-03 (run 26883567820); <code>xai/grok-3</code>/<code>-mini</code> omitted (return unknown_model)</summary>
+<summary>39 chat models — GHA-extracted 2026-06-03 (run 26883567820); <code>xai/grok-3</code>/<code>-mini</code> (unknown_model) and the 2 <code>text-embedding-3-*</code> models (not chat) omitted</summary>
 
 | id | publisher | tier | ctx in | ctx out | input | capabilities |
 |----|-----------|------|-------:|--------:|-------|--------------|
@@ -201,8 +201,6 @@ not hand-maintained. Refresh: `gh workflow run "github models catalog" --ref mai
 | `openai/o3` | OpenAI | custom | 200000 | 100000 | text+image | agents, agentsV2, reasoning, streaming, tool-calling |
 | `openai/o3-mini` | OpenAI | custom | 200000 | 100000 | text | agents, reasoning, streaming, tool-calling, agentsV2 |
 | `openai/o4-mini` | OpenAI | custom | 200000 | 100000 | text+image | agents, agentsV2, reasoning, tool-calling, streaming |
-| `openai/text-embedding-3-large` | OpenAI | embeddings | 8191 | — | text | — |
-| `openai/text-embedding-3-small` | OpenAI | embeddings | 8191 | — | text | — |
 
 </details>
 
