@@ -99,7 +99,9 @@ def system_prompt() -> str:
         "- *-anomaly rules (DM-05/MS-05/MD-07) use Elementary, which is PROD-only here; treat as info unless already configured.\n"
         "- Only use rule codes from this set: " + codes + ".\n"
         "- status: applicable_present (a matching test exists), applicable_missing (gap), not_applicable.\n"
-        "- severity: blocker (grain/contract/FK integrity gaps), warning (contained coverage gap), info.\n"
+        "- severity applies to GAPS only: blocker (missing grain/contract/FK-integrity), warning (contained "
+        "missing coverage), info. ALWAYS set severity=info for applicable_present (the rule is already satisfied) "
+        "and for not_applicable.\n"
         "- Return ONLY JSON conforming to the provided schema. No prose.\n\n"
         "RULE CATALOGUE:\n" + build_catalogue()
     )
