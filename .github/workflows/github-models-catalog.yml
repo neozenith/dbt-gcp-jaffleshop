@@ -1,17 +1,18 @@
 name: github models catalog
 
 # =============================================================================
-# On-demand: dump the LIVE GitHub Models catalogue using the runner's GITHUB_TOKEN
-# (permissions: models: read) so the model listing is authoritative and reproducible,
-# not scraped or hand-maintained. The catalogue is emitted three ways:
-#   - the step log (a plain table — easy to read/extract from the run log)
-#   - the job summary (a markdown table)
-#   - an uploaded artifact (the raw catalog.json)
+# On-demand: dump the LIVE GitHub Models catalogue AND the billing-multiplier table, so both
+# the listings and the pricing are authoritative + reproducible (not hand-maintained). Each is
+# emitted to the step log, the job summary, and an uploaded artifact.
 #
-# NOTE: the catalogue API exposes id / publisher / rate_limit_tier / context limits /
-# capabilities / modalities — but NO pricing. GitHub Models pricing is the billing
-# *multiplier* table (docs.github.com/billing/reference/costs-for-github-models);
-# effective $/1M = multiplier × $10. There is no pricing API to read here.
+# TWO sources, because no single endpoint has both:
+#   - LISTINGS — the catalogue API (https://models.github.ai/catalog/models) via GITHUB_TOKEN
+#     (models: read): id / publisher / rate_limit_tier / context limits / capabilities /
+#     modalities. It has NO pricing.
+#   - PRICING — the billing *multipliers* live in GitHub's docs source (github/docs →
+#     content/billing/reference/costs-for-github-models.md), public + parseable. There is no
+#     pricing API, so we read the canonical doc source directly. Effective $/1M = multiplier × $10
+#     (the doc also lists precomputed prices). Join the two by model name to get listing + price.
 #
 # Dispatch:  gh workflow run "github models catalog" --ref main
 # =============================================================================
@@ -63,8 +64,38 @@ jobs:
               catalog.json | sort
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload raw catalog.json
+      - name: Fetch billing multipliers (github/docs source)
+        run: |
+          set -euo pipefail
+          # The catalogue API has no pricing. The authoritative multipliers live in GitHub's
+          # docs source (the same data rendered at docs.github.com), which is public + parseable.
+          # Effective $/1M = input/output multiplier × $10 (the doc also precomputes the prices).
+          curl -sS --fail --retry 4 --retry-delay 10 --retry-all-errors \
+            https://raw.githubusercontent.com/github/docs/main/content/billing/reference/costs-for-github-models.md \
+            > costs.md
+
+          # Extract the markdown table (header row through the first non-table line).
+          awk '/^\| *Model name/{p=1} p{ if ($0 !~ /^\|/) exit; print }' costs.md > multipliers.md
+          rows=$(($(wc -l < multipliers.md) - 2))   # minus header + separator
+          echo "::notice::Billing multipliers: $rows models priced"
+          echo "=== BILLING MULTIPLIERS ($rows models) — \$/1M = multiplier × \$10 ==="
+          cat multipliers.md
+
+          {
+            echo ""
+            echo "## GitHub Models billing multipliers — $rows models"
+            echo ""
+            echo "_Source: \`github/docs\` → \`content/billing/reference/costs-for-github-models.md\` (live)._"
+            echo "_Effective \$/1M = multiplier × \$10; the table also lists precomputed prices._"
+            echo ""
+            cat multipliers.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload catalogue + multipliers
         uses: actions/upload-artifact@v7
         with:
           name: github-models-catalog
-          path: catalog.json
+          path: |
+            catalog.json
+            costs.md
+            multipliers.md
