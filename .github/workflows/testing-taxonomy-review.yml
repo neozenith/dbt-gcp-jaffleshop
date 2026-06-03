@@ -1,31 +1,28 @@
 name: testing-taxonomy review
 
 # =============================================================================
-# Reviews dbt models against this project's testing taxonomy
-# (.agents/skills/testing-taxonomy-review) and upserts FOUR sticky PR-comment variants
-# so the output formats can be compared: a coverage matrix (models × rule codes, ✅/❌/➖)
-# and a failures-only view, each for the PR's changed models AND for all models in the
-# project. Each variant has its own marker so it updates in place on re-run.
+# Reviews dbt models against this project's testing taxonomy and upserts FOUR sticky
+# PR-comment variants (coverage matrix + failures-only, each for the PR's changed models
+# AND all project models). Each comment also carries token-usage + estimated cost, and a
+# usage block is written to the run's job summary.
 #
-# LLM runner: GitHub Models — GitHub-hosted inference reached with the workflow's
-# built-in GITHUB_TOKEN (permissions: models: read). No vendor API key, no secret,
-# no Anthropic/OpenAI/Codex plugin — it leverages the GitHub subscription already
-# available, matching this repo's keyless/secrets-averse stance. The model id is a
-# GitHub Models *catalogue* id (openai/gpt-4o is GitHub-hosted, not the OpenAI API);
-# swap MODEL to any structured-output-capable GitHub Models id without code changes.
+# All logic lives in the composite action .github/actions/dbt-testing-taxonomy-review
+# (engine: review.py + rules.json + review-output.schema.json). This workflow just wires
+# the PR context into it.
 #
-# The model is forced to emit JSON conforming to review-output.schema.json
-# (response_format: json_schema, strict). The rule_code enum is injected from
-# rules.json at runtime so the schema and the catalogue cannot drift.
+# LLM runner: GitHub Models — GitHub-hosted inference via the built-in GITHUB_TOKEN
+# (permissions: models: read). No vendor API key, no secret, no Anthropic/OpenAI/Codex
+# plugin — it leverages the GitHub subscription, matching the repo's keyless stance.
+# Output is forced to review-output.schema.json (response_format json_schema, strict).
 #
-# Advisory only: it posts a comment, it does not block merge.
+# Advisory only: it comments, it does not block merge.
 # =============================================================================
 
 on:
   pull_request:
     paths:
       - 'dbt-jaffleshop/models/**'
-      - '.agents/skills/testing-taxonomy-review/**'
+      - '.github/actions/dbt-testing-taxonomy-review/**'
       - '.github/workflows/testing-taxonomy-review.yml'
 
 # Least privilege: read the repo, call GitHub Models, write the PR comment.
@@ -40,7 +37,7 @@ concurrency:
 
 jobs:
   review:
-    name: review changed models
+    name: review dbt models
     runs-on: ubuntu-latest
     # GITHUB_TOKEN on fork PRs is read-only (can't comment) and lacks models access.
     # Restrict to same-repo PRs so we fail clearly only on real errors, not perms.
@@ -50,16 +47,9 @@ jobs:
         with:
           fetch-depth: 0          # base..head diff needs both commits present
 
-      - uses: astral-sh/setup-uv@v8.1.0
-
-      - name: Run testing-taxonomy review
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          MODEL: openai/gpt-4o
-          MODELS_ENDPOINT: https://models.github.ai/inference
-          MODELS_GLOB: dbt-jaffleshop/models
-        run: uv run --no-project .agents/skills/testing-taxonomy-review/review.py
+      - uses: ./.github/actions/dbt-testing-taxonomy-review
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pr-number: ${{ github.event.pull_request.number }}
+          base-sha: ${{ github.event.pull_request.base.sha }}
+          head-sha: ${{ github.event.pull_request.head.sha }}

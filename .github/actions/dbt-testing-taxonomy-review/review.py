@@ -152,7 +152,8 @@ def response_format() -> dict:
             "json_schema": {"name": "testing_taxonomy_review", "strict": True, "schema": schema}}
 
 
-def call_model(endpoint: str, token: str, model: str, sys_p: str, usr_p: str) -> dict:
+def call_model(endpoint: str, token: str, model: str, sys_p: str, usr_p: str) -> tuple[dict, dict]:
+    """Return (parsed_content, usage). usage = {prompt_tokens, completion_tokens, total_tokens}."""
     body = json.dumps({
         "model": model,
         "temperature": 0,
@@ -168,7 +169,8 @@ def call_model(endpoint: str, token: str, model: str, sys_p: str, usr_p: str) ->
         try:
             with urllib.request.urlopen(req, timeout=240) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
-            return json.loads(payload["choices"][0]["message"]["content"])
+            content = json.loads(payload["choices"][0]["message"]["content"])
+            return content, (payload.get("usage") or {})
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", "replace")
             if e.code == 429 and attempt < 3:
@@ -190,20 +192,25 @@ def validate(result: dict) -> None:
                 sys.exit(f"error: model emitted unknown rule_code {f.get('rule_code')!r}")
 
 
-def review_models(endpoint: str, token: str, model: str, models: list[Path]) -> dict:
+def review_models(endpoint: str, token: str, model: str, models: list[Path]) -> tuple[dict, dict]:
     """Review each model in its OWN request — GitHub Models caps a request at ~8000 input
     tokens, so batching the whole project overflows. One model + the catalogue fits easily.
-    Results are merged into a single {"models": [...]} payload."""
+    Returns (merged_results, usage_totals) where usage_totals sums token usage across calls."""
     merged: dict = {"models": []}
+    totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "calls": 0}
     sys_p = system_prompt()
     for i, sql in enumerate(models):
         print(f"  [{i + 1}/{len(models)}] reviewing {sql.stem}")
-        result = call_model(endpoint, token, model, sys_p, user_prompt([sql]))
+        result, usage = call_model(endpoint, token, model, sys_p, user_prompt([sql]))
         validate(result)
         merged["models"].extend(result.get("models", []))
+        for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            totals[k] += int(usage.get(k, 0) or 0)
+        totals["calls"] += 1
+        print(f"      tokens: in={usage.get('prompt_tokens', 0)} out={usage.get('completion_tokens', 0)}")
         if i + 1 < len(models):
             time.sleep(2)  # courtesy spacing for the free-tier per-minute limit
-    return merged
+    return merged, totals
 
 
 # --- renderers ---------------------------------------------------------------
@@ -280,6 +287,37 @@ def upsert_comment(repo: str, pr: str, token: str, marker: str, body: str) -> No
         print(f"  created comment ({marker})")
 
 
+def estimated_cost(totals: dict, in_price: float, out_price: float) -> float:
+    return totals["prompt_tokens"] / 1e6 * in_price + totals["completion_tokens"] / 1e6 * out_price
+
+
+def usage_footer(totals: dict, model: str, in_price: float, out_price: float) -> str:
+    cost = estimated_cost(totals, in_price, out_price)
+    return (f"<sub>🧮 {totals['calls']} `{model}` call(s) · "
+            f"{totals['prompt_tokens']:,} input + {totals['completion_tokens']:,} output "
+            f"({totals['total_tokens']:,} total) tokens · est. **~${cost:.4f}** at list price "
+            f"(GitHub Models free tier may bill $0).</sub>")
+
+
+def write_step_summary(totals: dict, model: str, in_price: float, out_price: float) -> None:
+    """Append a usage block to the GHA run's job summary (and always echo to the log)."""
+    cost = estimated_cost(totals, in_price, out_price)
+    block = "\n".join([
+        "## 🧮 testing-taxonomy review — token usage & cost", "",
+        f"- **Model:** `{model}`", f"- **Calls:** {totals['calls']}",
+        f"- **Input tokens:** {totals['prompt_tokens']:,}",
+        f"- **Output tokens:** {totals['completion_tokens']:,}",
+        f"- **Total tokens:** {totals['total_tokens']:,}",
+        f"- **Estimated cost:** ~${cost:.4f} (at {model} list price ${in_price}/1M in, "
+        f"${out_price}/1M out; GitHub Models free tier may bill $0).", "",
+    ])
+    print(block)
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        with open(summary_path, "a", encoding="utf-8") as fh:
+            fh.write(block + "\n")
+
+
 def main() -> None:
     token = env("GITHUB_TOKEN")
     repo = env("GITHUB_REPOSITORY")
@@ -288,22 +326,28 @@ def main() -> None:
     model = env("MODEL", "openai/gpt-4o")
     endpoint = env("MODELS_ENDPOINT", "https://models.github.ai/inference")
     glob_prefix = env("MODELS_GLOB", "dbt-jaffleshop/models")
+    in_price = float(env("COST_PER_1M_INPUT", "2.5"))
+    out_price = float(env("COST_PER_1M_OUTPUT", "10"))
 
     # Review every model once (per-model requests), then derive the changed subset by name.
     # Avoids reviewing changed models twice and keeps the "changed" and "all" matrices consistent.
     changed_names = {p.stem for p in changed_models(base, head, glob_prefix)}
     print(f"changed models: {', '.join(sorted(changed_names)) or '(none)'}")
-    res_all = review_models(endpoint, token, model, all_models(glob_prefix))
+    res_all, totals = review_models(endpoint, token, model, all_models(glob_prefix))
     res_changed = {"models": [m for m in res_all["models"] if m["model"] in changed_names]}
 
+    # The whole run is the all-models pass; the same usage footer goes on every comment.
+    footer = "\n\n" + usage_footer(totals, model, in_price, out_price)
     upsert_comment(repo, pr, token, MARKERS["matrix_changed"],
-                   matrix_comment(res_changed, MARKERS["matrix_changed"], "changed models"))
+                   matrix_comment(res_changed, MARKERS["matrix_changed"], "changed models") + footer)
     upsert_comment(repo, pr, token, MARKERS["fails_changed"],
-                   failures_comment(res_changed, MARKERS["fails_changed"], "changed models"))
+                   failures_comment(res_changed, MARKERS["fails_changed"], "changed models") + footer)
     upsert_comment(repo, pr, token, MARKERS["matrix_all"],
-                   matrix_comment(res_all, MARKERS["matrix_all"], "all models"))
+                   matrix_comment(res_all, MARKERS["matrix_all"], "all models") + footer)
     upsert_comment(repo, pr, token, MARKERS["fails_all"],
-                   failures_comment(res_all, MARKERS["fails_all"], "all models"))
+                   failures_comment(res_all, MARKERS["fails_all"], "all models") + footer)
+
+    write_step_summary(totals, model, in_price, out_price)
 
 
 if __name__ == "__main__":

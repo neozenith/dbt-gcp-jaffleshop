@@ -222,14 +222,13 @@ __marimo__/
 
 # .agents/ is the local agent-skill toolkit and stays ignored by default (personal
 # skills like 5ys, ais, coach, vite-*, playwright-* are not repo artifacts). EXCEPTION:
-# the dbt-relevant skills this repo curates/vendors ARE committed so agents can review
-# and manage the dbt project — the vendored dbt-labs/dbt-agent-skills set (see
-# .agents/skills/dbt-agent-skills.VENDORED.md) and the project's own testing-taxonomy-review.
+# the vendored dbt-labs/dbt-agent-skills set IS committed so agents can review/manage the
+# dbt project (see .agents/skills/dbt-agent-skills.VENDORED.md). The testing-taxonomy-review
+# tooling now lives as a composite action under .github/actions/dbt-testing-taxonomy-review/.
 .agents/*
 !.agents/skills/
 .agents/skills/*
 !.agents/skills/dbt-agent-skills.VENDORED.md
-!.agents/skills/testing-taxonomy-review/
 !.agents/skills/using-dbt-for-analytics-engineering/
 !.agents/skills/building-dbt-semantic-layer/
 !.agents/skills/working-with-dbt-mesh/

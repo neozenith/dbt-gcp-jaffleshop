@@ -28,8 +28,9 @@ repository so agents working in this repo can review and manage the dbt project.
 | `migrating-dbt-core-to-fusion` | dbt-migration |
 | `migrating-dbt-project-across-platforms` | dbt-migration |
 
-> Project-local skills authored in this repo (e.g. `testing-taxonomy-review`) live
-> alongside these but are **not** vendored — do not overwrite them on refresh.
+> Only the vendored upstream skills above live here. Project-authored dbt tooling such as
+> the testing-taxonomy review lives as a composite action under
+> `.github/actions/dbt-testing-taxonomy-review/`, not as a skill — don't recreate it here.
 
 ## Refreshing
 

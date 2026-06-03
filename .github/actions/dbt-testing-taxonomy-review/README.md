@@ -1,32 +1,56 @@
----
-name: testing-taxonomy-review
-description: >-
-  Reviews dbt models against this project's testing taxonomy using stable rule
-  codes (EN-/DM-/MS-/TM-/MD-). Use when reviewing a PR's added or changed dbt
-  models for test-coverage gaps, deciding which data tests a column or model
-  needs, or triaging a data-quality incident by symptom. Curates the rule
-  catalogue, a one-line summary per code, and a decision framework for which
-  rules apply when.
-allowed-tools: "Read, Glob, Grep, Bash(dbt *), Bash(jq *)"
-user-invocable: true
-metadata:
-  author: play-dbt-gcp-jaffleshop
-  source: docs/guides/testing_taxonomy/
-  catalogue: .agents/skills/testing-taxonomy-review/rules.json
-  output_schema: .agents/skills/testing-taxonomy-review/review-output.schema.json
----
+# dbt testing-taxonomy review (composite action)
 
-# Testing Taxonomy Review
+A composite GitHub Action that reviews dbt models against this project's testing
+taxonomy (distilled from [`docs/guides/testing_taxonomy/`](../../../docs/guides/testing_taxonomy/README.md))
+and posts the findings to the PR. The long-form vignettes stay the source of truth
+(each rule's `doc` links to its vignette); this directory is the **engine + index +
+decision framework**.
 
-Distilled from [`docs/guides/testing_taxonomy/`](../../../docs/guides/testing_taxonomy/README.md)
-into a reviewable rule catalogue. The long-form vignettes stay the source of truth
-(each rule's `doc` links to its vignette); this skill is the **index + decision
-framework** an agent applies when reviewing dbt models.
+> This started life as an agent skill under `.agents/skills/`; it now lives here as a
+> reusable action. Agents can still read this README + `rules.json` for the catalogue and
+> decision framework when reviewing models interactively.
 
-Two artefacts back this skill:
-- **`rules.json`** — the machine-readable catalogue (single source of truth for the
-  29 rule codes + metadata). The review GHA reads it to build its JSON-schema enum.
-- **`review-output.schema.json`** — the structured-output contract the review GHA enforces.
+## Usage
+
+```yaml
+- uses: actions/checkout@v6
+  with: { fetch-depth: 0 }          # base..head diff needs both commits
+- uses: ./.github/actions/dbt-testing-taxonomy-review
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}   # needs models:read + pull-requests:write
+    pr-number: ${{ github.event.pull_request.number }}
+    base-sha: ${{ github.event.pull_request.base.sha }}
+    head-sha: ${{ github.event.pull_request.head.sha }}
+    # optional: model, models-endpoint, models-glob, cost-per-1m-input, cost-per-1m-output
+```
+
+Wired up in [`.github/workflows/testing-taxonomy-review.yml`](../../workflows/testing-taxonomy-review.yml).
+**LLM runner:** GitHub Models (keyless, via `GITHUB_TOKEN` + `permissions: models: read`) —
+no vendor API key or plugin. Output is forced to `review-output.schema.json`
+(`response_format: json_schema`, strict).
+
+## What it posts
+
+Four sticky PR comments (each its own `<!-- ttr:* -->` marker, upserted in place):
+
+1. **coverage matrix — changed models** · rows = models, columns = applicable rule codes,
+   cells ✅ present / ❌ missing / ➖ n/a.
+2. **failures — changed models** · narrowed to rules that apply *and* fail somewhere.
+3. **coverage matrix — all models** · variant 1 over every model.
+4. **failures — all models** · variant 2 over every model.
+
+Every comment footer (and the GHA **job summary**) reports token usage — input/output
+tokens, call count, and an estimated cost at the model's list price (`cost-per-1m-*`
+inputs; the GitHub Models free tier may bill $0).
+
+## Files
+
+- **`action.yml`** — composite action definition (inputs + `setup-uv` + run).
+- **`review.py`** — the engine (stdlib-only; run via `uv run --no-project`). Reviews each
+  model in its own GitHub Models request (the API caps a request at ~8000 input tokens).
+- **`rules.json`** — machine-readable catalogue: single source of truth for the 29 rule
+  codes + metadata. The engine injects the codes into the schema enum at runtime.
+- **`review-output.schema.json`** — the structured-output contract.
 
 ## Rule-code scheme
 
@@ -163,17 +187,7 @@ Authoritative metadata + vignette links live in [`rules.json`](./rules.json). Su
 3. Apply the decision framework per column + the model-level MD rules.
 4. For each applicable rule, decide `applicable_present` (a matching test exists) vs
    `applicable_missing` (a gap). Assign severity per the guidance above.
-5. Emit findings conforming to `review-output.schema.json` (the GHA enforces this).
+5. Emit findings conforming to `review-output.schema.json` (the action enforces this).
 
-The CI implementation lives in
-[`.github/workflows/testing-taxonomy-review.yml`](../../../.github/workflows/testing-taxonomy-review.yml)
-(engine: [`review.py`](./review.py)), which runs this framework via GitHub Models and upserts
-four sticky PR-comment variants so the output formats can be compared:
-
-1. **coverage matrix — changed models** — rows = changed models, columns = applicable rule
-   codes, cells = ✅ present / ❌ missing / ➖ n/a.
-2. **failures — changed models** — narrowed to rules that apply *and* fail somewhere.
-3. **coverage matrix — all models** — variant 1 over every model in the project.
-4. **failures — all models** — variant 2 over every model.
-
-Each variant carries its own HTML-comment marker (`<!-- ttr:* -->`) so it updates in place.
+[`review.py`](./review.py) automates exactly this procedure in CI via GitHub Models —
+see [§ What it posts](#what-it-posts) for the comment variants it produces.
