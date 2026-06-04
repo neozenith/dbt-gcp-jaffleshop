@@ -4,7 +4,7 @@ name: dbt deploy / test
 # TEST deploys (split out from the former dbt-deploy.yml; prod lives in
 # dbt-deploy-prod.yml). Runs ONLY in the context of a pull request.
 #
-# Routing (matches the SA scoping in infra/dbt.tf):
+# Routing (matches the SA scoping in infra/stacks/dbt_platform/dbt.tf):
 #   - PR draft (or any PR event)      → `parse` only
 #   - PR ready-for-review             → `parse` then `deploy / test`
 #

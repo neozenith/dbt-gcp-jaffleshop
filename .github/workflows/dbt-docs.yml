@@ -19,7 +19,7 @@ name: dbt docs
 # document the warehouse as it stands when the catalog query runs.
 #
 # Auth: Workload Identity Federation only; no keyfiles. The dbt-prod WIF binding
-# (infra/dbt.tf) already permits tag pushes + workflow_dispatch from main.
+# (infra/stacks/dbt_platform/dbt.tf) already permits tag pushes + workflow_dispatch from main.
 #
 # Site format: `dbt docs generate --static` emits a single self-contained
 # target/static_index.html (all assets + manifest + catalog inlined). We publish
@@ -40,7 +40,7 @@ name: dbt docs
 # drops intermediate tables in ELEMENTARY while assembling the report. Here that is fine: the
 # step runs as the dbt-prod SA already authenticated for the catalog query, which has write on
 # its own project. (The LOCAL `make elementary-report` path instead impersonates a dedicated,
-# narrowly-scoped dbt-dev-elementary SA — see dbt-jaffleshop/Makefile and infra/dbt.tf.)
+# narrowly-scoped dbt-dev-elementary SA — see dbt-jaffleshop/Makefile and infra/stacks/dbt_platform/dbt.tf.)
 #
 # PREREQUISITE: repo Settings → Pages → Source must be set to "GitHub Actions"
 # (one-time, manual). The deploy-pages action fails clearly if it isn't.

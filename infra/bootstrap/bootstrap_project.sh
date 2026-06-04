@@ -196,13 +196,13 @@ cat <<EOF
 ==> ${ENV_NAME} (${PROJECT_ID}) bootstrap complete.
 
 Configure GitHub Environment "${ENV_NAME}" with these two variables (the rest
-are derived in Terraform / infra/backends/${ENV_NAME}.config):
+are derived in Terraform / infra/stacks/dbt_platform/backends/${ENV_NAME}.config):
 
   WIF_PROVIDER  = ${WIF_PROVIDER_RESOURCE}
   TF_SA         = ${TF_SA_EMAIL}
 
 For reference / debugging:
-  project_id   = ${PROJECT_ID}      (from local.project_id in infra/main.tf)
-  state bucket = ${TF_STATE_BUCKET} (from infra/backends/${ENV_NAME}.config)
+  project_id   = ${PROJECT_ID}      (from local.project_id in infra/stacks/dbt_platform/main.tf)
+  state bucket = ${TF_STATE_BUCKET} (from infra/stacks/dbt_platform/backends/${ENV_NAME}.config)
 
 EOF

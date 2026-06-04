@@ -187,7 +187,7 @@ enforced, and Object Versioning on.
 
 **Relates to:** The deployer SA reads/writes here via its `roles/owner`
 grant on the project. The bucket name is hard-wired into
-`infra/backends/<env>.config` and consumed at `terraform init` time.
+`infra/stacks/dbt_platform/backends/<env>.config` and consumed at `terraform init` time.
 
 **Without it:** `terraform init` fails immediately (`bucket does not
 exist`); apply has no place to persist state, so every run starts blind.
@@ -348,7 +348,7 @@ lives in the IaC, not in GitHub:
 
 - **Project ID** is derived inside Terraform (`local.project_id =
   "dbt-${var.environment}-jaffleshop"`).
-- **State bucket name** lives in committed `infra/backends/<env>.config`.
+- **State bucket name** lives in committed `infra/stacks/dbt_platform/backends/<env>.config`.
 - The workflow passes `environment` directly per job (`-var environment=dev`).
 
 That leaves only `WIF_PROVIDER` and `TF_SA` — values that genuinely vary

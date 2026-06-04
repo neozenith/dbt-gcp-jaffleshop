@@ -17,7 +17,7 @@ name: elementary full-refresh
 # WHY PROD-ONLY (the `target` input has a single option today)
 # A standalone workflow_dispatch run can only authenticate as a dbt SA whose WIF
 # binding admits the workflow_dispatch event — and only dbt-prod has that
-# (infra/dbt.tf: dbt-prod WIF on attribute.event_name/workflow_dispatch). dbt-test's
+# (infra/stacks/dbt_platform/dbt.tf: dbt-prod WIF on attribute.event_name/workflow_dispatch). dbt-test's
 # WIF binding is pull_request-only, and dbt-dev has no WIF at all (humans-only by
 # design). On top of that, a non-PROD target with no PR/branch slice would fail the
 # generate_schema_name "non-PROD requires a slice" guard. So prod is the only target

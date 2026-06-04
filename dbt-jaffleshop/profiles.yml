@@ -35,10 +35,10 @@ jaffle_shop:
       job_retries: 2
 
     # Local-only READ path into PROD. Identical to `prod` but BigQuery impersonates the
-    # dedicated dbt-dev-elementary SA (infra/dbt.tf): read-only on prod business data
+    # dedicated dbt-dev-elementary SA (infra/stacks/dbt_platform/dbt.tf): read-only on prod business data
     # (dataViewer + jobUser) plus create/drop ONLY within the prod ELEMENTARY dataset.
     # A developer authenticates with their own gcloud ADC (must be listed in
-    # infra/dbt-developers.yml so they have tokenCreator on dbt-dev-elementary) and BigQuery
+    # infra/stacks/dbt_platform/dbt-developers.yml so they have tokenCreator on dbt-dev-elementary) and BigQuery
     # mints a short-lived token — no keyfiles, and the developer's global ADC is NOT repointed
     # at the SA. Used by `make gha-docs` for the docs catalog query (a read-only operation, so
     # the read scope alone suffices here). NEVER selected in CI (the prod job authenticates as
@@ -76,7 +76,7 @@ jaffle_shop:
 #   prod              — CI (dbt-docs.yml) is authenticated as dbt-prod via WIF (writes its own project).
 #   prod-impersonate  — local (`make elementary-report`): your ADC impersonates the dedicated
 #                       dbt-dev-elementary SA, scoped to prod read + create/drop on ELEMENTARY only
-#                       (infra/dbt.tf). dbt-dev itself stays strictly read-only on prod.
+#                       (infra/stacks/dbt_platform/dbt.tf). dbt-dev itself stays strictly read-only on prod.
 # =============================================================================
 elementary:
   target: "{{ env_var('DBT_TARGET', 'prod-impersonate') }}"

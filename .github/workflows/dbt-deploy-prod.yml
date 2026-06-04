@@ -4,7 +4,7 @@ name: dbt deploy / prod
 # PROD deploys (split out from the former dbt-deploy.yml; test lives in
 # dbt-deploy-test.yml).
 #
-# Routing (matches the SA scoping in infra/dbt.tf):
+# Routing (matches the SA scoping in infra/stacks/dbt_platform/dbt.tf):
 #   - push to main                    → `parse` only (validation; no deploy)
 #   - push tag v*                     → `parse` then `deploy / prod`
 #   - workflow_dispatch (from main)   → `parse` then `deploy / prod`

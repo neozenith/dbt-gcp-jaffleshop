@@ -1,7 +1,12 @@
 # Flat `infra/` Terraform layout now, migrating to `stacks/` + `modules/` as complexity grows
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-0003](./adr-0003-stacks-and-modules-layout.md) (2026-06-04)
 **Date:**   2026-05-26
+
+> **Superseded:** the migration this ADR anticipated was carried out in
+> [ADR-0003](./adr-0003-stacks-and-modules-layout.md). The flat layout described
+> below is no longer current — `infra/` now uses `stacks/` + `modules/`. This ADR
+> is kept for the historical rationale and the options analysis.
 
 ## Context
 
