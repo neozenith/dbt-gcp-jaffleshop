@@ -1,31 +1,41 @@
-# infra/Makefile — convenience wrapper around terraform + the bootstrap scripts.
+# infra/Makefile — convenience wrapper around terraform + the stacks/modules tooling.
 #
 # Run from the infra/ directory, or `make -C infra <target>` from the repo root.
 #
-#   make help          list every target
-#   make bootstrap     one-time GCP-side setup for all three projects
-#   make plan-dev      terraform plan against dbt-dev-jaffleshop
-#   make apply-dev     terraform apply against dbt-dev-jaffleshop
-#   make ci            local CI gate (fmt-check + lint)
+#   make help                       list every target
+#   make bootstrap                  one-time GCP-side setup for all three projects
+#   make create-stack NAME=foo      scaffold a new stacks/foo/ + its CI workflow
+#   make plan-dev                   terraform plan for STACK against dbt-dev-jaffleshop
+#   make apply-dev                  terraform apply for STACK against dbt-dev-jaffleshop
+#   make ci                         local CI gate (fmt-check + security + validate + gha-check)
 #
-# Per-environment terraform targets are pattern rules — substitute dev/test/prod
-# for <env> in init-<env>, plan-<env>, apply-<env>, validate-<env>.
+# Which stack a terraform target operates on is selected with STACK= (default
+# dbt_platform). Per-environment terraform targets are pattern rules — substitute
+# dev/test/prod for <env> in init-<env>, plan-<env>, apply-<env>, validate-<env>:
+#
+#   make STACK=dbt_platform plan-prod
+#   make STACK=monitoring   apply-dev
 
 SHELL         := /usr/bin/env bash
 .SHELLFLAGS   := -eu -o pipefail -c
 .DEFAULT_GOAL := help
 
+# Which stack the terraform targets act on. Override on the command line:
+#   make STACK=<name> plan-dev
+STACK ?= dbt_platform
+TF_DIR := stacks/$(STACK)
+
 ENVS := dev test prod
 
-# Platforms covered by .terraform.lock.hcl. Each entry adds one per-platform
-# h1: install-hash to the lock so `terraform init` works on that OS/arch.
+# Platforms covered by each stack's .terraform.lock.hcl. Each entry adds one
+# per-platform h1: install-hash so `terraform init` works on that OS/arch.
 # - linux_amd64:  GitHub Actions ubuntu-latest runners.
 # - darwin_arm64: Apple Silicon Macs (contributor laptops).
 # - darwin_amd64: Intel Macs (legacy contributor laptops).
-# Append windows_amd64 / linux_arm64 here if contributors or CI runners need them.
 TF_LOCK_PLATFORMS := linux_amd64 darwin_arm64 darwin_amd64
 
-.PHONY: help bootstrap bootstrap-github fmt fmt-check lint docs security lock lock-check validate-all ci
+.PHONY: help bootstrap bootstrap-github create-stack validate-backends gha-check \
+        fmt fmt-check lint docs security lock lock-check validate-all ci
 
 # NOTE: deliberately NOT declaring init-/plan-/apply-/validate-<env> as .PHONY.
 # GNU Make 3.81 (macOS default) has a bug where adding pattern-matched targets
@@ -46,36 +56,46 @@ bootstrap: ## Run GCP-side bootstrap for every project (idempotent)
 bootstrap-github: ## Create/refresh GitHub Environments + vars (run AFTER bootstrap)
 	./bootstrap/bootstrap_github.sh
 
-# ---- Per-environment terraform targets ----
+# ---- Stack lifecycle (scripts/tf-stack.py) ----
+
+create-stack: ## Scaffold a new stack + its CI workflow:  make create-stack NAME=<stack>
+	@test -n "$(NAME)" || { echo "ERROR: NAME=<stack> is required, e.g. make create-stack NAME=monitoring" >&2; exit 2; }
+	uv run scripts/tf-stack.py create $(NAME)
+
+validate-backends: ## Check every stacks/*/backends/*.config matches the state convention
+	uv run scripts/tf-stack.py validate
+
+gha-check: ## Verify every stack has a matching per-stack CI workflow (and vice versa)
+	uv run scripts/tf-stack.py gha-check
+
+# ---- Per-environment terraform targets (operate on STACK) ----
 # init-<env>, plan-<env>, apply-<env>, validate-<env>
 # `-reconfigure` on init makes env-switching in the same checkout safe.
 #
-# Implementation note: init is inlined into plan/apply/validate via TF_INIT_CMD
-# instead of being a pattern-rule prerequisite (`plan-%: init-%`). The natural
-# form trips a known bug in GNU Make 3.81 (the version shipped with macOS) where
-# chained pattern rules with the same stem produce "Nothing to be done" silently.
-# `brew install make` gives a modern gmake if you'd rather use the natural form.
+# init is inlined into plan/apply/validate via TF_INIT_CMD instead of being a
+# pattern-rule prerequisite (`plan-%: init-%`), which trips the GNU Make 3.81
+# (macOS) chained-pattern-rule bug. `brew install make` gives a modern gmake.
 
-TF_INIT_CMD = terraform init -backend-config=./backends/$*.config -reconfigure
+TF_INIT_CMD = terraform -chdir=$(TF_DIR) init -backend-config=./backends/$*.config -reconfigure
 
-init-%: ## terraform init -reconfigure for <env>  (e.g. make init-dev)
+init-%: ## terraform init -reconfigure for STACK/<env>  (e.g. make init-dev)
 	$(TF_INIT_CMD)
 
-plan-%: ## terraform plan for <env>
+plan-%: ## terraform plan for STACK/<env>
 	$(TF_INIT_CMD)
-	terraform plan -input=false -var environment=$*
+	terraform -chdir=$(TF_DIR) plan -input=false -var environment=$*
 
-apply-%: ## terraform apply for <env> (-auto-approve)
+apply-%: ## terraform apply for STACK/<env> (-auto-approve)
 	$(TF_INIT_CMD)
-	terraform apply -input=false -auto-approve -var environment=$*
+	terraform -chdir=$(TF_DIR) apply -input=false -auto-approve -var environment=$*
 
-validate-%: ## terraform validate for <env>
+validate-%: ## terraform validate for STACK/<env>
 	$(TF_INIT_CMD)
-	terraform validate
+	terraform -chdir=$(TF_DIR) validate
 
-validate-all: $(addprefix validate-,$(ENVS)) ## validate against every env's backend
+validate-all: $(addprefix validate-,$(ENVS)) ## terraform validate STACK against every env's backend
 
-# ---- Quality gates ----
+# ---- Quality gates (recursive across all stacks + modules) ----
 
 fmt: ## terraform fmt -recursive (writes changes)
 	terraform fmt -recursive
@@ -86,18 +106,23 @@ fmt-check: ## terraform fmt -check -recursive (read-only, CI-safe)
 lint: ## tflint --recursive (uses .tflint.hcl; first run needs `tflint --init`)
 	tflint --recursive
 
-docs: ## Regenerate the terraform-docs section of README.md (between <!-- BEGIN/END_TF_DOCS -->)
-	terraform-docs markdown table --output-file README.md --output-mode inject .
+docs: ## Regenerate the terraform-docs block in every stack/module README
+	@for d in stacks/*/ modules/*/; do \
+	  if compgen -G "$$d*.tf" >/dev/null; then \
+	    echo "terraform-docs -> $${d}README.md"; \
+	    terraform-docs markdown table --output-file README.md --output-mode inject "$$d"; \
+	  fi; \
+	done
 
 security: ## Optional: trivy config scan for IaC misconfigurations (install: brew install trivy)
 	trivy config .
 
-lock: ## Regenerate .terraform.lock.hcl with checksums for every platform in TF_LOCK_PLATFORMS
-	terraform providers lock $(addprefix -platform=,$(TF_LOCK_PLATFORMS))
+lock: ## Regenerate STACK's .terraform.lock.hcl with checksums for every TF_LOCK_PLATFORMS
+	terraform -chdir=$(TF_DIR) providers lock $(addprefix -platform=,$(TF_LOCK_PLATFORMS))
 
-lock-check: ## Fail if .terraform.lock.hcl is stale vs. the resolved providers (CI gate; mutates file on drift)
-	@terraform providers lock $(addprefix -platform=,$(TF_LOCK_PLATFORMS)) >/dev/null
-	@git diff --exit-code .terraform.lock.hcl >/dev/null || \
-	  { echo >&2 "ERROR: .terraform.lock.hcl is stale. Run 'make lock' and commit the result."; exit 1; }
+lock-check: ## Fail if STACK's .terraform.lock.hcl is stale (CI gate; mutates file on drift)
+	@terraform -chdir=$(TF_DIR) providers lock $(addprefix -platform=,$(TF_LOCK_PLATFORMS)) >/dev/null
+	@git diff --exit-code $(TF_DIR)/.terraform.lock.hcl >/dev/null || \
+	  { echo >&2 "ERROR: $(TF_DIR)/.terraform.lock.hcl is stale. Run 'make STACK=$(STACK) lock' and commit."; exit 1; }
 
-ci: fmt-check lint security ## Local CI gate — fmt-check + lint (no cloud calls). Run validate-<env> separately.
+ci: fmt-check security validate-backends gha-check ## Local CI gate (no cloud calls). Run validate-<env> separately.

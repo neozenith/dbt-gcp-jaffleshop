@@ -8,9 +8,9 @@ Workload Identity Federation (machines) or by `gcloud` ADC impersonation (humans
 Two lenses:
 
 - **TF Deployer** — the `terraform-deployer` SA that *provisions* identities and
-  IAM (the `infra/` stack). Mediated by `terraform.yml`.
+  IAM (the `infra/stacks/dbt_platform` stack). Mediated by `terraform-cicd-stack-dbt_platform.yml`.
 - **DBT Developer** — the `dbt-<env>` SAs (and the humans in
-  [`dbt-developers.yml`](./dbt-developers.yml)) that *run dbt* against BigQuery.
+  [`dbt-developers.yml`](./stacks/dbt_platform/dbt-developers.yml)) that *run dbt* against BigQuery.
   Mediated by `dbt-deploy.yml` for CI and `make deploy-dev` for local work.
 
 The two layers hand off: the TF Deployer must apply an environment *before* the
@@ -28,7 +28,7 @@ federated token that impersonates `terraform-deployer`, which then runs
 
 ```mermaid
 flowchart LR
-    gha["GitHub Actions<br/>terraform.yml"]:::ingress
+    gha["GitHub Actions<br/>terraform-cicd-stack-dbt_platform.yml"]:::ingress
     oidc["GitHub OIDC<br/>JWT"]:::ingress
     wif["WIF provider<br/>github-pool"]:::compute
     tfsa["terraform-deployer SA<br/>vars.TF_SA"]:::compute
@@ -54,7 +54,7 @@ flowchart LR
 ```mermaid
 flowchart TD
     subgraph gh["GitHub  neozenith/dbt-gcp-jaffleshop"]
-        wf["Workflow<br/>terraform.yml"]:::ingress
+        wf["Workflow<br/>terraform-cicd-stack-dbt_platform.yml"]:::ingress
         envd["Env dev<br/>WIF_PROVIDER, TF_SA"]:::ingressL
         envt["Env test<br/>WIF_PROVIDER, TF_SA"]:::ingressL
         envp["Env prod<br/>WIF_PROVIDER, TF_SA"]:::ingressL
@@ -241,7 +241,7 @@ Both lenses fail **closed** if either side of the trust is misconfigured:
 
 | Path | GitHub-side gate | GCP-side gate |
 |------|------------------|---------------|
-| TF Deployer | `terraform.yml` env + `id-token: write` | WIF `attribute.repository` condition + `terraform-deployer` `workloadIdentityUser` binding |
+| TF Deployer | `terraform-cicd-stack-dbt_platform.yml` env + `id-token: write` | WIF `attribute.repository` condition + `terraform-deployer` `workloadIdentityUser` binding |
 | dbt test | `deploy-test` `if: event_name == pull_request` | `dbt-test` SA `workloadIdentityUser` on `attribute.event_name/pull_request` |
 | dbt prod | `deploy-prod` `if: tag-push OR dispatch` | `dbt-prod` SA bindings on `workflow_dispatch` + `push` (IAM condition: `ref` startsWith `refs/tags/`) |
 | dbt dev (human) | — | `dbt-dev` SA `serviceAccountTokenCreator` granted to `dbt-developers.yml` members |

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create the GitHub Environments (dev, test, prod) on ${GITHUB_REPO} and
-# populate the four variables consumed by .github/workflows/terraform.yml:
+# populate the variables consumed by .github/workflows/terraform-cicd-per-stack.yml:
 #   TF_PROJECT_ID, TF_STATE_BUCKET, TF_SA, WIF_PROVIDER
 #
 # Also ensures the `github-pages` environment permits release-tag (v*) deploys,
@@ -57,7 +57,7 @@ for pair in "${PROJECT_PAIRS[@]}"; do
   sub "environment ensured"
 
   # Only two vars are needed at runtime — bucket name lives in
-  # infra/backends/<env>.config, and project_id is derived in TF from
+  # infra/stacks/dbt_platform/backends/<env>.config, and project_id is derived in TF from
   # var.environment.
   upsert_env_var "${env}" "WIF_PROVIDER" "projects/${project_number}/locations/global/workloadIdentityPools/${WIF_POOL_ID}/providers/${WIF_PROVIDER_ID}"
   upsert_env_var "${env}" "TF_SA"        "${TF_SA_NAME}@${project}.iam.gserviceaccount.com"
@@ -73,7 +73,7 @@ done
 #    protection rules."
 # Docs MUST stay tag-gated rather than publish from a branch: prod-SA access is
 # granted ONLY to tags + workflow_dispatch, never branch pushes (see the WIF
-# bindings in infra/dbt.tf). So we add a v* TAG policy to the environment's
+# bindings in infra/stacks/dbt_platform/dbt.tf). So we add a v* TAG policy to the environment's
 # allowlist instead — GitHub deployment policies support tag patterns.
 #
 # The `github-pages` environment is created by GitHub the first time Pages is

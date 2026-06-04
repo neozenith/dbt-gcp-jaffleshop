@@ -45,4 +45,5 @@ Don't write an ADR for:
 | ADR | Status | Title |
 |---|---|---|
 | [0001](./adr-0001-workload-identity-federation.md) | Accepted | Workload Identity Federation over long-lived service-account keys |
-| [0002](./adr-0002-single-shared-tf-stack.md) | Accepted | Flat `infra/` layout now, migrating to `stacks/` + `modules/` as complexity grows |
+| [0002](./adr-0002-single-shared-tf-stack.md) | Superseded by 0003 | Flat `infra/` layout now, migrating to `stacks/` + `modules/` as complexity grows |
+| [0003](./adr-0003-stacks-and-modules-layout.md) | Accepted | Migrate the flat `infra/` layout to `stacks/` + `modules/` |

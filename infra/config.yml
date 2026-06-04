@@ -1,0 +1,25 @@
+# Per-environment GCP settings consumed by scripts/tf-stack.py when it scaffolds
+# a NEW stack's backend configs (one stacks/<stack>/backends/<env>.config per env).
+#
+# These are the only values that vary per environment and cannot be derived from
+# convention inside Terraform. project_id is ALSO derivable (dbt-<env>-jaffleshop)
+# and is duplicated here purely so the scaffolder can print it for sanity-checks.
+#
+# State layout convention for NEW stacks:
+#   bucket = "<state_bucket>"                  # one tfstate bucket per project
+#   prefix = "terraform/state/<stack_name>"    # per-stack isolation within the bucket
+#
+# The original 'dbt_platform' stack predates this convention and is grandfathered
+# at prefix "terraform/state" (no stack-name segment) so its live state is never
+# moved — see LEGACY_STATE_PREFIX in scripts/tf-stack.py.
+state_location: australia-southeast1
+environments:
+  dev:
+    project_id: dbt-dev-jaffleshop
+    state_bucket: dbt-dev-jaffleshop-tfstate
+  test:
+    project_id: dbt-test-jaffleshop
+    state_bucket: dbt-test-jaffleshop-tfstate
+  prod:
+    project_id: dbt-prod-jaffleshop
+    state_bucket: dbt-prod-jaffleshop-tfstate

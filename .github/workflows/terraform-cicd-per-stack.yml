@@ -1,0 +1,137 @@
+name: TF Stack
+
+# Reusable workflow — the single home for Terraform routing + jobs, shared by
+# every per-stack caller (.github/workflows/terraform-cicd-stack-<stack>.yml).
+# The caller forwards its stack name; this workflow decides which environment
+# each Git event applies to.
+#
+# Routing (mirrors the per-stack caller's triggers):
+#   - draft PR                                   -> ci then `plan` matrix dev/test/prod
+#   - ready-for-review PR                        -> ci then `plan` then `apply / dev`
+#   - push to main                               -> ci then `plan` then `apply / test`
+#   - tag push (v*) OR manual workflow_dispatch  -> ci then `plan` then `apply / prod`
+#
+# Safety gates:
+#   1. `ci` runs first on every trigger (fmt-check + backend-config validate +
+#      trivy). Every plan/apply job `needs: ci`, so a failure stops everything
+#      before any cloud auth or state mutation.
+#   2. `plan` (matrix dev/test/prod) runs on every trigger; every apply job
+#      `needs: [ci, plan]`, so no apply mutates state until the full plan matrix
+#      is green, and each apply serializes after its `plan / <env>` (no shared
+#      GCS-state-lock race).
+#   3. apply is atomic plan-then-apply inside the composite action.
+#
+# Cloud-touching jobs authenticate via Workload Identity Federation using the
+# matching GitHub Environment's vars.WIF_PROVIDER + vars.TF_SA.
+
+on:
+  workflow_call:
+    inputs:
+      stack:
+        description: Stack name under infra/stacks/.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write          # required by google-github-actions/auth (OIDC)
+  pull-requests: write
+
+jobs:
+  # Fast static-analysis gate — no cloud credentials. Runs first on every trigger.
+  ci:
+    name: ci (fmt-check + validate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: '1.10.0'
+      - uses: aquasecurity/setup-trivy@v0.2.6
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/uv.lock"
+      # TODO: re-enable tflint once the GH API rate limit on plugin fetch is worked
+      # around (token / vendored plugins / cached init). fmt-check + validate +
+      # trivy keep the gate useful meanwhile.
+      - name: make -C infra fmt-check security
+        run: make -C infra fmt-check security
+      - name: validate backend configs + CI workflow coverage
+        run: |
+          uv run --directory infra --frozen scripts/tf-stack.py validate
+          uv run --directory infra --frozen scripts/tf-stack.py gha-check
+
+  # Plan dev/test/prod on every trigger so the full blast radius is always visible.
+  plan:
+    name: plan / ${{ matrix.env }}
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.env }}
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, test, prod]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/terraform
+        with:
+          env: ${{ matrix.env }}
+          stack: ${{ inputs.stack }}
+          action: plan
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.TF_SA }}
+
+  # Ready-for-review PR — apply dev only (smoke test before merge to main).
+  apply-dev:
+    name: apply / dev
+    needs: [ci, plan]
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/terraform
+        with:
+          env: dev
+          stack: ${{ inputs.stack }}
+          action: apply
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.TF_SA }}
+
+  # Merge / push to main — apply test.
+  apply-test:
+    name: apply / test
+    needs: [ci, plan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/terraform
+        with:
+          env: test
+          stack: ${{ inputs.stack }}
+          action: apply
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.TF_SA }}
+
+  # Tag (v*) or manual dispatch — apply prod. Add required reviewers to the
+  # "prod" GitHub Environment to gate this behind a human approval.
+  apply-prod:
+    name: apply / prod
+    needs: [ci, plan]
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/terraform
+        with:
+          env: prod
+          stack: ${{ inputs.stack }}
+          action: apply
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.TF_SA }}

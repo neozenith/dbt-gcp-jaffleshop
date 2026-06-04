@@ -1,13 +1,17 @@
 name: Terraform
 description: |
   Authenticate to GCP via Workload Identity Federation and run
-  terraform init + (plan | apply) for one environment of the shared infra/
-  stack.
+  terraform init + (plan | apply) for one environment of a single
+  infra/stacks/<stack> stack.
 
 inputs:
   env:
     description: Environment name — one of dev / test / prod.
     required: true
+  stack:
+    description: Stack name under infra/stacks/.
+    required: false
+    default: dbt_platform
   action:
     description: Terraform action — "plan" or "apply".
     required: true
@@ -36,13 +40,13 @@ runs:
         terraform_version: ${{ inputs.terraform_version }}
 
     - shell: bash
-      run: terraform -chdir=infra init -backend-config=./backends/${{ inputs.env }}.config -reconfigure
+      run: terraform -chdir=infra/stacks/${{ inputs.stack }} init -backend-config=./backends/${{ inputs.env }}.config -reconfigure
 
     - if: inputs.action == 'plan'
       shell: bash
       run: |
-        terraform -chdir=infra validate
-        terraform -chdir=infra plan -input=false -no-color -var environment=${{ inputs.env }}
+        terraform -chdir=infra/stacks/${{ inputs.stack }} validate
+        terraform -chdir=infra/stacks/${{ inputs.stack }} plan -input=false -no-color -var environment=${{ inputs.env }}
 
     # Atomic plan-then-apply: if the plan step errors (bash -e), the apply
     # step won't run because the prior step failed. The on-disk tfplan also
@@ -51,9 +55,9 @@ runs:
     - if: inputs.action == 'apply'
       name: terraform plan -out=tfplan
       shell: bash
-      run: terraform -chdir=infra plan -input=false -no-color -out=tfplan -var environment=${{ inputs.env }}
+      run: terraform -chdir=infra/stacks/${{ inputs.stack }} plan -input=false -no-color -out=tfplan -var environment=${{ inputs.env }}
 
     - if: inputs.action == 'apply'
       name: terraform apply tfplan
       shell: bash
-      run: terraform -chdir=infra apply -input=false -auto-approve tfplan
+      run: terraform -chdir=infra/stacks/${{ inputs.stack }} apply -input=false -auto-approve tfplan
