@@ -1,5 +1,5 @@
-# Per-environment GCP settings consumed by scripts/tf-stack.py when it scaffolds
-# a NEW stack's backend configs (one stacks/<stack>/backends/<env>.config per env).
+# Per-environment GCP settings consumed by the `tfs` CLI (infra/tfs/) when it
+# scaffolds a NEW stack's backend configs (one stacks/<stack>/backends/<env>.config per env).
 #
 # These are the only values that vary per environment and cannot be derived from
 # convention inside Terraform. project_id is ALSO derivable (dbt-<env>-jaffleshop)
@@ -11,7 +11,7 @@
 #
 # The original 'dbt_platform' stack predates this convention and is grandfathered
 # at prefix "terraform/state" (no stack-name segment) so its live state is never
-# moved — see LEGACY_STATE_PREFIX in scripts/tf-stack.py.
+# moved — see LEGACY_STATE_PREFIX in infra/tfs/src/tfs/config.py.
 state_location: australia-southeast1
 environments:
   dev:

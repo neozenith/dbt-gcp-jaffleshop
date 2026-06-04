@@ -134,5 +134,5 @@ Concretely:
 
 - [`docs/arch/adr-0002-single-shared-tf-stack.md`](./adr-0002-single-shared-tf-stack.md) — superseded by this ADR.
 - [`infra/README.md`](../../infra/README.md) — the layout as built.
-- [`infra/scripts/tf-stack.py`](../../infra/scripts/tf-stack.py) — the scaffolder + state-convention enforcement.
+- [`infra/tfs/`](../../infra/tfs/README.md) — the scaffolder + state-convention enforcement (the `tfs` CLI; was `infra/scripts/tf-stack.py` when this ADR was written, since refactored into an installable uv tool).
 - [`.github/workflows/terraform-cicd-per-stack.yml`](../../.github/workflows/terraform-cicd-per-stack.yml) — the reusable CI workflow.

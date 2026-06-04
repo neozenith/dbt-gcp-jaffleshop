@@ -51,7 +51,7 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
         with:
           enable-cache: true
-          cache-dependency-glob: "infra/uv.lock"
+          cache-dependency-glob: "infra/tfs/uv.lock"
       # TODO: re-enable tflint once the GH API rate limit on plugin fetch is worked
       # around (token / vendored plugins / cached init). fmt-check + validate +
       # trivy keep the gate useful meanwhile.
@@ -59,8 +59,8 @@ jobs:
         run: make -C infra fmt-check security
       - name: validate backend configs + CI workflow coverage
         run: |
-          uv run --directory infra --frozen scripts/tf-stack.py validate
-          uv run --directory infra --frozen scripts/tf-stack.py gha-check
+          uv run --frozen --directory infra/tfs tfs validate
+          uv run --frozen --directory infra/tfs tfs gha-check
 
   # Plan dev/test/prod on every trigger so the full blast radius is always visible.
   plan:

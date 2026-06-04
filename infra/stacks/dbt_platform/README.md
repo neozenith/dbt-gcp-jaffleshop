@@ -17,8 +17,8 @@ configuration** — switch envs by changing two inputs at `init` / `plan` time.
 > [`docs/arch/adr-0003-stacks-and-modules-layout.md`](../../../docs/arch/adr-0003-stacks-and-modules-layout.md).
 
 ```bash
-# via the wrapper (adds the gcloud project guardrail + flag wiring)
-uv run --directory infra scripts/tf-stack.py plan dbt_platform dev
+# via the tfs CLI (adds the gcloud project guardrail + flag wiring)
+tfs plan dbt_platform dev
 
 # or directly from infra/
 terraform -chdir=stacks/dbt_platform init  -backend-config=./backends/<env>.config -reconfigure

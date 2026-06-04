@@ -1,0 +1,28 @@
+[project]
+name = "tfs"
+version = "0.1.0"
+description = "Terraform stack lifecycle CLI for the dbt-gcp-jaffleshop infra/ (stacks + modules layout, GCS backend)."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "jinja2>=3.1.5",
+    "ruamel-yaml>=0.18.10",
+]
+
+[project.scripts]
+tfs = "tfs.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# src-layout: the importable package is src/tfs. Hatchling ships every file under
+# it — including the non-.py scaffolding templates in src/tfs/templates/ — into the
+# wheel, so `tfs create` can read them via importlib.resources after install.
+[tool.hatch.build.targets.wheel]
+packages = ["src/tfs"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]

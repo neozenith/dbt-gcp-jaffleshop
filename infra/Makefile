@@ -56,17 +56,20 @@ bootstrap: ## Run GCP-side bootstrap for every project (idempotent)
 bootstrap-github: ## Create/refresh GitHub Environments + vars (run AFTER bootstrap)
 	./bootstrap/bootstrap_github.sh
 
-# ---- Stack lifecycle (scripts/tf-stack.py) ----
+# ---- Stack lifecycle (the `tfs` CLI — infra/tfs/) ----
+# Run via `uv run --directory tfs tfs <cmd>`: uv builds/uses the tfs project env
+# (exposing the `tfs` console script) without needing a global install. Humans can
+# also `uv tool install 'tfs @ ./infra/tfs'` and then call a bare `tfs` anywhere.
 
 create-stack: ## Scaffold a new stack + its CI workflow:  make create-stack NAME=<stack>
 	@test -n "$(NAME)" || { echo "ERROR: NAME=<stack> is required, e.g. make create-stack NAME=monitoring" >&2; exit 2; }
-	uv run scripts/tf-stack.py create $(NAME)
+	uv run --directory tfs tfs create $(NAME)
 
 validate-backends: ## Check every stacks/*/backends/*.config matches the state convention
-	uv run scripts/tf-stack.py validate
+	uv run --directory tfs tfs validate
 
 gha-check: ## Verify every stack has a matching per-stack CI workflow (and vice versa)
-	uv run scripts/tf-stack.py gha-check
+	uv run --directory tfs tfs gha-check
 
 # ---- Per-environment terraform targets (operate on STACK) ----
 # init-<env>, plan-<env>, apply-<env>, validate-<env>
