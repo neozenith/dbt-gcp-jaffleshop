@@ -1,10 +1,10 @@
 # Govern a shared dimension's values via a seed
 
-> **Role:** dimension · **Wang–Strong dimension:** Consistency · **Cost class:** cheap
+> **Rule:** DM-03 · **Role:** dimension · **Wang–Strong dimension:** Consistency · **Cost class:** cheap
 
 When the same dimension (`region`, `country`, `customer_segment`) appears across multiple staging models or sources, each may have a different value vocabulary. The canonical fix — Kimball's *conformed dimension* — pins the truth set in a `seeds/*.csv` and forces every staging model to `relationships` against it.
 
-## Smell
+## Symptoms
 
 - A unified `dim_customer` UNIONs two sources; the `region` column has 5 buckets (AMERICAS, EMEA, APAC, JAPAN, NA) where the business expects 4.
 - An executive questions why Q3 reports show different region totals than a sibling report.

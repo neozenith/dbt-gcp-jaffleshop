@@ -1,10 +1,10 @@
 # Assert referential integrity on foreign keys
 
-> **Role:** entity · **Wang–Strong dimension:** Consistency · **Cost class:** scan-bound
+> **Rule:** EN-03 · **Role:** entity · **Wang–Strong dimension:** Consistency · **Cost class:** scan-bound
 
 dbt does not enforce foreign keys at the warehouse level. `relationships` is your FK constraint — it asserts every value in the child column has a match in the parent.
 
-## Smell
+## Symptoms
 
 - A LEFT JOIN from `fct_orders` to `dim_customers` produces NULL `customer_name` rows.
 - `COUNT(DISTINCT customer_id)` differs between the fact and the dim.

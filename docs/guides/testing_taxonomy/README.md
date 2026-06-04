@@ -1,6 +1,6 @@
 # Testing Taxonomy
 
-A pattern catalogue for testing dbt models. Organised the way Martin Fowler organised *Refactoring* — every entry is a vignette with a **Smell**, a named **Pattern**, and the **Mechanics** to apply it.
+A pattern catalogue for testing dbt models. Organised the way Martin Fowler organised *Refactoring* — every entry is a vignette with a **Symptom**, a named **Pattern**, and the **Mechanics** to apply it.
 
 The vocabulary is borrowed from dbt's semantic layer (MetricFlow). Tests are chosen by **what a column does** in queries — joins, group-bys, aggregates, or time arithmetic — not by what its type is in the warehouse.
 
@@ -14,7 +14,7 @@ This taxonomy answers those questions once, with the trade-offs visible.
 
 1. **You are adding tests to a new model.** Start at [§ Decision tree](#decision-tree). For each column, walk the tree and follow the role link to the matching vignettes.
 2. **You are reviewing a PR.** Use the [§ Framework matrix](#framework-matrix) to sanity-check whether the chosen package is the right one for the job.
-3. **You hit a data-quality incident.** Search the [§ Vignette index](#vignette-index) by symptom — every vignette's `Smell` section is phrased as a production-visible failure.
+3. **You hit a data-quality incident.** Search the [§ Vignette index](#vignette-index) by symptom — every vignette's `Symptoms` section is phrased as a production-visible failure.
 4. **You are shipping a breaking change.** Read [`model/contracts.md`](./model/contracts.md), [`model/versioning-cutover.md`](./model/versioning-cutover.md), and [`model/refactor-parity.md`](./model/refactor-parity.md) in order.
 
 ## The two heuristics
@@ -104,9 +104,9 @@ A column may answer **yes** to more than one question — that's the Role Multip
 
 ## Vocabulary / glossary
 
-The roles below are MetricFlow's names. Alternative names from the user's original brief, Kimball, MetricFlow, and Data Vault are listed for cross-referencing.
+The roles below are MetricFlow's names. Informal names plus the Kimball, MetricFlow, Data Vault, and Anchor equivalents are listed for cross-referencing.
 
-| Canonical (this guide) | Your brief | Kimball | MetricFlow | Data Vault | Anchor |
+| Canonical (this guide) | Informal | Kimball | MetricFlow | Data Vault | Anchor |
 |------------------------|------------|---------|------------|------------|--------|
 | **entity** | Identity | Surrogate key / FK / degenerate dim | `entity` (primary/foreign/natural) | Hub key / Link key | Anchor ID / Tie |
 | **dimension** | Dimensional | Dimension attribute / junk dim | `dimension (categorical)` | Satellite attribute | Attribute / Knot |
@@ -116,8 +116,6 @@ The roles below are MetricFlow's names. Alternative names from the user's origin
 | **time (sub: time-grain dimension)** | Temporal — dimensional | Date dimension at chosen grain | Time dimension with `time_granularity` | n/a | n/a |
 | **time (sub: system-time / audit)** | — | SCD2 `valid_from` / `valid_to` | Bitemporal load timestamp | `load_date` | `RecordedAt` |
 
-The full Kimball / Inmon / Data Vault / Anchor / MetricFlow / Wang–Strong mapping table lives in the semantic-column research source (see maintainer notes in vignettes).
-
 ## Role folders
 
 | Folder | Role | Hue | What it covers |
@@ -125,54 +123,58 @@ The full Kimball / Inmon / Data Vault / Anchor / MetricFlow / Wang–Strong mapp
 | [`entity/`](./entity/README.md) | entity | Blue | JOIN keys: PKs, surrogate keys, FK integrity, compound grain, type stability, soft-delete scoping, hash-collision guards |
 | [`dimension/`](./dimension/README.md) | dimension | Violet | GROUP BY axes: accepted values, cardinality bounds, mutual exclusivity, conformed dimensions, per-dim anomalies |
 | [`measure/`](./measure/README.md) | measure | Emerald | Aggregated facts: numeric range, additivity tagging, currency pairing, distribution anomalies, NaN/Inf guards |
-| [`time/`](./time/README.md) | time | Orange | Date/datetime columns: event-time bounds, monotonic pairs, freshness, calendar spines, SCD2 quartet, timezone contracts |
-| [`model/`](./model/README.md) | model-level | Slate | Cross-column concerns: grain test, contracts, versioning, refactor parity, unit tests, row-count band, volume anomaly |
+| [`time/`](./time/README.md) | time | Orange | Date/datetime columns: event-time bounds, monotonic pairs, freshness (fixed + learned-band anomalies), calendar spines, SCD2 quartet, timezone contracts |
+| [`model/`](./model/README.md) | model-level | Slate | Cross-column concerns: grain test, contracts, versioning, refactor parity, unit tests, row-count band, volume anomaly, schema-change detection, automated column monitors, JSON-shape guards |
 
 ## Vignette index
 
 ### entity/
 
-- [`unique-key.md`](./entity/unique-key.md) — single-column unique + not_null
-- [`compound-grain.md`](./entity/compound-grain.md) — `unique_combination_of_columns`
-- [`foreign-key-integrity.md`](./entity/foreign-key-integrity.md) — `relationships`
-- [`soft-delete-scoped-fk.md`](./entity/soft-delete-scoped-fk.md) — `relationships_where`
-- [`type-stable-join.md`](./entity/type-stable-join.md) — contract `data_type` matches across joined relations
-- [`surrogate-collision-guard.md`](./entity/surrogate-collision-guard.md) — natural-key uniqueness alongside surrogate uniqueness
+- **EN-01** · [`unique-key.md`](./entity/unique-key.md) — single-column unique + not_null
+- **EN-02** · [`compound-grain.md`](./entity/compound-grain.md) — `unique_combination_of_columns`
+- **EN-03** · [`foreign-key-integrity.md`](./entity/foreign-key-integrity.md) — `relationships`
+- **EN-04** · [`soft-delete-scoped-fk.md`](./entity/soft-delete-scoped-fk.md) — `relationships_where`
+- **EN-06** · [`type-stable-join.md`](./entity/type-stable-join.md) — contract `data_type` matches across joined relations
+- **EN-05** · [`surrogate-collision-guard.md`](./entity/surrogate-collision-guard.md) — natural-key uniqueness alongside surrogate uniqueness
 
 ### dimension/
 
-- [`accepted-values.md`](./dimension/accepted-values.md) — enum contract on a categorical
-- [`cardinality-guard.md`](./dimension/cardinality-guard.md) — `expect_column_unique_value_count_to_be_between`
-- [`mutual-exclusivity.md`](./dimension/mutual-exclusivity.md) — sibling boolean flags do not co-fire
-- [`conformed-dimension.md`](./dimension/conformed-dimension.md) — shared seed governs values across models
-- [`dimension-anomalies.md`](./dimension/dimension-anomalies.md) — Elementary per-dimension count anomalies
+- **DM-01** · [`accepted-values.md`](./dimension/accepted-values.md) — enum contract on a categorical
+- **DM-02** · [`cardinality-guard.md`](./dimension/cardinality-guard.md) — `expect_column_unique_value_count_to_be_between`
+- **DM-04** · [`mutual-exclusivity.md`](./dimension/mutual-exclusivity.md) — sibling boolean flags do not co-fire
+- **DM-03** · [`conformed-dimension.md`](./dimension/conformed-dimension.md) — shared seed governs values across models
+- **DM-05** · [`dimension-anomalies.md`](./dimension/dimension-anomalies.md) — Elementary per-dimension count anomalies
 
 ### measure/
 
-- [`numeric-range.md`](./measure/numeric-range.md) — `accepted_range` / `expect_column_values_to_be_between`
-- [`additivity-tag.md`](./measure/additivity-tag.md) — additive vs semi-additive vs non-additive (semantic-layer contract)
-- [`currency-pairing.md`](./measure/currency-pairing.md) — amount columns always travel with `currency_code`
-- [`distribution-anomaly.md`](./measure/distribution-anomaly.md) — mean/stdev anomaly detection
-- [`nan-inf-guard.md`](./measure/nan-inf-guard.md) — divide-by-zero / Inf / NaN traps
+- **MS-01** · [`numeric-range.md`](./measure/numeric-range.md) — `accepted_range` / `expect_column_values_to_be_between`
+- **MS-02** · [`additivity-tag.md`](./measure/additivity-tag.md) — additive vs semi-additive vs non-additive (semantic-layer contract)
+- **MS-03** · [`currency-pairing.md`](./measure/currency-pairing.md) — amount columns always travel with `currency_code`
+- **MS-05** · [`distribution-anomaly.md`](./measure/distribution-anomaly.md) — mean/stdev anomaly detection
+- **MS-04** · [`nan-inf-guard.md`](./measure/nan-inf-guard.md) — divide-by-zero / Inf / NaN traps
 
 ### time/
 
-- [`event-time-bounds.md`](./time/event-time-bounds.md) — no future, no `1900-01-01` / `9999-12-31` sentinels
-- [`monotonic-pair.md`](./time/monotonic-pair.md) — `shipped_at >= ordered_at`, `updated_at >= created_at`
-- [`freshness-source-and-model.md`](./time/freshness-source-and-model.md) — source freshness + model recency
-- [`calendar-spine.md`](./time/calendar-spine.md) — `sequential_values` on `date_day`
-- [`scd2-quartet.md`](./time/scd2-quartet.md) — the four tests every Type-2 dim needs together
-- [`timezone-contract.md`](./time/timezone-contract.md) — TIMESTAMP vs DATETIME contract on BigQuery
+- **TM-SC-01** · [`event-time-bounds.md`](./time/event-time-bounds.md) — no future, no `1900-01-01` / `9999-12-31` sentinels
+- **TM-SC-02** · [`monotonic-pair.md`](./time/monotonic-pair.md) — `shipped_at >= ordered_at`, `updated_at >= created_at`
+- **TM-AU-01** · [`freshness-source-and-model.md`](./time/freshness-source-and-model.md) — source freshness + model recency
+- **TM-GR-01** · [`calendar-spine.md`](./time/calendar-spine.md) — `sequential_values` on `date_day`
+- **TM-AU-02** · [`scd2-quartet.md`](./time/scd2-quartet.md) — the four tests every Type-2 dim needs together
+- **TM-AU-03** · [`freshness-anomalies.md`](./time/freshness-anomalies.md) — Elementary learned-band freshness / event-freshness anomalies
+- **TM-SC-03** · [`timezone-contract.md`](./time/timezone-contract.md) — TIMESTAMP vs DATETIME contract on BigQuery
 
 ### model/
 
-- [`grain-test.md`](./model/grain-test.md) — the one test every model must have
-- [`contracts.md`](./model/contracts.md) — `contract.enforced: true` (shape, not content)
-- [`versioning-cutover.md`](./model/versioning-cutover.md) — ship `v=N+1` without breaking consumers
-- [`refactor-parity.md`](./model/refactor-parity.md) — `audit_helper.compare_and_classify_relation_rows`
-- [`unit-tests.md`](./model/unit-tests.md) — dbt 1.8 unit tests for branching SQL logic
-- [`row-count-band.md`](./model/row-count-band.md) — `expect_table_row_count_to_be_between`
-- [`volume-anomaly.md`](./model/volume-anomaly.md) — Elementary volume anomaly detection
+- **MD-01** · [`grain-test.md`](./model/grain-test.md) — the one test every model must have
+- **MD-02** · [`contracts.md`](./model/contracts.md) — `contract.enforced: true` (shape, not content)
+- **MD-03** · [`versioning-cutover.md`](./model/versioning-cutover.md) — ship `v=N+1` without breaking consumers
+- **MD-04** · [`refactor-parity.md`](./model/refactor-parity.md) — `audit_helper.compare_and_classify_relation_rows`
+- **MD-05** · [`unit-tests.md`](./model/unit-tests.md) — dbt 1.8 unit tests for branching SQL logic
+- **MD-06** · [`row-count-band.md`](./model/row-count-band.md) — `expect_table_row_count_to_be_between`
+- **MD-07** · [`volume-anomaly.md`](./model/volume-anomaly.md) — Elementary volume anomaly detection
+- **MD-08** · [`schema-changes.md`](./model/schema-changes.md) — Elementary schema-change / baseline-drift detection on sources you don't own
+- **MD-09** · [`column-anomalies.md`](./model/column-anomalies.md) — Elementary automated column monitors (null %, min/max/avg, zero-count)
+- **MD-10** · [`json-schema.md`](./model/json-schema.md) — Elementary JSON-shape validation on semi-structured columns
 
 ## Framework matrix
 
@@ -191,7 +193,9 @@ When multiple packages can express the same intent, this matrix picks the canoni
 | Regex on string | `dbt_expectations.expect_column_values_to_match_regex` | (no maintained alternative) |
 | Date gap detection | `dbt_utils.sequential_values` | Need explicit start/end dates → `dbt_expectations.expect_row_values_to_have_data_for_every_n_datepart` |
 | Anomaly / drift detection | **`elementary`** (anomaly tests) | (don't escalate to dbt_expectations distributional tests — Elementary is the maintained path) |
-| Freshness | source `freshness:` block | Model-level → `dbt_utils.recency` or `elementary.freshness_anomalies` |
+| Column-level monitors (null %, min/max/avg, zero-count) | **`elementary`** (`all_columns_anomalies` / `column_anomalies`) | (table-wide safety net beyond per-column rules) |
+| Semi-structured / JSON shape | **`elementary`** (`json_schema`) | (validate a JSON column against an expected shape; parse-time contract can't see inside it) |
+| Freshness | source `freshness:` block | Model-level → `dbt_utils.recency`; learned band → `elementary.freshness_anomalies` |
 | Refactor parity | `audit_helper.compare_and_classify_relation_rows` | (cheap pre-check first: `quick_are_relations_identical` on BQ/Snowflake) |
 | Schema drift | dbt core `contract` (parse-time) | Source you don't own → `elementary.schema_changes` |
 | Type guarantee | dbt core `contract` `data_type` | (DDL-level on table; preflight-only on view) |
@@ -266,12 +270,7 @@ classDef gate            fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
 
 ### Validation status
 
-Validated with `scripts/mermaid_contrast.ts` from the canonical `mermaidjs_diagrams` skill across all 36 vignettes:
-
-- **Text contrast: 100% AA pass.** Every primary classDef hits ≥5.17:1 (white on shade-600/700 fills) and every secondary classDef hits ≥9.45:1 (slate-800 text on shade-100/300 fills).
-- **Border-vs-fill contrast: ~25% pass.** Most primary classDefs fall short of the 3:1 WCAG 1.4.11 rule because Mermaid's dark-fill / white-text idiom can't reach 3:1 border contrast with any conventional stroke choice — pure black borders only reach 2.77:1 against slate-600. The upstream `color_theming.md` reference itself doesn't satisfy this rule. Accepted as advisory: text readability is the load-bearing axis; border visibility is a known constraint of the medium.
-
-The earlier draft used same-hue darker strokes (`stroke:#1e40af` for blue, etc.) which failed *both* text and border AA on emerald and orange. The current palette switches to `stroke:#1e293b` universally and darkens emerald/orange fills to shade-700 — fixing the text-AA failures while accepting the border-AA limitation.
+Every diagram palette meets **WCAG 2.1 AA for text contrast** (white text on shade-600/700 fills, dark text on shade-100/300 fills). Border-vs-fill contrast is treated as advisory: Mermaid's dark-fill / white-text idiom can't reach the 3:1 rule, and text readability is the load-bearing axis.
 
 ## Conventions
 

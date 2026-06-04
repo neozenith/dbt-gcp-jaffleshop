@@ -1,10 +1,10 @@
 # Pin the timezone semantics via contract
 
-> **Role:** time (event-time scalar) · **Wang–Strong dimension:** Validity · **Cost class:** free (compile-time)
+> **Rule:** TM-SC-03 · **Role:** time (event-time scalar) · **Wang–Strong dimension:** Validity · **Cost class:** free (compile-time)
 
 `TIMESTAMP_NTZ`, `TIMESTAMP_TZ`, `DATETIME`, and `DATE` all *look* similar in raw query output but behave differently under `DATE_TRUNC`, `EXTRACT`, and `BETWEEN`. The day a downstream consumer runs the same query from a different session timezone, results diverge by hours. The fix is a contract `data_type` that pins the semantics, plus a singular convention test where the dialect doesn't enforce it.
 
-## Smell
+## Symptoms
 
 - The same dashboard query returns different daily totals at the start of business in Sydney vs end of business in San Francisco.
 - A BigQuery model returns `DATETIME` from one upstream and `TIMESTAMP` from another; an inner JOIN on the column returns zero rows.

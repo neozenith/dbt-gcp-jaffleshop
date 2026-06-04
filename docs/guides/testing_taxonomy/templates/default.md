@@ -1,5 +1,6 @@
 # {{ Vignette Title — imperative, present tense }}
 
+> **Rule:** {{ rule code from rules.json — e.g. EN-01 }}  &nbsp;·&nbsp;
 > **Role:** {{ entity | dimension | measure | time | model }}  &nbsp;·&nbsp;
 > **Wang–Strong dimension:** {{ Uniqueness | Completeness | Validity | Consistency | Accuracy | Timeliness }}  &nbsp;·&nbsp;
 > **Cost class:** {{ free | cheap | scan-bound | history-bound }}
@@ -8,7 +9,7 @@ One-paragraph headline. State the failure mode in business terms, then the test 
 
 ---
 
-## Smell
+## Symptoms
 
 The symptom that prompts this vignette. Phrased as **what a user notices in production**, not what is wrong in the SQL.
 
@@ -126,4 +127,3 @@ The negative space. Explicitly name the scenarios where this pattern is overkill
 
 - [`<sibling vignette>`](../<role>/<sibling>.md) — closely related pattern
 - [`<cross-role vignette>`](../<other-role>/<vignette>.md) — when this column plays a second role
-- Research source: `<which research report this came from>` (internal note for maintainers)

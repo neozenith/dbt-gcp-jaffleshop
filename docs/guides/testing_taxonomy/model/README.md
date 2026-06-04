@@ -16,6 +16,9 @@ Tests in this folder do not belong to a single column — they assert properties
 | A refactor of a mart changes its output in subtle ways and nobody can prove parity | [`refactor-parity.md`](./refactor-parity.md) |
 | A `CASE WHEN` regression bucketed an edge case incorrectly and no test caught it | [`unit-tests.md`](./unit-tests.md) |
 | The table row count is "fine" but quietly halved over a month | [`row-count-band.md`](./row-count-band.md), [`volume-anomaly.md`](./volume-anomaly.md) |
+| An upstream source you don't own added/dropped/retyped a column and your contract never saw it | [`schema-changes.md`](./schema-changes.md) |
+| A column's null rate / average / zero-count drifted, but no per-column rule was watching it | [`column-anomalies.md`](./column-anomalies.md) |
+| A JSON / semi-structured column lost a key or changed a nested type; the parse-time contract can't see inside it | [`json-schema.md`](./json-schema.md) |
 
 ## Defence in depth: shape AND content
 
@@ -44,10 +47,13 @@ The hardest-to-prove claim during a refactor is "this model returns the same row
 
 ## Vignette index
 
-1. [`grain-test.md`](./grain-test.md) — the one test every model must have
-2. [`contracts.md`](./contracts.md) — `contract.enforced: true` (shape, not content)
-3. [`versioning-cutover.md`](./versioning-cutover.md) — ship `v=N+1` without breaking consumers
-4. [`refactor-parity.md`](./refactor-parity.md) — `audit_helper.compare_and_classify_relation_rows`
-5. [`unit-tests.md`](./unit-tests.md) — dbt 1.8 unit tests for branching SQL logic
-6. [`row-count-band.md`](./row-count-band.md) — `expect_table_row_count_to_be_between`
-7. [`volume-anomaly.md`](./volume-anomaly.md) — Elementary volume anomaly detection
+1. **MD-01** · [`grain-test.md`](./grain-test.md) — the one test every model must have
+2. **MD-02** · [`contracts.md`](./contracts.md) — `contract.enforced: true` (shape, not content)
+3. **MD-03** · [`versioning-cutover.md`](./versioning-cutover.md) — ship `v=N+1` without breaking consumers
+4. **MD-04** · [`refactor-parity.md`](./refactor-parity.md) — `audit_helper.compare_and_classify_relation_rows`
+5. **MD-05** · [`unit-tests.md`](./unit-tests.md) — dbt 1.8 unit tests for branching SQL logic
+6. **MD-06** · [`row-count-band.md`](./row-count-band.md) — `expect_table_row_count_to_be_between`
+7. **MD-07** · [`volume-anomaly.md`](./volume-anomaly.md) — Elementary volume anomaly detection
+8. **MD-08** · [`schema-changes.md`](./schema-changes.md) — Elementary schema-change / baseline-drift detection on sources you don't own
+9. **MD-09** · [`column-anomalies.md`](./column-anomalies.md) — Elementary automated column monitors (null %, min/max/avg, zero-count)
+10. **MD-10** · [`json-schema.md`](./json-schema.md) — Elementary JSON-shape validation on semi-structured columns

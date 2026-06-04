@@ -1,10 +1,10 @@
 # Detect distribution drift in a measure column
 
-> **Role:** measure · **Wang–Strong dimension:** Accuracy · **Cost class:** history-bound
+> **Rule:** MS-05 · **Role:** measure · **Wang–Strong dimension:** Accuracy · **Cost class:** history-bound
 
 A range test catches a single bad row; a distribution test catches a fleet of slightly-off rows. The day a system migration silently changes a column from cents to dollars, every row passes individual range tests — but the mean halves. A learned-band Z-score detector fires within one run.
 
-## Smell
+## Symptoms
 
 - A measure column's mean shifts by ~50% overnight after a vendor system change; no individual row is "wrong" but the aggregate is.
 - An `accepted_range` of `[0, 10_000_000]` was set wide to avoid false positives, and now a real drift slipped through because every row is still in range.

@@ -1,10 +1,10 @@
 # Assert single-column uniqueness and non-null
 
-> **Role:** entity · **Wang–Strong dimension:** Uniqueness + Completeness · **Cost class:** cheap (scan-bound only if unscoped)
+> **Rule:** EN-01 · **Role:** entity · **Wang–Strong dimension:** Uniqueness + Completeness · **Cost class:** cheap (scan-bound only if unscoped)
 
 Every entity column that uniquely identifies a row at this model's grain must carry both `unique` and `not_null`. Together they are the most basic — and most frequently under-applied — defence against join fanout.
 
-## Smell
+## Symptoms
 
 - A KPI doubles overnight after an upstream backfill.
 - A LEFT JOIN's right-side row count becomes >1 per left-side row without explanation.

@@ -1,0 +1,60 @@
+name: dbt testing-taxonomy review
+description: >-
+  Review a PR's changed dbt models (and all project models) against the testing
+  taxonomy via GitHub Models (keyless, GITHUB_TOKEN), then upsert sticky PR comments
+  (coverage matrix + failures, for changed and all models) including token usage and
+  estimated cost. No vendor API key or plugin.
+
+inputs:
+  github-token:
+    description: Token with models:read + pull-requests:write (pass secrets.GITHUB_TOKEN).
+    required: true
+  pr-number:
+    description: Pull request number to comment on.
+    required: true
+  base-sha:
+    description: Base commit SHA for the changed-models diff.
+    required: true
+  head-sha:
+    description: Head commit SHA for the changed-models diff.
+    required: true
+  model:
+    description: GitHub Models catalogue id (must support response_format json_schema).
+    required: false
+    default: openai/gpt-4.1-mini
+  models-endpoint:
+    description: GitHub Models inference endpoint.
+    required: false
+    default: https://models.github.ai/inference
+  models-glob:
+    description: Path prefix that holds the dbt models.
+    required: false
+    default: dbt-jaffleshop/models
+  cost-per-1m-input:
+    description: USD per 1M input tokens, for the estimated-cost line (model list price).
+    required: false
+    default: "0.4"
+  cost-per-1m-output:
+    description: USD per 1M output tokens, for the estimated-cost line (model list price).
+    required: false
+    default: "1.60"
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v8.1.0
+
+    - name: Run testing-taxonomy review
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        BASE_SHA: ${{ inputs.base-sha }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        MODEL: ${{ inputs.model }}
+        MODELS_ENDPOINT: ${{ inputs.models-endpoint }}
+        MODELS_GLOB: ${{ inputs.models-glob }}
+        COST_PER_1M_INPUT: ${{ inputs.cost-per-1m-input }}
+        COST_PER_1M_OUTPUT: ${{ inputs.cost-per-1m-output }}
+        # GITHUB_REPOSITORY is provided by the Actions runtime.
+      run: uv run --no-project "${{ github.action_path }}/review.py"

@@ -1,10 +1,10 @@
 # Bound the model's row count
 
-> **Role:** model-level · **Wang–Strong dimension:** Accuracy + Completeness · **Cost class:** cheap
+> **Rule:** MD-06 · **Role:** model-level · **Wang–Strong dimension:** Accuracy + Completeness · **Cost class:** cheap
 
 The model is supposed to have between 50,000 and 5,000,000 rows per day. The bound catches both kinds of failure: shrinkage (broken ingest, an overly-strict filter) and explosion (fanout from a bad join).
 
-## Smell
+## Symptoms
 
 - A mart that's "always around 100k rows" has 18k rows today after a partition got dropped upstream.
 - An aggregation table 30× its usual size — a fanout slipped past the grain test.

@@ -1,10 +1,10 @@
 # Assert composite-key uniqueness (the grain test)
 
-> **Role:** entity · **Wang–Strong dimension:** Uniqueness · **Cost class:** scan-bound
+> **Rule:** EN-02 · **Role:** entity · **Wang–Strong dimension:** Uniqueness · **Cost class:** scan-bound
 
 When the grain spans more than one column, `unique` cannot express it. The test of grain is `dbt_utils.unique_combination_of_columns` — and the rule is **every dbt model has exactly one of these, naming its grain**.
 
-## Smell
+## Symptoms
 
 - "One row per customer per day" but the row count is 1.3× expected.
 - A fact table joined to two dimensions and the result has more rows than the fact alone.

@@ -1,10 +1,10 @@
 # Scope referential integrity around soft-deletes
 
-> **Role:** entity · **Wang–Strong dimension:** Consistency · **Cost class:** scan-bound
+> **Rule:** EN-04 · **Role:** entity · **Wang–Strong dimension:** Consistency · **Cost class:** scan-bound
 
 When the parent table soft-deletes rows (rather than physically removing them), the naive `relationships` test passes against the unfiltered parent, but the downstream join filters those rows out and produces ghost references. The fix is `relationships_where`.
 
-## Smell
+## Symptoms
 
 - The `relationships` test on `fct_orders.product_id` passes nightly.
 - The mart `mart_orders_enriched` LEFT JOINs `dim_product WHERE deleted_at IS NULL`, and historical orders show `product_name = NULL`.

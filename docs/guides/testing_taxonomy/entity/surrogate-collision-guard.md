@@ -1,10 +1,10 @@
 # Guard against surrogate-key hash collisions
 
-> **Role:** entity · **Wang–Strong dimension:** Uniqueness · **Cost class:** scan-bound
+> **Rule:** EN-05 · **Role:** entity · **Wang–Strong dimension:** Uniqueness · **Cost class:** scan-bound
 
 `MD5(a || b)` is a common surrogate-key pattern. Without a delimiter, `MD5('12' || 'AB')` and `MD5('1' || '2AB')` are the same string. `unique` on the surrogate passes — but two distinct logical events have collapsed to one key. The guard is **always test the natural-key tuple's uniqueness in addition to the surrogate's**.
 
-## Smell
+## Symptoms
 
 - A surrogate-key column passes `unique` but downstream metrics undercount by a tiny percentage that varies with data volume.
 - Anomaly detection flags a "missing" event that, on inspection, *was* ingested — its surrogate collided with another row.

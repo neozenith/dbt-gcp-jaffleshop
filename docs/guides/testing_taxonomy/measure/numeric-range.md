@@ -1,10 +1,10 @@
 # Pin a measure's numeric bounds
 
-> **Role:** measure · **Wang–Strong dimension:** Validity · **Cost class:** cheap
+> **Rule:** MS-01 · **Role:** measure · **Wang–Strong dimension:** Validity · **Cost class:** cheap
 
 Most measures have a knowable bound: amounts are non-negative, percentages are between 0 and 1, counts are non-negative integers. A range test catches the row that violates the bound — a fat-finger zero, a sign-flip after a vendor migration, a discount that exceeded 100%.
 
-## Smell
+## Symptoms
 
 - A discount column has `discount_pct = 1.5` (150%) and downstream pricing calculations silently negative.
 - A `quantity` column shows `-1` for "returns" but only in some rows; the convention silently flipped.

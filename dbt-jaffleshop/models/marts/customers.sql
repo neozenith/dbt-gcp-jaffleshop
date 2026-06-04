@@ -1,3 +1,4 @@
+-- demo: exercise testing-taxonomy-review output variations (this PR)
 with
 
 customers as (
