@@ -21,7 +21,7 @@ inputs:
   model:
     description: GitHub Models catalogue id (must support response_format json_schema).
     required: false
-    default: openai/gpt-4o
+    default: openai/gpt-4.1-mini
   models-endpoint:
     description: GitHub Models inference endpoint.
     required: false
@@ -33,11 +33,11 @@ inputs:
   cost-per-1m-input:
     description: USD per 1M input tokens, for the estimated-cost line (model list price).
     required: false
-    default: "2.5"
+    default: "0.4"
   cost-per-1m-output:
     description: USD per 1M output tokens, for the estimated-cost line (model list price).
     required: false
-    default: "10"
+    default: "1.60"
 
 runs:
   using: composite
