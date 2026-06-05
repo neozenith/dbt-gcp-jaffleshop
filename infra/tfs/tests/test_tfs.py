@@ -31,7 +31,7 @@ def test_parse_backend_config(tmp_path: Path, content: str, expected: dict):
 @pytest.mark.parametrize(
     "stack, expected",
     [
-        ("dbt_platform", "terraform/state"),  # grandfathered legacy prefix
+        ("dbt_platform", "terraform/state/dbt_platform"),  # migrated to the per-stack convention (was grandfathered)
         ("monitoring", "terraform/state/monitoring"),  # per-stack convention
     ],
 )

@@ -60,7 +60,7 @@ infra/tfs/
 └── src/tfs/
     ├── app.py              # build_parser() + main() — argparse wiring only
     ├── roots.py            # find_infra_root() / find_repo_root()
-    ├── config.py           # VALID_ENVS, LEGACY_STATE_PREFIX, load_config, list_stacks
+    ├── config.py           # VALID_ENVS, expected_prefix, load_config, list_stacks
     ├── backends.py         # backend *.config parsing + discovery
     ├── gcp.py              # check_project gcloud guardrail
     ├── errors.py           # typed exceptions
