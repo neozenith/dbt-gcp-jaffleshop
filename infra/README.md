@@ -20,8 +20,7 @@ in a stack plan/apply against any of three GCP projects
    comes from adding **new** stacks, not from splitting an existing one.
 3. **One workflow per stack** promotes it through dev → test → prod.
 4. **Many stacks, one bucket per env, state namespaced by stack name** —
-   `prefix = "terraform/state/<stack>"` (`dbt_platform` grandfathered at
-   `terraform/state`).
+   `prefix = "terraform/state/<stack>"`, uniformly (no exceptions).
 5. **Primitives become modules** once a second stack reuses them — extracted from
    real reuse, not anticipated.
 
@@ -97,11 +96,9 @@ make -C infra STACK=monitoring validate-all          # init + validate every env
 
   | Stack | `prefix` | Why |
   |---|---|---|
-  | `dbt_platform` | `terraform/state` | **Grandfathered** — predates the convention; live state is never moved. |
-  | *every new stack* | `terraform/state/<stack>` | Per-stack isolation so stacks never collide. |
+  | *every stack* | `terraform/state/<stack>` | Per-stack isolation so stacks never collide. |
 
-  `tfs validate` enforces this (`LEGACY_STATE_PREFIX` holds the grandfather
-  list); `make ci` runs it.
+  `tfs validate` enforces this uniform rule; `make ci` runs it.
 
 ## CI/CD
 

@@ -56,6 +56,12 @@ Concretely:
   The GCS backend keys state at `<prefix>/default.tfstate`, so running `init`
   from the new directory with the unchanged backend config points at the *same*
   live object — zero migration, zero risk.
+
+  > **Superseded (2026-06-05) by [ADR-0004](./adr-0004-migrate-dbt-platform-state-to-per-stack-prefix.md):**
+  > this state-grandfathering decision was reversed. `dbt_platform`'s state was
+  > migrated to `terraform/state/dbt_platform` and `LEGACY_STATE_PREFIX` removed,
+  > making the per-stack prefix convention uniform. The rest of this ADR (the
+  > stacks/modules layout) still stands.
 - **New** stacks adopt `prefix = "terraform/state/<stack>"` for per-stack
   isolation. `scripts/tf-stack.py validate` encodes both rules (grandfather list
   + convention) so the boundary is enforced by code, not just prose.

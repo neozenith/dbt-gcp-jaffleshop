@@ -10,11 +10,12 @@ It targets three GCP projects (`dbt-dev-jaffleshop`, `dbt-test-jaffleshop`,
 `dbt-prod-jaffleshop`) from one set of `*.tf` files via **partial backend
 configuration** — switch envs by changing two inputs at `init` / `plan` time.
 
-> **State location:** grandfathered at `prefix = "terraform/state"` (no
-> stack-name segment) — it predates the per-stack convention, so its live state
-> is never moved. New stacks use `terraform/state/<stack>`; see
-> [`../../README.md`](../../README.md) and
-> [`docs/arch/adr-0003-stacks-and-modules-layout.md`](../../../docs/arch/adr-0003-stacks-and-modules-layout.md).
+> **State location:** `prefix = "terraform/state/dbt_platform"` — the same
+> per-stack convention every stack uses. (Originally grandfathered at
+> `terraform/state`; migrated on 2026-06-05 — see
+> [`../../README.md`](../../README.md),
+> [`docs/runbooks/dbt-platform-state-migration.md`](../../../docs/runbooks/dbt-platform-state-migration.md),
+> and ADR-0004.)
 
 ```bash
 # via the tfs CLI (adds the gcloud project guardrail + flag wiring)
@@ -40,7 +41,7 @@ stacks/dbt_platform/
 ├── variables.tf        # var.environment (validated) + var.region
 ├── dbt-developers.yml  # curated human-developer registry (decoded in dbt.tf)
 └── backends/
-    ├── dev.config      # bucket = "dbt-dev-jaffleshop-tfstate", prefix = "terraform/state"
+    ├── dev.config      # bucket = "dbt-dev-jaffleshop-tfstate", prefix = "terraform/state/dbt_platform"
     ├── test.config
     └── prod.config
 ```

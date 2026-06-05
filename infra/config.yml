@@ -5,13 +5,10 @@
 # convention inside Terraform. project_id is ALSO derivable (dbt-<env>-jaffleshop)
 # and is duplicated here purely so the scaffolder can print it for sanity-checks.
 #
-# State layout convention for NEW stacks:
+# State layout convention (uniform for EVERY stack):
 #   bucket = "<state_bucket>"                  # one tfstate bucket per project
 #   prefix = "terraform/state/<stack_name>"    # per-stack isolation within the bucket
-#
-# The original 'dbt_platform' stack predates this convention and is grandfathered
-# at prefix "terraform/state" (no stack-name segment) so its live state is never
-# moved — see LEGACY_STATE_PREFIX in infra/tfs/src/tfs/config.py.
+
 state_location: australia-southeast1
 environments:
   dev:

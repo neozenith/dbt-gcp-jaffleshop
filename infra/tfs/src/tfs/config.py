@@ -11,10 +11,6 @@ log = logging.getLogger(__name__)
 VALID_ENVS = ["dev", "test", "prod"]
 TF_COMMANDS = ["init", "plan", "apply", "force-unlock", "output", "import"]
 
-# Stacks created BEFORE the per-stack state-prefix convention. Their live state
-# must never move, so their expected prefix has no <stack_name> segment.
-LEGACY_STATE_PREFIX = {"dbt_platform": "terraform/state"}
-
 
 def load_config(infra_root: Path) -> dict:
     yaml = ruamel.yaml.YAML()
@@ -22,8 +18,9 @@ def load_config(infra_root: Path) -> dict:
 
 
 def expected_prefix(stack_name: str) -> str:
-    """The GCS backend prefix a stack's state MUST live under."""
-    return LEGACY_STATE_PREFIX.get(stack_name, f"terraform/state/{stack_name}")
+    """The GCS backend prefix a stack's state MUST live under — one per-stack
+    namespace, uniformly."""
+    return f"terraform/state/{stack_name}"
 
 
 def list_stacks(infra_root: Path) -> list[str]:
