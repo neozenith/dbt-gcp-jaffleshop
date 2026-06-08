@@ -40,3 +40,32 @@ def test_suppressed_finding_is_marked(tmp_path):
     node = NodeFacts("model.p.spine", "spine", "model", "models/marts/spine.sql", "marts", [], False, False, [])
     md = report.build_markdown([node], {"models/marts/spine.sql"}, Suppressions.load(tmp_path), "x")
     assert "🟡 suppressed" in md and "synthetic" in md
+
+
+def test_llm_index_maps_statuses():
+    review = {"result": {"models": [{"model": "orders", "findings": [
+        {"rule_code": "MD-01", "status": "applicable_present"},
+        {"rule_code": "EN-03", "status": "applicable_missing"},
+        {"rule_code": "MS-05", "status": "not_applicable"},
+    ]}]}}
+    idx = report.llm_index(review)
+    assert idx["orders"] == {"MD-01": "present", "EN-03": "gap", "MS-05": "n/a"}
+
+
+def test_flag_detects_false_positive_and_negative():
+    assert "FALSE POSITIVE" in report._flag("pass", "gap")   # LLM flagged a gap that's covered
+    assert "FALSE NEGATIVE" in report._flag("gap", "present")  # LLM missed a real gap
+    assert report._flag("pass", "present").startswith("✅")
+    assert report._flag("gap", "gap").startswith("✅")
+    assert report._flag("n/a", "present").startswith("🟠")     # applicability disagreement
+    assert report._flag("no-detector", "gap").startswith("⚪")  # unverified
+
+
+def test_reconciliation_section_renders_when_review_given(tmp_path):
+    node = NodeFacts("model.p.products", "products", "model", "models/marts/products.sql", "marts",
+                     [], False, False, [], {"product_id": "STRING"})
+    review = {"result": {"models": [{"model": "products",
+                                     "findings": [{"rule_code": "EN-01", "status": "applicable_present"}]}]}}
+    md = report.build_markdown([node], {"models/marts/products.sql"}, Suppressions.load(tmp_path), "x", review)
+    # products PK product_id has no tests → EN-01 gap; LLM said present → false negative on the worklist.
+    assert "FALSE NEGATIVE" in md and "LLM reconciliation" in md

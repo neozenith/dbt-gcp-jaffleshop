@@ -55,8 +55,9 @@ def cmd_all(args) -> int:
     # Deterministic taxonomy detectors (grain/freshness/contracts/keys) over the same selection,
     # reading the manifest already on disk. A load failure is surfaced as a visible row, not a crash.
     try:
+        _cat = args.catalog if args.catalog and args.catalog.exists() else None
         taxonomy_report = taxonomy.evaluate(
-            load_node_facts(args.manifest), {str(f) for f in files}, strict=False, scope=scope,
+            load_node_facts(args.manifest, _cat), {str(f) for f in files}, strict=False, scope=scope,
             suppressions=Suppressions.load(config.PROJECT_ROOT),
         )
     except (RuntimeError, FileNotFoundError, ValueError) as exc:

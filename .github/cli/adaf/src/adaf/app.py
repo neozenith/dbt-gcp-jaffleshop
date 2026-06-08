@@ -156,6 +156,10 @@ def _add_report_group(sub, common: argparse.ArgumentParser) -> None:
                          help="Generate a per-model taxonomy-review markdown with full finding lineage")
     _add_selection(rep)
     _add_manifest(rep)
+    _add_catalog(rep)  # warehouse-resolved columns → richer deterministic verdicts
+    rep.add_argument("--review", type=Path, default=None, metavar="REVIEW_JSON",
+                     help="`adaf review --json` output to reconcile against (adds an LLM-vs-deterministic "
+                          "FP/FN column per model)")
     rep.add_argument("-o", "--output", type=Path, default=None,
                      help="Write the markdown to this file (default: stdout)")
     rep.set_defaults(func=report_cmd.cmd)
@@ -229,6 +233,7 @@ def _add_check_group(sub, common: argparse.ArgumentParser) -> None:
                                help="Deterministic catalogue detectors (grain/freshness/contracts/keys) over selected models")
     _add_selection(tax)
     _add_manifest(tax)
+    _add_catalog(tax)  # optional warehouse-resolved columns enrich key-based + TM-* detection
     tax.add_argument("--strict", action="store_true", help="Promote hybrid-rule warnings to failures")
     tax.set_defaults(func=taxonomy.cmd)
 
@@ -329,7 +334,7 @@ def _prepare_project(args: argparse.Namespace) -> None:
     # profiles.yml is committed inside the dbt project; force dbt + the sqlfluff dbt templater at
     # it so an inherited DBT_PROFILES_DIR (e.g. the repo root) can't win.
     os.environ["DBT_PROFILES_DIR"] = str(config.PROJECT_ROOT)
-    for attr in ("manifest", "catalog", "selectors", "output", "md_path"):
+    for attr in ("manifest", "catalog", "selectors", "output", "md_path", "review"):
         if hasattr(args, attr):
             setattr(args, attr, config.under_root(getattr(args, attr)))
 

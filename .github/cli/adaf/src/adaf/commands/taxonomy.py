@@ -202,7 +202,8 @@ def build_report(args: Namespace) -> TaxonomyReport:
             strict=getattr(args, "strict", False),
             error=f"dbt manifest not found at '{manifest}'. Run `dbt parse` or pass --parse.",
         )
-    nodes = load_node_facts(manifest)
+    catalog = config.under_root(getattr(args, "catalog", None))
+    nodes = load_node_facts(manifest, catalog if catalog and Path(catalog).exists() else None)
     suppressions = Suppressions.load(config.PROJECT_ROOT)
     return evaluate(
         nodes, in_scope, strict=getattr(args, "strict", False), scope=selection.describe(sel), suppressions=suppressions

@@ -28,6 +28,11 @@ PRESENT = "present"
 MISSING = "missing"
 NOT_APPLICABLE = "not_applicable"
 
+# BigQuery temporal types (for TM-* applicability from warehouse-resolved column types).
+TEMPORAL_TYPES = frozenset({"DATE", "DATETIME", "TIMESTAMP", "TIME"})
+# TZ-sensitive types: an instant (TIMESTAMP) vs a wall-clock (DATETIME) must be contracted (TM-SC-03).
+TZ_SENSITIVE_TYPES = frozenset({"TIMESTAMP", "DATETIME"})
+
 
 @dataclass(frozen=True)
 class AttachedTest:
@@ -47,10 +52,27 @@ class NodeFacts:
     resource_type: str  # "model" | "source"
     original_file_path: str
     layer: str  # the first dir under models/ (e.g. "staging", "marts"); "" for sources
-    columns: list[str]
+    columns: list[str]  # YAML-DECLARED columns (from manifest)
     contract_enforced: bool
     has_freshness: bool  # source declared a freshness block
     tests: list[AttachedTest] = field(default_factory=list)
+    resolved_columns: dict[str, str] = field(default_factory=dict)  # warehouse-RESOLVED name->data_type (from catalog.json)
+
+    def effective_columns(self) -> list[str]:
+        """The best available column list: warehouse-resolved when present, else YAML-declared.
+
+        Resolved columns (from ``catalog.json``, needs a build) are authoritative — they are the real
+        shape, so key-based rules can be evaluated even on models whose YAML declares no columns.
+        """
+        return list(self.resolved_columns) if self.resolved_columns else self.columns
+
+    def temporal_columns(self) -> list[str]:
+        """Resolved columns whose type is a date/time type — sound applicability for TM-* rules."""
+        return [c for c, t in self.resolved_columns.items() if t.upper() in TEMPORAL_TYPES]
+
+    def tz_sensitive_columns(self) -> list[str]:
+        """Resolved TIMESTAMP/DATETIME columns — the ones whose tz semantics must be contracted."""
+        return [c for c, t in self.resolved_columns.items() if t.upper() in TZ_SENSITIVE_TYPES]
 
     def test_names(self) -> set[str]:
         return {t.name for t in self.tests}
@@ -60,7 +82,7 @@ class NodeFacts:
 
     def id_columns(self) -> list[str]:
         """Columns that look like keys (``*_id`` / ``*_uuid`` / bare ``id``)."""
-        return [c for c in self.columns if c.lower().endswith(("_id", "_uuid")) or c.lower() == "id"]
+        return [c for c in self.effective_columns() if c.lower().endswith(("_id", "_uuid")) or c.lower() == "id"]
 
     def pk_column(self) -> str | None:
         """The model's likely primary key: ``<name>_id`` (singularised), else a sole ``*_id`` column."""
@@ -109,10 +131,30 @@ def _test_fact(node: dict) -> AttachedTest | None:
     return AttachedTest(name=meta.get("name", ""), namespace=meta.get("namespace"), column=column)
 
 
-def node_facts_from_manifest(data: dict) -> list[NodeFacts]:
-    """Build NodeFacts for every model and source in a dbt manifest dict (the same shape dbt writes)."""
+def _catalog_columns(catalog_path: Path | str | None) -> dict[str, dict[str, str]]:
+    """Read catalog.json → {unique_id: {column_name: data_type}} (warehouse-RESOLVED columns).
+
+    Empty when no catalog is given or it doesn't exist — the detectors then fall back to the manifest's
+    YAML-declared columns. A catalog needs ``dbt docs generate`` (a build), so it is optional.
+    """
+    if catalog_path is None or not Path(catalog_path).exists():
+        return {}
+    data = json.loads(Path(catalog_path).read_text(encoding="utf-8"))
+    out: dict[str, dict[str, str]] = {}
+    for uid, node in (data.get("nodes") or {}).items():
+        out[uid] = {name: (col.get("type") or "") for name, col in (node.get("columns") or {}).items()}
+    return out
+
+
+def node_facts_from_manifest(data: dict, resolved: dict[str, dict[str, str]] | None = None) -> list[NodeFacts]:
+    """Build NodeFacts for every model and source in a dbt manifest dict (the same shape dbt writes).
+
+    ``resolved`` (from ``_catalog_columns``) supplies warehouse-resolved column types per node, enabling
+    key-based and TM-* rules on models whose YAML declares no columns.
+    """
     nodes = data.get("nodes") or {}
     sources = data.get("sources") or {}
+    resolved = resolved or {}
     facts: dict[str, NodeFacts] = {}
 
     for uid, node in nodes.items():
@@ -128,6 +170,7 @@ def node_facts_from_manifest(data: dict) -> list[NodeFacts]:
             columns=list((node.get("columns") or {}).keys()),
             contract_enforced=bool((node.get("contract") or {}).get("enforced")),
             has_freshness=False,
+            resolved_columns=resolved.get(uid, {}),
         )
     for uid, node in sources.items():
         facts[uid] = NodeFacts(
@@ -214,6 +257,25 @@ def _detect_en03(n: NodeFacts) -> tuple[str, str] | None:
     return MISSING, f"FK column(s) without a relationships test: {', '.join(missing)}"
 
 
+def _detect_tmsc03(n: NodeFacts) -> tuple[str, str] | None:
+    """TM-SC-03 timezone-contract (hybrid): a TIMESTAMP/DATETIME column's tz semantics must be pinned.
+
+    Applicability is SOUND (a resolved TIMESTAMP/DATETIME column is unambiguously tz-sensitive — needs
+    a build/catalog to know). Passes iff the model enforces a contract (which pins each column's
+    declared type, making TIMESTAMP-vs-DATETIME explicit)."""
+    if n.resource_type != "model":
+        return None
+    tz_cols = n.tz_sensitive_columns()
+    if not tz_cols:
+        return None  # no tz-sensitive column resolved (or no catalog) → rule role doesn't apply
+    if n.contract_enforced:
+        return PRESENT, f"contract pins the type of tz-sensitive column(s): {', '.join(tz_cols)}"
+    return MISSING, (
+        f"tz-sensitive column(s) {', '.join(tz_cols)} have no type contract — pin TIMESTAMP vs DATETIME "
+        "with contract.enforced + data_type"
+    )
+
+
 # Registry: rule_code -> detector. Severity is derived from the catalogue's `detection`
 # (deterministic -> blocker, hybrid -> warning) by the command layer.
 DETECTORS: dict[str, Callable[[NodeFacts], tuple[str, str] | None]] = {
@@ -222,8 +284,11 @@ DETECTORS: dict[str, Callable[[NodeFacts], tuple[str, str] | None]] = {
     "MD-02": _detect_md02,
     "EN-01": _detect_en01,
     "EN-03": _detect_en03,
+    "TM-SC-03": _detect_tmsc03,
 }
 
 
-def load_node_facts(manifest_path: Path | str) -> list[NodeFacts]:
-    return node_facts_from_manifest(json.loads(Path(manifest_path).read_text(encoding="utf-8")))
+def load_node_facts(manifest_path: Path | str, catalog_path: Path | str | None = None) -> list[NodeFacts]:
+    """Distil manifest (+ optional catalog.json for warehouse-resolved column types) into NodeFacts."""
+    data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    return node_facts_from_manifest(data, _catalog_columns(catalog_path))
