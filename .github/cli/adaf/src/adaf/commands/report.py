@@ -155,7 +155,7 @@ def _reconcile_rows(n: NodeFacts, suppressions: Suppressions, llm: dict[str, str
         r = next((v for k, v in rank.items() if assessment.startswith(k)), 9)
         det_cell = _det_display(det_token, rule) + (f" — {evidence}" if evidence and det_token in ("gap", "pass") else "")
         llm_cell = llm_v or "_(not emitted)_"
-        rows.append((r, f"| `{code}` | {'/'.join(rule.get('dama', []))} | {det_cell} | {llm_cell} | {assessment} |"))
+        rows.append((r, f"| {_rule(code)} | {'/'.join(rule.get('dama', []))} | {det_cell} | {llm_cell} | {assessment} |"))
     return sorted(rows, key=lambda t: (t[0], t[1]))
 
 
@@ -193,8 +193,9 @@ def _records(nodes: list[NodeFacts], suppressions: Suppressions, llm_idx: dict[s
     return recs
 
 
-def _rule_title(code: str) -> str:
-    return (get_rule(code) or {}).get("title", code)
+def _rule(code: str) -> str:
+    """A rule's compact label: its code + short slug, e.g. ``​`EN-01` unique-key``."""
+    return f"`{code}` {(get_rule(code) or {}).get('slug', '')}".rstrip()
 
 
 def _names(recs: list[_Record]) -> str:
@@ -242,7 +243,7 @@ def _decisions(recs: list[_Record]) -> list[str]:
         active = [r for r in grp if r[4] == "present"]
         ev = f" ({grp[0][3]})" if len(grp) == 1 and grp[0][3] else ""
         tail = f" — _LLM marked present on {_names(active)}_" if active else " — _LLM never raised it_"
-        out.append(f"- **`{code}` {_rule_title(code)}** on {_names(grp)}{ev}.{tail}")
+        out.append(f"- {_rule(code)} on {_names(grp)}{ev}{tail}")
     out.append("")
 
     out += ["### 🔴 False positives — the LLM flagged a gap a test already covers", ""]
@@ -251,7 +252,7 @@ def _decisions(recs: list[_Record]) -> list[str]:
         out += ["_None._", ""]
     for code, g in groupby(fp, key=lambda r: r[1]):
         grp = list(g)
-        out.append(f"- **`{code}` {_rule_title(code)}** — a test exists on {_names(grp)}, but the LLM flagged it missing.")
+        out.append(f"- {_rule(code)} — a test exists on {_names(grp)}, but the LLM flagged it missing.")
     out.append("")
 
     out += ["### 🟠 Applicability — the detector can't decide; you adjudicate", ""]
@@ -260,7 +261,7 @@ def _decisions(recs: list[_Record]) -> list[str]:
         out += ["_None._", ""]
     for code, g in groupby(ap, key=lambda r: r[1]):
         grp = list(g)
-        out.append(f"- **`{code}` {_rule_title(code)}** on {_names(grp)} — deterministic n/a (see caveats); LLM asserts it applies.")
+        out.append(f"- {_rule(code)} on {_names(grp)} — deterministic n/a (see caveats); LLM asserts it applies.")
     out.append("")
 
     out += ["### ⚪ LLM-only findings — no deterministic check (judgement call)", ""]
@@ -270,7 +271,7 @@ def _decisions(recs: list[_Record]) -> list[str]:
     if not unv:
         out += ["_None._", ""]
     for m in sorted(unv):
-        out.append(f"- `{m}` — {', '.join(f'`{c}`' for c in sorted(unv[m]))}")
+        out.append(f"- `{m}` — {', '.join(_rule(c) for c in sorted(unv[m]))}")
     out.append("")
 
     if by["supp"]:
@@ -282,11 +283,11 @@ def _decisions(recs: list[_Record]) -> list[str]:
 
 def _status_badges(n: NodeFacts, suppressions: Suppressions) -> str:
     if n.resource_type != "model":
-        return f"**freshness** {'✅' if n.has_freshness else '❌'}"
-    parts = [f"**grain** {_BADGE[_det_verdict(n, 'MD-01', suppressions)[0]]}"]
+        return f"`TM-AU-01` freshness {'✅' if n.has_freshness else '❌'}"
+    parts = [f"`MD-01` grain {_BADGE[_det_verdict(n, 'MD-01', suppressions)[0]]}"]
     md02 = _det_verdict(n, "MD-02", suppressions)[0]
     if md02 != "n/a":
-        parts.append(f"**contract** {_BADGE[md02]}")
+        parts.append(f"`MD-02` contract {_BADGE[md02]}")
     declared = len(n.columns)
     parts.append(f"{len(n.effective_columns())} cols ({declared} documented{' ⚠️' if declared == 0 else ''})")
     return " · ".join(parts)
@@ -295,7 +296,7 @@ def _status_badges(n: NodeFacts, suppressions: Suppressions) -> str:
 def _model_block(n: NodeFacts, suppressions: Suppressions, llm_idx: dict[str, dict[str, str]] | None) -> list[str]:
     out = [f"### `{n.name}` · {n.resource_type}" + (f" · `{n.layer}`" if n.layer else ""), "", _status_badges(n, suppressions), ""]
 
-    gaps = [f"`{code}` {ev}" for code in DETECTORS for det, ev in [_det_verdict(n, code, suppressions)] if det == "gap"]
+    gaps = [_rule(code) for code in DETECTORS if _det_verdict(n, code, suppressions)[0] == "gap"]
     if gaps:
         out += ["**Gaps:** " + " · ".join(gaps), ""]
 
@@ -303,7 +304,7 @@ def _model_block(n: NodeFacts, suppressions: Suppressions, llm_idx: dict[str, di
         llm = llm_idx.get(n.name, {})
         mark = {"fp": "🔴 FP", "fn": "🔴 FN", "missed": "🔴 FN", "appl": "🟠", "supp": "🟡"}
         diss = [
-            f"{mark[cat]} `{code}`"
+            f"{mark[cat]} {_rule(code)}"
             for code in dict.fromkeys(list(DETECTORS) + list(llm))
             for cat in [_category(_det_verdict(n, code, suppressions)[0], llm.get(code))]
             if cat in mark
@@ -323,7 +324,7 @@ def _model_block(n: NodeFacts, suppressions: Suppressions, llm_idx: dict[str, di
         det, ev = _det_verdict(n, code, suppressions)
         if det == "suppressed":
             ev = f"{ev} — suppressed: {suppressions.reason_for(code, n.original_file_path)}"
-        out.append(f"| `{code}` | {'no' if det == 'n/a' else 'yes'} | {_det_display(det, get_rule(code) or {})} "
+        out.append(f"| {_rule(code)} | {'no' if det == 'n/a' else 'yes'} | {_det_display(det, get_rule(code) or {})} "
                    f"| {ev or '—'} | `{DETECTORS[code].__name__}` |")
     if llm_idx is not None:
         out += [
@@ -365,7 +366,7 @@ def _appendix() -> list[str]:
     ]
     coded = set(DETECTORS)
     out += [
-        f"| `{r['code']}` | {'/'.join(r['dama'])} | {r['detection']} | {r['applies_when']} |"
+        f"| {_rule(r['code'])} | {'/'.join(r['dama'])} | {r['detection']} | {r['applies_when']} |"
         for r in all_rules()
         if r["code"] not in coded
     ]
