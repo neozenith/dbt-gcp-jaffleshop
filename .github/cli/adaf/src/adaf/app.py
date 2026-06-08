@@ -36,6 +36,7 @@ from dotenv import load_dotenv
 
 from adaf import config, selection, style
 from adaf.commands import checks, coverage, dataproducts, deprecations, taxonomy
+from adaf.commands import report as report_cmd
 from adaf.commands import review as review_cmd
 from adaf.commands import rules as rules_cmd
 from adaf.commands import sqlfluff as sqlfluff_cmd
@@ -46,7 +47,7 @@ log = logging.getLogger(__name__)
 
 _ROLES = ("entity", "dimension", "measure", "time", "model")
 _DETECTIONS = ("deterministic", "hybrid", "llm")
-_NEEDS_PROJECT = ("check", "products", "review")  # groups that operate on a dbt project
+_NEEDS_PROJECT = ("check", "products", "review", "report")  # groups that operate on a dbt project
 
 
 def _help(p: argparse.ArgumentParser):
@@ -144,8 +145,20 @@ def build_parser() -> argparse.ArgumentParser:
     _add_check_group(sub, common)
     _add_products_group(sub, common)
     _add_review_group(sub, common)
+    _add_report_group(sub, common)
 
     return parser
+
+
+def _add_report_group(sub, common: argparse.ArgumentParser) -> None:
+    """``adaf report`` — generate the per-model taxonomy review markdown (mechanically, no hand-authoring)."""
+    rep = sub.add_parser("report", parents=[common],
+                         help="Generate a per-model taxonomy-review markdown with full finding lineage")
+    _add_selection(rep)
+    _add_manifest(rep)
+    rep.add_argument("-o", "--output", type=Path, default=None,
+                     help="Write the markdown to this file (default: stdout)")
+    rep.set_defaults(func=report_cmd.cmd)
 
 
 def _add_rules_group(sub, common: argparse.ArgumentParser) -> None:
