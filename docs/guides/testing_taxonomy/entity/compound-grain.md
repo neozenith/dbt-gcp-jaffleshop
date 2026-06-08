@@ -1,6 +1,6 @@
 # Assert composite-key uniqueness (the grain test)
 
-> **Rule:** EN-02 · **Role:** entity · **Wang–Strong dimension:** Uniqueness · **Cost class:** scan-bound
+> **Rule:** EN-02 · **Role:** entity · **DAMA-UK6:** Uniqueness · **Wang–Strong:** Concise representation · **Cost class:** scan-bound
 
 When the grain spans more than one column, `unique` cannot express it. The test of grain is `dbt_utils.unique_combination_of_columns` — and the rule is **every dbt model has exactly one of these, naming its grain**.
 

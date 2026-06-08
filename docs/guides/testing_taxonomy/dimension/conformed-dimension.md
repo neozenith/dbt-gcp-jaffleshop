@@ -1,6 +1,6 @@
 # Govern a shared dimension's values via a seed
 
-> **Rule:** DM-03 · **Role:** dimension · **Wang–Strong dimension:** Consistency · **Cost class:** cheap
+> **Rule:** DM-03 · **Role:** dimension · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** cheap
 
 When the same dimension (`region`, `country`, `customer_segment`) appears across multiple staging models or sources, each may have a different value vocabulary. The canonical fix — Kimball's *conformed dimension* — pins the truth set in a `seeds/*.csv` and forces every staging model to `relationships` against it.
 

@@ -1,6 +1,6 @@
 # Apply the four tests every SCD2 dimension needs
 
-> **Rule:** TM-AU-02 · **Role:** time (system-time / audit) · **Wang–Strong dimension:** Consistency · **Cost class:** scan-bound
+> **Rule:** TM-AU-02 · **Role:** time (system-time / audit) · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** scan-bound
 
 A Slowly Changing Dimension Type 2 keeps history by adding `valid_from`, `valid_to`, and `is_current` columns. Four invariants must hold *together* — testing any subset leaves a hole that the others can hide.
 

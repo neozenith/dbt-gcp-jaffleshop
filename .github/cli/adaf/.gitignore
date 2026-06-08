@@ -1,0 +1,4 @@
+
+# deepeval eval telemetry/cache
+.deepeval/
+.deepeval_telemetry.txt

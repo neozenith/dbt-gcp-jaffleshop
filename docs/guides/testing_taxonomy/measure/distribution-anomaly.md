@@ -1,6 +1,6 @@
 # Detect distribution drift in a measure column
 
-> **Rule:** MS-05 · **Role:** measure · **Wang–Strong dimension:** Accuracy · **Cost class:** history-bound
+> **Rule:** MS-05 · **Role:** measure · **DAMA-UK6:** Accuracy · **Wang–Strong:** Accuracy · **Cost class:** history-bound
 
 A range test catches a single bad row; a distribution test catches a fleet of slightly-off rows. The day a system migration silently changes a column from cents to dollars, every row passes individual range tests — but the mean halves. A learned-band Z-score detector fires within one run.
 

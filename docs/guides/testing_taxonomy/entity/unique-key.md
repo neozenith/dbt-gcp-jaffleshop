@@ -1,6 +1,6 @@
 # Assert single-column uniqueness and non-null
 
-> **Rule:** EN-01 · **Role:** entity · **Wang–Strong dimension:** Uniqueness + Completeness · **Cost class:** cheap (scan-bound only if unscoped)
+> **Rule:** EN-01 · **Role:** entity · **DAMA-UK6:** Uniqueness + Completeness · **Wang–Strong:** Concise representation + Completeness · **Cost class:** cheap (scan-bound only if unscoped)
 
 Every entity column that uniquely identifies a row at this model's grain must carry both `unique` and `not_null`. Together they are the most basic — and most frequently under-applied — defence against join fanout.
 

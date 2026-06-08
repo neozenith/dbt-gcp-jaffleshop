@@ -1,6 +1,6 @@
 # Assert sibling flags do not co-fire
 
-> **Rule:** DM-04 · **Role:** dimension · **Wang–Strong dimension:** Consistency · **Cost class:** cheap
+> **Rule:** DM-04 · **Role:** dimension · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** cheap
 
 When a model has sibling boolean flags (`is_active`, `is_archived`, `is_deleted`) that the business says must partition the universe, a row that is `is_active=TRUE AND is_archived=TRUE` is a contradiction. The expression-based test catches the contradiction in one line.
 

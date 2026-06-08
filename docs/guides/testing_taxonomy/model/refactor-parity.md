@@ -1,6 +1,6 @@
 # Prove refactor parity with audit_helper
 
-> **Rule:** MD-04 · **Role:** model-level · **Wang–Strong dimension:** Accuracy · **Cost class:** scan-bound
+> **Rule:** MD-04 · **Role:** model-level · **DAMA-UK6:** Accuracy · **Wang–Strong:** Accuracy · **Cost class:** scan-bound
 
 You are refactoring a model — rewriting the SQL to be cleaner / faster / cheaper. The output is supposed to be identical. The question every reviewer asks: "how do you *know* it's identical?". `audit_helper`'s `compare_and_classify_relation_rows` is the answer.
 

@@ -1,6 +1,6 @@
 # Lock the join column's data type via contract
 
-> **Rule:** EN-06 · **Role:** entity · **Wang–Strong dimension:** Validity · **Cost class:** free (compile-time)
+> **Rule:** EN-06 · **Role:** entity · **DAMA-UK6:** Validity · **Wang–Strong:** Believability + Representational consistency · **Cost class:** free (compile-time)
 
 A `customer_id` that is `INT64` in `dim_customers` but `STRING` in `fct_orders` produces silent join failures on Snowflake (implicit cast may or may not match), zero matches on Postgres, and a runtime error on BigQuery. A model contract with explicit `data_type` catches this at parse time, before any DDL or data scan.
 

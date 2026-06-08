@@ -1,6 +1,6 @@
 # Test branching SQL logic with unit tests
 
-> **Rule:** MD-05 · **Role:** model-level · **Wang–Strong dimension:** Accuracy (logic correctness) · **Cost class:** free (no warehouse scan)
+> **Rule:** MD-05 · **Role:** model-level · **DAMA-UK6:** Accuracy · **Wang–Strong:** Accuracy · **Cost class:** free (no warehouse scan)
 
 dbt 1.8 introduced **unit tests** — tests that assert "this SQL transformation, given specific mock inputs, produces this specific expected output." They are distinct from data tests, which check real data. Use unit tests when the SQL has branching logic (`CASE`, regex, window functions, complex joins) that can break on edge cases real data may not exercise.
 

@@ -1,6 +1,6 @@
 # Detect anomalies per dimension value
 
-> **Rule:** DM-05 · **Role:** dimension · **Wang–Strong dimension:** Accuracy + Timeliness · **Cost class:** history-bound
+> **Rule:** DM-05 · **Role:** dimension · **DAMA-UK6:** Accuracy + Timeliness · **Wang–Strong:** Accuracy + Timeliness · **Cost class:** history-bound
 
 Total row count looks fine, but **one slice of a dimension** (one country, one tenant, one product category) has silently dropped to near-zero. A per-dimension anomaly test learns each slice's historical pattern and alerts when any slice diverges from its own history.
 

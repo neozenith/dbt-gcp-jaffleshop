@@ -12,6 +12,10 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    # adaf — the Automated Data Assurance Framework CLI, consumed as an editable path dep so it runs
+    # INSIDE this project's venv where dbt / sqlfluff / dbt-autofix are on PATH (the shell-out checks
+    # need them). Developed + tested standalone at .github/cli/adaf. See ADR-0005.
+    "adaf",
     "dbt-autofix>=0.20.5",
     "elementary-data[bigquery]==0.24.0",
     "pre-commit>=3.7.0",
@@ -23,19 +27,16 @@ dev = [
     "sqlfluff-templater-dbt>=4.2.1",
 ]
 
+[tool.uv.sources]
+adaf = { path = "../.github/cli/adaf", editable = true }
+
 [tool.pytest.ini_options]
 testpaths = ["pytests"]
-# Put the dbt project root on sys.path so in-process unit tests can `import cicd_cli`
-# (the CLI is found at runtime via cwd-on-path; this gives pytest the same reach).
-pythonpath = ["."]
 # xdist: each test shells out to `uv run dbt …` (~3-5s of cold-start per case), so the suite is
 # wall-clock-bound, not CPU-bound — parallelism gives ~Nx speedup. `auto` = os.cpu_count().
 # Override with `-n0` on the CLI for single-test debugging to skip worker startup.
 addopts = "-n auto"
 
-# Pyright/IDE: cicd_cli is a cwd-relative package (not an installed dist), so point the
-# type checker at the project root and its venv to resolve `import cicd_cli` and deps.
 [tool.pyright]
-extraPaths = ["."]
 venvPath = "."
 venv = ".venv"

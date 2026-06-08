@@ -1,6 +1,6 @@
 # Detect freshness drift against a learned cadence
 
-> **Rule:** TM-AU-03 · **Role:** time (system-time / audit) · **Wang–Strong dimension:** Timeliness · **Cost class:** history-bound
+> **Rule:** TM-AU-03 · **Role:** time (system-time / audit) · **DAMA-UK6:** Timeliness · **Wang–Strong:** Timeliness · **Cost class:** history-bound
 
 A fixed `source freshness:` SLA ([`freshness-source-and-model.md`](./freshness-source-and-model.md)) answers "is the newest row younger than N hours?". That works when the cadence is regular. When a feed lands every few minutes on weekdays and twice on weekends, any single threshold is either too loose (misses a real stall) or too noisy (cries wolf every Sunday). Elementary's freshness anomaly tests learn the table's normal update rhythm and fire when the gap since the last load — or the lag between event time and load time — departs from that learned rhythm.
 

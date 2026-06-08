@@ -1,6 +1,6 @@
 # Detect volume anomalies with a learned band
 
-> **Rule:** MD-07 · **Role:** model-level · **Wang–Strong dimension:** Accuracy + Timeliness · **Cost class:** history-bound
+> **Rule:** MD-07 · **Role:** model-level · **DAMA-UK6:** Accuracy + Timeliness · **Wang–Strong:** Accuracy + Timeliness · **Cost class:** history-bound
 
 A fixed row-count band ([`row-count-band.md`](./row-count-band.md)) catches catastrophes; a learned-band anomaly detector catches the more subtle "today's count is 40% below the seasonal trend". Elementary maintains the metrics history incrementally, so subsequent runs only scan the detection window.
 

@@ -1,6 +1,6 @@
 # Scope referential integrity around soft-deletes
 
-> **Rule:** EN-04 · **Role:** entity · **Wang–Strong dimension:** Consistency · **Cost class:** scan-bound
+> **Rule:** EN-04 · **Role:** entity · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** scan-bound
 
 When the parent table soft-deletes rows (rather than physically removing them), the naive `relationships` test passes against the unfiltered parent, but the downstream join filters those rows out and produces ghost references. The fix is `relationships_where`.
 

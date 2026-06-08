@@ -1,6 +1,6 @@
 # Assert a date dimension has no gaps
 
-> **Rule:** TM-GR-01 · **Role:** time (time-grain dimension) · **Wang–Strong dimension:** Completeness + Timeliness · **Cost class:** cheap
+> **Rule:** TM-GR-01 · **Role:** time (time-grain dimension) · **DAMA-UK6:** Completeness + Timeliness · **Wang–Strong:** Completeness + Timeliness · **Cost class:** cheap
 
 A daily fact table — or a date-dimension table — must have one row per day (or per chosen grain) with no missing days. A missing row produces an empty bucket downstream; cumulative metrics undercount; year-over-year comparisons skip the gap.
 

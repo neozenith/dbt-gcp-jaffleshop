@@ -34,11 +34,11 @@ DBT_BQ_TIMEOUT_SECS := $(or $(DBT_BQ_TIMEOUT_SECS),300)
 DBT_BQ_PROJECT_DEV := $(or $(DBT_BQ_PROJECT_DEV),dbt-dev-jaffleshop)
 DBT_GIT_BRANCH := $(or $(DBT_GIT_BRANCH),$(shell git rev-parse --abbrev-ref HEAD 2>/dev/null))
 
-# Git ref the cicd_cli check targets diff against for their default --changed-only scope.
+# Git ref the adaf check targets diff against for their default --changed-only scope.
 # Defaults to main for local dev; override in CI to the PR base, e.g. `make ci BASE_REF=origin/main`.
 # NOTE: CI must have BASE_REF reachable locally — use actions/checkout with fetch-depth: 0
 # (or `git fetch origin main`) so `git merge-base` can resolve it on a shallow clone.
-# The "what changed" detection itself now lives in cicd_cli/gitutil.py (was a shell snippet here).
+# The "what changed" detection itself now lives in adaf/gitutil.py (was a shell snippet here).
 BASE_REF ?= main
 
 # Export every Make-level variable to recipe environments (covers .env keys + fallbacks above).
@@ -69,17 +69,17 @@ help:
 	@echo "  format-check  formatter check on CHANGED models (subset of rules; vs BASE_REF=$(BASE_REF))"
 	@echo "  lint      full sqlfluff lint on CHANGED models, all rules (vs BASE_REF=$(BASE_REF))"
 	@echo "  lint-fix  sqlfluff fix on CHANGED models (auto-fix all fixable rules)"
-	@echo "  --- cicd_cli gates (vs BASE_REF=$(BASE_REF); add --json via 'uv run -m cicd_cli') ---"
+	@echo "  --- adaf gates (vs BASE_REF=$(BASE_REF); add --json via 'uv run adaf') ---"
 	@echo "  deprecations-check  dbt-autofix dry-run over FOLDERS of CHANGED models"
 	@echo "  docs-coverage       model description coverage of CHANGED models (from manifest)"
 	@echo "  doc-columns-coverage  resolved column description coverage of CHANGED models (needs catalog.json)"
 	@echo "  tests-coverage      test coverage of CHANGED models (from manifest)"
-	@echo "  checks              run all cicd_cli check gates over CHANGED models"
+	@echo "  checks              run all adaf check gates over CHANGED models"
 	@echo "  boundaries          classify each data-product (selectors.yml) node as a system boundary"
 	@echo "  system-boundaries-check  fail if any inbound/outbound data-product boundary node has no tests"
 	@echo "  sdag                build the interactive sdag viewer assets into tmp/sdag/"
 	@echo "  sdag-serve          generate + host the sdag viewer on http://localhost:8088/sdag.html"
-	@echo "  pytest    Run pytest macro + cicd_cli tests (parametrized; shells out to dbt)"
+	@echo "  pytest    Run pytest macro + adaf tests (parametrized; shells out to dbt)"
 	@echo "  deploy-dev Build dbt against dev + upload artefacts to dev GCS bucket"
 	@echo "             (mirrors what CI does for test/prod). Requires gcloud ADC"
 	@echo "             set up to impersonate dbt-dev@dbt-dev-jaffleshop.iam.gserviceaccount.com"
@@ -158,7 +158,7 @@ elementary-report: deps
 # Reproduces the Pages build job's three published artefacts as siblings, then serves
 # them — so you can eyeball exactly what a tag/dispatch will publish, without a release.
 #   1. dbt docs generate --static   → static_index.html copied to <site>/index.html
-#   2. cicd_cli products generate   → <site>/sdag.html (+ graph JSON) lineage viewer
+#   2. adaf products generate   → <site>/sdag.html (+ graph JSON) lineage viewer
 #   3. edr report                   → <site>/elementary_report.html observability dashboard
 # Prod reads here impersonate dbt-dev (parity with CI's dbt-prod SA, minus the WIF path).
 # Because target.name 'prod-impersonate' is not a valid DBT_ENV_TYPE, DBT_ENV_TYPE=PROD is
@@ -171,7 +171,7 @@ gha-docs: deps
 	  uv run dbt docs generate --target prod-impersonate --static
 	cp target/static_index.html "$(GHA_SITE)/index.html"
 	DBT_TARGET=prod-impersonate DBT_ENV_TYPE=PROD DBT_BQ_PROJECT_PROD=$(ELEMENTARY_PROD_PROJECT) \
-	  uv run -m cicd_cli products generate -o "$(GHA_SITE)"
+	  uv run adaf products generate -o "$(GHA_SITE)"
 	$(MAKE) elementary-report ELEMENTARY_REPORT_PATH="$(GHA_SITE)/elementary_report.html"
 	@echo ""
 	@echo "Simulated GitHub Pages site assembled in $(GHA_SITE):"
@@ -181,10 +181,10 @@ gha-docs: deps
 	@echo "Ctrl-C to stop."
 	uv run python -m http.server 8089 --directory "$(GHA_SITE)"
 
-# --- cicd_cli: all CHANGED-model gates (SQLFluff, dbt-autofix, coverage) -------
-# The shell that used to live here now lives in the cicd_cli Python package
-# (cicd_cli/), which a developer, an agent, or GHA can all invoke identically:
-#   uv run -m cicd_cli check --help
+# --- adaf: all CHANGED-model gates (SQLFluff, dbt-autofix, coverage) -------
+# The shell that used to live here now lives in the adaf Python package
+# (adaf/), which a developer, an agent, or GHA can all invoke identically:
+#   uv run adaf check --help
 # Each target is a thin delegation. The check commands default to --changed-only
 # (vs BASE_REF); pass --all or --select <selector> directly to the CLI for other
 # scopes, and --json for machine-readable output.
@@ -192,54 +192,54 @@ gha-docs: deps
 # SQLFluff: format = opinionated layout+keyword-case subset; lint = full ruleset.
 # A check reports (non-zero on drift); --fix applies. Both scoped to CHANGED models.
 format-check:
-	uv run -m cicd_cli check format --base-ref $(BASE_REF)
+	uv run adaf check format --base-ref $(BASE_REF)
 
 # `format` keeps its historic "fix ALL models" meaning (--fix --all).
 format:
-	uv run -m cicd_cli check format --fix --all
+	uv run adaf check format --fix --all
 
 lint:
-	uv run -m cicd_cli check lint --base-ref $(BASE_REF)
+	uv run adaf check lint --base-ref $(BASE_REF)
 
 lint-fix:
-	uv run -m cicd_cli check lint --fix --base-ref $(BASE_REF)
+	uv run adaf check lint --fix --base-ref $(BASE_REF)
 
 deprecations-check:
-	uv run -m cicd_cli check deprecations --base-ref $(BASE_REF)
+	uv run adaf check deprecations --base-ref $(BASE_REF)
 
 docs-coverage:
-	uv run -m cicd_cli check docs --base-ref $(BASE_REF)
+	uv run adaf check docs --base-ref $(BASE_REF)
 
 doc-columns-coverage:
-	uv run -m cicd_cli check doc-columns --base-ref $(BASE_REF)
+	uv run adaf check doc-columns --base-ref $(BASE_REF)
 
 tests-coverage:
-	uv run -m cicd_cli check tests --base-ref $(BASE_REF)
+	uv run adaf check tests --base-ref $(BASE_REF)
 
 # All CHANGED-model gates in one pass; non-zero if any fail.
 checks:
-	uv run -m cicd_cli check all --base-ref $(BASE_REF)
+	uv run adaf check all --base-ref $(BASE_REF)
 
 # Data-product system-boundary analysis over the named selectors in selectors.yml. Read-only: it
 # classifies each node as an inbound/outbound/both/internal boundary. Add --product <name> to scope to
 # one product, --show-passes to include internal nodes, --json for the machine payload. Needs the dbt
 # project env (.env) since membership comes from `dbt ls`.
 boundaries:
-	uv run -m cicd_cli products boundaries
+	uv run adaf products boundaries
 
 # Gate: fail if any inbound/outbound system-boundary node of a data product has zero tests. Selects by
 # data product (selectors.yml), so it is NOT part of `checks` (which is changed-file scoped); run it as
 # its own gate. Needs the dbt project env (.env).
 system-boundaries-check:
-	uv run -m cicd_cli check system-boundaries
+	uv run adaf check system-boundaries
 
 # Build the interactive sdag viewer assets (full + super Cytoscape JSON + HTML/JS) into tmp/sdag/.
 sdag:
-	uv run -m cicd_cli products generate
+	uv run adaf products generate
 
 # Generate then host the sdag viewer on http://localhost:8088/sdag.html (Ctrl-C to stop).
 sdag-serve:
-	uv run -m cicd_cli products serve
+	uv run adaf products serve
 
 pytest:
 	uv run pytest

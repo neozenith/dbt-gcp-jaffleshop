@@ -1,6 +1,6 @@
 # Assert an enum contract on a categorical dimension
 
-> **Rule:** DM-01 · **Role:** dimension · **Wang–Strong dimension:** Validity · **Cost class:** cheap
+> **Rule:** DM-01 · **Role:** dimension · **DAMA-UK6:** Validity · **Wang–Strong:** Believability + Interpretability · **Cost class:** cheap
 
 A categorical column has a finite, business-defined set of values. `accepted_values` pins that set. The day a new value sneaks in from the source, the test fails and the engineer reviews whether downstream CASE statements need updating.
 

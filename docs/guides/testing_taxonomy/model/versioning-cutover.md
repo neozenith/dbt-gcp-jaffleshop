@@ -1,6 +1,6 @@
 # Ship a breaking change via versioning
 
-> **Rule:** MD-03 · **Role:** model-level · **Wang–Strong dimension:** Consistency (governance) · **Cost class:** free (declaration)
+> **Rule:** MD-03 · **Role:** model-level · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** free (declaration)
 
 When a public model needs a renamed column, dropped column, or grain change, **don't break consumers** — ship a new version. Keep the old version live during a deprecation window so downstream BI tools, reverse-ETL jobs, and ML feature stores can migrate at their own pace.
 

@@ -1,6 +1,6 @@
 # Assert referential integrity on foreign keys
 
-> **Rule:** EN-03 · **Role:** entity · **Wang–Strong dimension:** Consistency · **Cost class:** scan-bound
+> **Rule:** EN-03 · **Role:** entity · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** scan-bound
 
 dbt does not enforce foreign keys at the warehouse level. `relationships` is your FK constraint — it asserts every value in the child column has a match in the parent.
 

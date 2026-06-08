@@ -1,6 +1,6 @@
 # Guard against surrogate-key hash collisions
 
-> **Rule:** EN-05 · **Role:** entity · **Wang–Strong dimension:** Uniqueness · **Cost class:** scan-bound
+> **Rule:** EN-05 · **Role:** entity · **DAMA-UK6:** Uniqueness · **Wang–Strong:** Concise representation · **Cost class:** scan-bound
 
 `MD5(a || b)` is a common surrogate-key pattern. Without a delimiter, `MD5('12' || 'AB')` and `MD5('1' || '2AB')` are the same string. `unique` on the surrogate passes — but two distinct logical events have collapsed to one key. The guard is **always test the natural-key tuple's uniqueness in addition to the surrogate's**.
 

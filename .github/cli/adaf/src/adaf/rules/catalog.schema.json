@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/play-dbt-gcp-jaffleshop/adaf/catalog.schema.json",
+  "title": "ADAF rule catalogue",
+  "description": "Meta-schema for ADAF's single source of truth (catalog.json). Validates the rule catalogue that drives every consumer: the deterministic `adaf check taxonomy` detectors, the `adaf review` LLM prompt + its output schema's rule_code enum (injected from here at runtime), the docs vignettes, and the developer skill. Adding or attributing a rule is a one-file edit here; `adaf rules validate` enforces this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source", "code_scheme", "dama_dimensions", "wang_strong", "detection_modes", "rules"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Catalogue semver. Bump minor on a rule add, major on a field/shape change.",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "source": {
+      "type": "string",
+      "description": "Repo-relative root of the per-rule vignettes each rule's `doc` points into."
+    },
+    "code_scheme": {
+      "type": "object",
+      "description": "Reference: how a rule `code` is constructed. <ROLE>[-<SUBROLE>]-<NN>; only the STABLE classifying axis (role/sub-role) lives in the ID — orthogonal overlays (dama, wang_strong, cost_class, detection) are columns (ADR-3).",
+      "required": ["shape", "roles", "subroles"],
+      "properties": {
+        "shape": {"type": "string"},
+        "roles": {"type": "object", "additionalProperties": {"type": "string"}},
+        "subroles": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "dama_dimensions": {
+      "type": "object",
+      "description": "Reference dictionary: the DAMA-UK 'six primary dimensions for data quality assessment' (2013) — the PRIMARY, operational attribution. Every rule's `dama` array draws from exactly these keys.",
+      "additionalProperties": false,
+      "required": ["Completeness", "Uniqueness", "Timeliness", "Validity", "Accuracy", "Consistency"],
+      "properties": {
+        "Completeness": {"type": "string"},
+        "Uniqueness": {"type": "string"},
+        "Timeliness": {"type": "string"},
+        "Validity": {"type": "string"},
+        "Accuracy": {"type": "string"},
+        "Consistency": {"type": "string"}
+      }
+    },
+    "wang_strong": {
+      "type": "object",
+      "description": "Reference dictionary: the genuine Wang & Strong (1996) framework — 15 dimensions in 4 categories. The SECONDARY, consumer-perception cross-reference (previously this name was misapplied to the DAMA-UK6 values). Each rule's `wang_strong` array draws from the dimensions enumerated here; a dimension's category is derivable because dimensions are unique across categories. Underscore-prefixed keys (`_about`, `_crosswalk`) carry human documentation, incl. the DAMA→Wang-Strong crosswalk.",
+      "additionalProperties": false,
+      "required": ["intrinsic", "contextual", "representational", "accessibility"],
+      "patternProperties": {"^_": {}},
+      "properties": {
+        "intrinsic": {
+          "type": "array",
+          "description": "Data has quality in its own right.",
+          "items": {"enum": ["Believability", "Accuracy", "Objectivity", "Reputation"]}
+        },
+        "contextual": {
+          "type": "array",
+          "description": "Quality must be considered within the task at hand.",
+          "items": {"enum": ["Value-added", "Relevancy", "Timeliness", "Completeness", "Appropriate amount of data"]}
+        },
+        "representational": {
+          "type": "array",
+          "description": "The system must present data so it is interpretable and consistent.",
+          "items": {"enum": ["Interpretability", "Ease of understanding", "Representational consistency", "Concise representation"]}
+        },
+        "accessibility": {
+          "type": "array",
+          "description": "Data must be accessible but secure.",
+          "items": {"enum": ["Accessibility", "Access security"]}
+        }
+      }
+    },
+    "detection_modes": {
+      "type": "object",
+      "description": "Reference dictionary: what each `detection` value means — the routing decision between the deterministic checker and the LLM reviewer. Keeping this in the catalogue makes 'is this rule scriptable?' a data-driven, auditable decision rather than a hand-maintained list (ADR-0005).",
+      "additionalProperties": false,
+      "required": ["deterministic", "hybrid", "llm"],
+      "properties": {
+        "deterministic": {"type": "string"},
+        "hybrid": {"type": "string"},
+        "llm": {"type": "string"}
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/rule"}
+    }
+  },
+  "$defs": {
+    "dama_dimension": {
+      "enum": ["Completeness", "Uniqueness", "Timeliness", "Validity", "Accuracy", "Consistency"]
+    },
+    "wang_strong_dimension": {
+      "enum": [
+        "Believability", "Accuracy", "Objectivity", "Reputation",
+        "Value-added", "Relevancy", "Timeliness", "Completeness", "Appropriate amount of data",
+        "Interpretability", "Ease of understanding", "Representational consistency", "Concise representation",
+        "Accessibility", "Access security"
+      ]
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "slug", "title", "role", "dama", "wang_strong", "detection", "boundary_class", "cost_class", "summary", "framework_first", "applies_when", "doc"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Stable identifier <ROLE>[-<SUBROLE>]-<NN>. The ONLY place a rule code is defined; the review output schema's rule_code enum is injected from the set of these at runtime, so the two cannot drift.",
+          "pattern": "^(EN|DM|MS|MD|TM-(SC|GR|AU))-[0-9]{2}$"
+        },
+        "slug": {
+          "type": "string",
+          "description": "kebab-case name; matches the vignette filename stem under `source`.",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "title": {"type": "string", "description": "One-line imperative statement of what the rule asserts."},
+        "role": {
+          "enum": ["entity", "dimension", "measure", "time", "model"],
+          "description": "The column/model role this rule defends — the primary classifying axis encoded in the code prefix."
+        },
+        "sub_role": {
+          "type": "string",
+          "description": "Only for role=time: the time sub-role (event-time scalar / time-grain dimension / system-time / audit). Omit for all other roles.",
+          "enum": ["event-time scalar", "time-grain dimension", "system-time / audit"]
+        },
+        "dama": {
+          "type": "array",
+          "description": "PRIMARY attribution: which DAMA-UK6 dimension(s) this rule defends.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/dama_dimension"}
+        },
+        "wang_strong": {
+          "type": "array",
+          "description": "SECONDARY attribution: the genuine Wang & Strong (1996) dimension(s) the rule serves — the consumer-perception lens. May be empty for rules that are purely operational with no consumer-facing analogue (e.g. internal grain hygiene).",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/wang_strong_dimension"}
+        },
+        "detection": {
+          "enum": ["deterministic", "hybrid", "llm"],
+          "description": "How the rule is checked. deterministic → `adaf check taxonomy` gates it fully; hybrid → the check flags ABSENCE of the right-shaped artifact, the LLM judges adequacy; llm → only `adaf review` evaluates it. Must match a key in detection_modes."
+        },
+        "boundary_class": {
+          "type": "array",
+          "description": "Which system-boundary class(es) the rule is most relevant to, feeding the extended boundary gate. 'any' = applies regardless of boundary position; inbound/outbound/both target the data-product edge.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["any", "inbound", "outbound", "both", "internal"]}
+        },
+        "cost_class": {
+          "enum": ["free", "cheap", "scan-bound", "history-bound"],
+          "description": "Runtime cost of the test the rule recommends: free=compile/parse-time; cheap=O(rows) usually partitioned; scan-bound=full-table scan; history-bound=reads/writes metrics history (Elementary)."
+        },
+        "summary": {"type": "string", "description": "One-sentence mechanics of the recommended test."},
+        "framework_first": {"type": "string", "description": "The first framework to reach for (the preference ladder: dbt core → dbt-utils → dbt_expectations → elementary → audit_helper)."},
+        "applies_when": {"type": "string", "description": "The precondition that makes this rule applicable to a column/model — drives both the LLM's applicability judgement and the deterministic detector's scope."},
+        "doc": {
+          "type": "string",
+          "description": "Repo-relative path to the rule's vignette under `source`.",
+          "pattern": "^docs/guides/testing_taxonomy/.+\\.md$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"role": {"const": "time"}}},
+          "then": {"required": ["sub_role"]},
+          "else": {"not": {"required": ["sub_role"]}}
+        }
+      ]
+    }
+  }
+}

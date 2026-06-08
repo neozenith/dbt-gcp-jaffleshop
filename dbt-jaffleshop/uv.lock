@@ -17,6 +17,30 @@ wheels = [
 ]
 
 [[package]]
+name = "adaf"
+version = "0.1.0"
+source = { editable = "../.github/cli/adaf" }
+dependencies = [
+    { name = "jsonschema" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jsonschema", specifier = ">=4.21" },
+    { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
+eval = [
+    { name = "deepeval", specifier = ">=2.0" },
+    { name = "pytest", specifier = ">=8.0" },
+]
+
+[[package]]
 name = "agate"
 version = "1.9.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1185,6 +1209,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "adaf" },
     { name = "dbt-autofix" },
     { name = "elementary-data", extra = ["bigquery"] },
     { name = "pre-commit" },
@@ -1206,6 +1231,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "adaf", editable = "../.github/cli/adaf" },
     { name = "dbt-autofix", specifier = ">=0.20.5" },
     { name = "elementary-data", extras = ["bigquery"], specifier = "==0.24.0" },
     { name = "pre-commit", specifier = ">=3.7.0" },

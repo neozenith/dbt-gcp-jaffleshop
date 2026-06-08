@@ -1,6 +1,6 @@
 # Validate a JSON column against an expected shape
 
-> **Rule:** MD-10 · **Role:** model-level · **Wang–Strong dimension:** Validity · **Cost class:** cheap
+> **Rule:** MD-10 · **Role:** model-level · **DAMA-UK6:** Validity · **Wang–Strong:** Believability + Interpretability · **Cost class:** cheap
 
 A `data_type` contract can pin a column as `JSON` or `STRING` — but it stops at the cell boundary. It cannot assert that the JSON *inside* still has a `user.id` integer and a `currency` string. When an upstream API drops a key or retypes a nested field, the column type is unchanged and every contract passes while downstream `JSON_VALUE(...)` extractions quietly return NULL. Elementary's `json_schema` test validates each value against a declared JSON schema so the inside of the column is contracted too.
 

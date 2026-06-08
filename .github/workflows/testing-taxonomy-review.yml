@@ -1,14 +1,13 @@
 name: testing-taxonomy review
 
 # =============================================================================
-# Reviews dbt models against this project's testing taxonomy and upserts FOUR sticky
-# PR-comment variants (coverage matrix + failures-only, each for the PR's changed models
-# AND all project models). Each comment also carries token-usage + estimated cost, and a
-# usage block is written to the run's job summary.
+# Reviews dbt models against this project's testing taxonomy and upserts two sticky PR-comment
+# coverage matrices (the PR's changed models AND all project models). Each comment carries
+# token-usage + estimated cost, and a usage block is written to the run's job summary.
 #
-# All logic lives in the composite action .github/actions/dbt-testing-taxonomy-review
-# (engine: review.py + rules.json + review-output.schema.json). This workflow just wires
-# the PR context into it.
+# The composite action .github/actions/dbt-testing-taxonomy-review is now a thin wrapper over
+# `adaf review --post` (engine + rule catalogue + prompt live in .github/cli/adaf). This workflow
+# just wires the PR context into it.
 #
 # LLM runner: GitHub Models — GitHub-hosted inference via the built-in GITHUB_TOKEN
 # (permissions: models: read). No vendor API key, no secret, no Anthropic/OpenAI/Codex
@@ -23,6 +22,7 @@ on:
     paths:
       - 'dbt-jaffleshop/models/**'
       - '.github/actions/dbt-testing-taxonomy-review/**'
+      - '.github/cli/adaf/**'
       - '.github/workflows/testing-taxonomy-review.yml'
 
 # Least privilege: read the repo, call GitHub Models, write the PR comment.
@@ -52,4 +52,3 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pr-number: ${{ github.event.pull_request.number }}
           base-sha: ${{ github.event.pull_request.base.sha }}
-          head-sha: ${{ github.event.pull_request.head.sha }}

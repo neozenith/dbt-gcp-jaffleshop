@@ -1,0 +1,11 @@
+{
+  "name": "adaf",
+  "displayName": "ADAF — Automated Data Assurance Framework",
+  "version": "0.1.0",
+  "description": "Agent skills over the ADAF testing-taxonomy catalogue: find data-quality test gaps in dbt models, explain each with its DAMA-UK6 dimension and how to suppress false positives, and apply git-reversible fixes.",
+  "author": {
+    "name": "Josh Peak"
+  },
+  "keywords": ["dbt", "data-quality", "testing", "dama", "data-assurance", "analytics-engineering", "taxonomy"],
+  "license": "MIT"
+}

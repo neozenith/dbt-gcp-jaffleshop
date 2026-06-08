@@ -1,6 +1,6 @@
 # Assert freshness at source and at model
 
-> **Rule:** TM-AU-01 · **Role:** time (system-time / audit) · **Wang–Strong dimension:** Timeliness · **Cost class:** cheap (filtered) / scan-bound (unfiltered)
+> **Rule:** TM-AU-01 · **Role:** time (system-time / audit) · **DAMA-UK6:** Timeliness · **Wang–Strong:** Timeliness · **Cost class:** cheap (filtered) / scan-bound (unfiltered)
 
 The pipeline ran successfully and the model rebuilt — but the upstream source hasn't been updated in 12 hours. Without a freshness contract, no test fires; the dashboard says "yesterday" but means "Tuesday".
 

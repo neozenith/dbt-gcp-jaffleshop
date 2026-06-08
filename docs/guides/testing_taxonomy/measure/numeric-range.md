@@ -1,6 +1,6 @@
 # Pin a measure's numeric bounds
 
-> **Rule:** MS-01 · **Role:** measure · **Wang–Strong dimension:** Validity · **Cost class:** cheap
+> **Rule:** MS-01 · **Role:** measure · **DAMA-UK6:** Validity · **Wang–Strong:** Believability · **Cost class:** cheap
 
 Most measures have a knowable bound: amounts are non-negative, percentages are between 0 and 1, counts are non-negative integers. A range test catches the row that violates the bound — a fat-finger zero, a sign-flip after a vendor migration, a discount that exceeded 100%.
 

@@ -5,10 +5,18 @@
 | [`arch/`](./arch/) | Architecture Decision Records (ADRs) — *why* each significant decision was made, what we considered, and what we accepted in return |
 | [`guides/`](./guides/) | Informal walkthroughs for tasks that touch multiple parts of the system — local dev, recovery from partial failures, conventions |
 
+## Featured guides
+
+| Guide | Purpose |
+|---|---|
+| [`guides/adaf.md`](./guides/adaf.md) | **ADAF — Automated Data Assurance Framework**: the dbt testing-taxonomy catalogue + the `adaf` CLI, CI, and agent-skill that find and close data-quality test gaps |
+| [`guides/testing_taxonomy/`](./guides/testing_taxonomy/) | The 33 rule vignettes (one per taxonomy rule), with DAMA-UK6 + Wang–Strong attribution |
+
 ## What goes where
 
 | If you're looking for… | Look here |
 |---|---|
+| The data-assurance framework (rules, checks, review, skill) | [`docs/guides/adaf.md`](./guides/adaf.md) |
 | File / directory layouts (the *what* of the code) | The README next to the code (`infra/README.md`, `infra/bootstrap/README.md`) |
 | How a specific resource was set up and why it exists | `infra/bootstrap/README.md` |
 | Why we chose approach X over approach Y | [`docs/arch/adr-NNNN-...`](./arch/) |

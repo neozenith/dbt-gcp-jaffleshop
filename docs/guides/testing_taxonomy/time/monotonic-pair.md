@@ -1,6 +1,6 @@
 # Assert causality on paired timestamps
 
-> **Rule:** TM-SC-02 · **Role:** time (event-time scalar pair) · **Wang–Strong dimension:** Consistency · **Cost class:** cheap
+> **Rule:** TM-SC-02 · **Role:** time (event-time scalar pair) · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** cheap
 
 When two timestamps describe sequential events (`ordered_at` → `shipped_at` → `delivered_at`; `created_at` → `updated_at`), causality requires the later one is at least as recent as the earlier one. A single `expression_is_true` test enforces the chain.
 

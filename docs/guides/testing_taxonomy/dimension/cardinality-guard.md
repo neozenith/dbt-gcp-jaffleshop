@@ -1,6 +1,6 @@
 # Guard a dimension's cardinality with a bounded count
 
-> **Rule:** DM-02 · **Role:** dimension · **Wang–Strong dimension:** Validity + Accuracy · **Cost class:** cheap
+> **Rule:** DM-02 · **Role:** dimension · **DAMA-UK6:** Validity + Accuracy · **Wang–Strong:** Believability + Accuracy · **Cost class:** cheap
 
 A dimension is defined by its low-to-medium cardinality. When that count drifts — a CRM admin enables a free-text "Other" field, a vendor adds 50 new product categories overnight — the column has effectively changed role. The cardinality guard detects the drift before it floods dashboards.
 

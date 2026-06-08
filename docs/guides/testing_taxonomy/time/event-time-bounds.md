@@ -1,6 +1,6 @@
 # Bound event-time scalars: no future, no sentinels
 
-> **Rule:** TM-SC-01 · **Role:** time (event-time scalar) · **Wang–Strong dimension:** Validity · **Cost class:** cheap
+> **Rule:** TM-SC-01 · **Role:** time (event-time scalar) · **DAMA-UK6:** Validity · **Wang–Strong:** Believability · **Cost class:** cheap
 
 Event timestamps that drift into the future (`event_at > NOW()`) or sentinel values (`9999-12-31`, `1900-01-01`) wreck window functions, `MIN`/`MAX` aggregates, and time-bucketed metrics. The fix is a two-bound test.
 

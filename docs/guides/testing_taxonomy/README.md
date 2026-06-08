@@ -215,18 +215,29 @@ Vignettes mark their cost class. Use this to sequence what runs in CI vs. nightl
 | **scan-bound** | Full-table scan per run | unscoped `unique`, `equality` |
 | **history-bound** | Reads/writes a metrics history table; first run is expensive, subsequent runs cheap | Elementary anomaly tests, `dbt_expectations` distributional tests |
 
-## Wang–Strong overlay
+## Data-quality dimensions (DAMA-UK6, primary) + Wang–Strong (secondary)
 
-The orthogonal axis. Every vignette tags the **data-quality dimension** it defends so reviewers can spot coverage gaps.
+The orthogonal axis. Every vignette tags the **data-quality dimension(s)** it defends so reviewers
+can spot coverage gaps. The catalogue (`adaf rules`) is the source of truth; each rule carries **two**
+attributions and the vignette headers are derived from it:
 
-| Dimension | What it asserts | Typical vignettes |
-|-----------|-----------------|-------------------|
-| **Uniqueness** | No duplicate rows / keys | `unique-key`, `compound-grain`, `surrogate-collision-guard` |
-| **Completeness** | No missing values where required | `unique-key` (not_null half), `dimension/accepted-values` (no nulls if forbidden) |
-| **Validity** | Values are in the allowed domain | `accepted-values`, `numeric-range`, `event-time-bounds`, `timezone-contract` |
-| **Consistency** | Cross-column / cross-table invariants hold | `monotonic-pair`, `mutual-exclusivity`, `conformed-dimension`, `scd2-quartet` |
-| **Accuracy** | Values match the real-world state | `currency-pairing`, `refactor-parity`, `volume-anomaly` |
-| **Timeliness** | Data is current enough | `freshness-source-and-model`, `calendar-spine`, `volume-anomaly` |
+- **DAMA-UK6 (primary)** — the [DAMA-UK "six primary dimensions"](https://www.dama.org) (2013), the
+  operational vocabulary a reviewer gates on. This is the table below.
+- **Wang–Strong (secondary)** — the genuine Wang & Strong (1996) consumer-perception dimensions,
+  derived via a documented crosswalk in the catalogue. (Historically this section was mislabeled
+  "Wang–Strong" while listing the DAMA-UK6 values;
+  [ADR-0005](../../arch/adr-0005-adaf-automated-data-assurance-framework.md) corrected it.)
+
+| DAMA-UK6 dimension | What it asserts | Wang–Strong (crosswalk) | Typical vignettes |
+|-----------|-----------------|-------------------------|-------------------|
+| **Uniqueness** | No duplicate rows / keys | Concise representation | `unique-key`, `compound-grain`, `surrogate-collision-guard` |
+| **Completeness** | No missing values where required | Completeness | `unique-key` (not_null half), `dimension/accepted-values` (no nulls if forbidden) |
+| **Validity** | Values are in the allowed domain | Believability | `accepted-values`, `numeric-range`, `event-time-bounds`, `timezone-contract` |
+| **Consistency** | Cross-column / cross-table invariants hold | Representational consistency | `monotonic-pair`, `mutual-exclusivity`, `conformed-dimension`, `scd2-quartet` |
+| **Accuracy** | Values match the real-world state | Accuracy | `currency-pairing`, `refactor-parity`, `volume-anomaly` |
+| **Timeliness** | Data is current enough | Timeliness | `freshness-source-and-model`, `calendar-spine`, `volume-anomaly` |
+
+> Inspect any rule's full dual attribution with `adaf rules show <CODE>` (or `adaf rules list --dama Validity`).
 
 ## Color palette
 

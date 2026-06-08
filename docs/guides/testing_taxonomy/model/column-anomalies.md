@@ -1,6 +1,6 @@
 # Watch every column with automated monitors
 
-> **Rule:** MD-09 · **Role:** model-level · **Wang–Strong dimension:** Completeness + Accuracy · **Cost class:** history-bound
+> **Rule:** MD-09 · **Role:** model-level · **DAMA-UK6:** Completeness + Accuracy · **Wang–Strong:** Completeness + Accuracy · **Cost class:** history-bound
 
 Hand-written tests defend the columns you thought about. The ones you didn't — a payload field that quietly went 40% null, an `amount` whose average halved after a unit change — drift unwatched. Elementary's column-anomaly tests apply a standard battery of statistical monitors (null rate, min/max, average, zero-count, string length…) across **all or a selected set** of a model's columns, learning each metric's normal range and firing on deviation. It's the safety net beneath the per-column rules, not a replacement for them.
 

@@ -1,6 +1,6 @@
 # Guard against NaN and Inf in computed measures
 
-> **Rule:** MS-04 · **Role:** measure · **Wang–Strong dimension:** Validity · **Cost class:** cheap
+> **Rule:** MS-04 · **Role:** measure · **DAMA-UK6:** Validity · **Wang–Strong:** Believability · **Cost class:** cheap
 
 A ratio measure like `gross_margin_pct = (revenue - cost) / revenue` will produce NaN when `revenue = 0` (BigQuery, Snowflake) or Inf when the numerator overflows. Both propagate silently through every `SUM`/`AVG` downstream — corrupting a metric, hiding a region, returning empty cells in a dashboard.
 

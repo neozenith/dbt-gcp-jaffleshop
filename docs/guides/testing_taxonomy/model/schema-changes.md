@@ -1,6 +1,6 @@
 # Detect schema drift on sources you don't own
 
-> **Rule:** MD-08 · **Role:** model-level · **Wang–Strong dimension:** Validity · **Cost class:** history-bound
+> **Rule:** MD-08 · **Role:** model-level · **DAMA-UK6:** Validity · **Wang–Strong:** Believability · **Cost class:** history-bound
 
 A dbt `contract` ([`contracts.md`](./contracts.md)) pins the shape of a model **you build** — it fails at parse time if one of *your* columns drifts. It cannot see a column that an **upstream source you don't own** added, dropped, or retyped, because that change happens outside your DAG's compiled SQL. Elementary's schema-change tests watch a source (or model) relation's actual column set and types over time and fire when they move.
 

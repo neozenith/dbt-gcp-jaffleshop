@@ -47,3 +47,5 @@ Don't write an ADR for:
 | [0001](./adr-0001-workload-identity-federation.md) | Accepted | Workload Identity Federation over long-lived service-account keys |
 | [0002](./adr-0002-single-shared-tf-stack.md) | Superseded by 0003 | Flat `infra/` layout now, migrating to `stacks/` + `modules/` as complexity grows |
 | [0003](./adr-0003-stacks-and-modules-layout.md) | Accepted | Migrate the flat `infra/` layout to `stacks/` + `modules/` |
+| [0004](./adr-0004-migrate-dbt-platform-state-to-per-stack-prefix.md) | Accepted | Migrate `dbt_platform` Terraform state to the per-stack prefix convention |
+| [0005](./adr-0005-adaf-automated-data-assurance-framework.md) | Accepted | Consolidate testing-taxonomy tooling into ADAF (Automated Data Assurance Framework) |

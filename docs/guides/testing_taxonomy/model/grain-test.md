@@ -1,6 +1,6 @@
 # The one test every model must have: the grain test
 
-> **Rule:** MD-01 · **Role:** model-level · **Wang–Strong dimension:** Uniqueness · **Cost class:** scan-bound
+> **Rule:** MD-01 · **Role:** model-level · **DAMA-UK6:** Uniqueness · **Wang–Strong:** Concise representation · **Cost class:** scan-bound
 
 Every dbt model has a **grain** — the tuple of columns whose combination uniquely identifies a row. If the grain breaks, every downstream join fans out and every aggregate is wrong. This is the single most important test in the entire taxonomy.
 

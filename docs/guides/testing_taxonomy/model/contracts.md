@@ -1,6 +1,6 @@
 # Lock the model's schema shape via contract
 
-> **Rule:** MD-02 · **Role:** model-level · **Wang–Strong dimension:** Validity · **Cost class:** free (compile-time)
+> **Rule:** MD-02 · **Role:** model-level · **DAMA-UK6:** Validity · **Wang–Strong:** Believability + Representational consistency · **Cost class:** free (compile-time)
 
 A model contract declares the column names, data types, and constraints of a model — and enforces them at parse/compile time, before any DDL. It catches the silent type-drift bug that data tests can't see, because data tests only run *after* the schema has already drifted.
 
