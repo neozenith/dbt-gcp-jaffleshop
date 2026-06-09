@@ -56,7 +56,9 @@ class NodeFacts:
     contract_enforced: bool
     has_freshness: bool  # source declared a freshness block
     tests: list[AttachedTest] = field(default_factory=list)
-    resolved_columns: dict[str, str] = field(default_factory=dict)  # warehouse-RESOLVED name->data_type (from catalog.json)
+    resolved_columns: dict[str, str] = field(
+        default_factory=dict
+    )  # warehouse-RESOLVED name->data_type (from catalog.json)
 
     def effective_columns(self) -> list[str]:
         """The best available column list: warehouse-resolved when present, else YAML-declared.

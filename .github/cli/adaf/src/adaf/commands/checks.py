@@ -17,9 +17,10 @@ import sys
 from typing import Any
 
 # Local
-from adaf import config, selection, style
+from adaf import config, selection
+from adaf.utils import style
 from adaf.commands import coverage, dataproducts, deprecations, sqlfluff, taxonomy
-from adaf.formatting import emit_tool_logs, markdown_summary
+from adaf.utils.formatting import emit_tool_logs, markdown_summary
 from adaf.graph import Graph
 from adaf.suppression import Suppressions
 from adaf.taxonomy import load_node_facts
@@ -58,7 +59,10 @@ def cmd_all(args) -> int:
     try:
         _cat = args.catalog if args.catalog and args.catalog.exists() else None
         taxonomy_report = taxonomy.evaluate(
-            load_node_facts(args.manifest, _cat), {str(f) for f in files}, strict=False, scope=scope,
+            load_node_facts(args.manifest, _cat),
+            {str(f) for f in files},
+            strict=False,
+            scope=scope,
             suppressions=Suppressions.load(config.PROJECT_ROOT),
         )
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
@@ -72,15 +76,25 @@ def cmd_all(args) -> int:
         named_selectors = dataproducts.load_selector_names(args.selectors)
         facts = {n.unique_id: n for n in load_node_facts(args.manifest)}
         sysbound_report = dataproducts.evaluate_system_boundaries(
-            graph, named_selectors, node_facts=facts,
+            graph,
+            named_selectors,
+            node_facts=facts,
             exposure_targets=dataproducts.load_exposure_targets(args.manifest),
             semantic_model_targets=dataproducts.load_semantic_model_targets(args.manifest),
         )
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
         sysbound_report = dataproducts.SystemBoundaryReport(scope="all data products", rows=[], error=str(exc))
 
-    reports: list[Any] = [dep_report, lint_report, format_report, docs_report, columns_report,
-                          tests_report, taxonomy_report, sysbound_report]
+    reports: list[Any] = [
+        dep_report,
+        lint_report,
+        format_report,
+        docs_report,
+        columns_report,
+        tests_report,
+        taxonomy_report,
+        sysbound_report,
+    ]
     ok = all(r.ok for r in reports)
 
     # Optional Markdown summary file (a PR-comment body). The full per-check detail stays in the

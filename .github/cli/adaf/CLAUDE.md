@@ -31,31 +31,37 @@ second place. Add a rule by editing `catalog.json` only; `adaf rules validate`
 
 ```
 .github/cli/adaf/
+├── Makefile                # dev command-and-control: fix (inner loop) · ci (lint+typecheck+test+validate)
 ├── pyproject.toml          # [project.scripts] adaf = adaf.app:main; hatchling bundles rules/ + assets/
 ├── src/adaf/
 │   ├── app.py              # argparse wiring + main(). NO business logic. Lazy project discovery.
 │   ├── __main__.py         # `python -m adaf` entry
 │   ├── config.py           # PROJECT_ROOT discovery (dbt_project.yml walk-up), default paths
-│   ├── logging_setup.py    # human/log → stderr; --json payload → stdout
 │   ├── selection.py        # --changed-only/--all/--select/--exclude → list[Path] of models
 │   ├── gitutil.py          # changed-file detection (merge-base vs --base-ref)
 │   ├── manifest.py         # manifest.json → ModelDoc (description, declared columns, test_count)
 │   ├── catalog.py          # catalog.json → RESOLVED warehouse columns per model
 │   ├── graph.py            # data-node lineage DAG + classify_boundary() — pure
+│   ├── taxonomy.py         # NodeFacts + the deterministic detectors (DETECTORS registry)
+│   ├── suppression.py      # adaf.yml + inline `-- adaf-disable` parsing
 │   ├── viewer.py + assets/ # sdag Cytoscape viewer (products generate/serve)
-│   ├── toollog.py          # ToolLog + run_tool(): the only way to shell out
-│   ├── style.py            # ANSI colour + per-check emoji (gated on --color)
-│   ├── formatting.py       # render() / emit_tool_logs() / markdown_summary()
+│   ├── utils/              # cross-cutting infra, grouped: logging_setup · formatting · style · toollog
+│   ├── reports/            # the result DATACLASSES, grouped (one module per domain): coverage ·
+│   │                       #   dataproducts · deprecations · sqlfluff · taxonomy. Render-only; the
+│   │                       #   evaluation that builds them lives in commands/ (which re-export them).
 │   ├── rules/              # the SSoT: catalog.json + catalog.schema.json + review-output.schema.json + loader
-│   └── commands/
-│       ├── rules.py        # `adaf rules list/show/validate`
+│   └── commands/           # evaluation logic + handlers (NO report dataclasses — those live in reports/)
+│       ├── rules.py        # `adaf rules list/show/validate/explain`
 │       ├── coverage.py     # check docs / tests / doc-columns
 │       ├── deprecations.py # check deprecations (dbt-autofix)
 │       ├── sqlfluff.py     # check lint / format
+│       ├── taxonomy.py     # check taxonomy (deterministic detectors)
 │       ├── dataproducts.py # check system-boundaries + products boundaries/generate/serve
 │       ├── review.py       # `adaf review` — LLM review via GitHub Models (keyless); --post for PR comments
+│       ├── report.py       # `adaf report` — per-model markdown + LLM-vs-deterministic reconciliation
 │       └── checks.py       # check all (aggregator)
-└── tests/                  # catalogue-integrity + ported cicd_cli unit suite (102 tests)
+├── evals/                  # deepeval harness over the broken fixture (eval dep-group)
+└── tests/                  # catalogue-integrity + ported unit suite
 ```
 
 **Runtime-env note:** the shell-out checks (lint→sqlfluff, format, deprecations→dbt-autofix,

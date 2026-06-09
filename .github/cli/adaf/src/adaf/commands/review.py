@@ -105,8 +105,7 @@ def user_prompt(models: list[Path]) -> str:
     return (
         "Review the following dbt models. For each, emit a finding for EVERY rule you "
         "evaluated — applicable_present, applicable_missing, AND not_applicable — so a full "
-        "coverage matrix can be built. Emit schema-conforming JSON.\n\n"
-        + "\n".join(model_block(sql) for sql in models)
+        "coverage matrix can be built. Emit schema-conforming JSON.\n\n" + "\n".join(model_block(sql) for sql in models)
     )
 
 
@@ -154,8 +153,11 @@ def call_model(endpoint: str, token: str, model: str, sys_p: str, usr_p: str) ->
         req = urllib.request.Request(
             f"{endpoint.rstrip('/')}/chat/completions",
             data=_body(),
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                     "Accept": "application/json"},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
             method="POST",
         )
         try:
@@ -167,7 +169,7 @@ def call_model(endpoint: str, token: str, model: str, sys_p: str, usr_p: str) ->
             detail = e.read().decode("utf-8", "replace")
             if e.code == 429 and attempt < attempts - 1:
                 retry_after = e.headers.get("Retry-After") if e.headers else None
-                wait = int(retry_after) if (retry_after and retry_after.isdigit()) else min(60, 10 * (2 ** attempt))
+                wait = int(retry_after) if (retry_after and retry_after.isdigit()) else min(60, 10 * (2**attempt))
                 log.info("  rate-limited (429); retrying in %ds (attempt %d/%d)", wait, attempt + 1, attempts)
                 time.sleep(wait)
                 continue
@@ -244,13 +246,18 @@ def matrix_table(result: dict, scope: str) -> list[str]:
     head = [f"## 🧪 Taxonomy coverage matrix — {scope}", ""]
     if not idx:
         return head + ["_No models to review._"]
-    applicable = {c for codes in idx.values() for c, s in codes.items() if s in ("applicable_present", "applicable_missing")}
+    applicable = {
+        c for codes in idx.values() for c, s in codes.items() if s in ("applicable_present", "applicable_missing")
+    }
     cols = [c for c in rule_codes() if c in applicable]
     if not cols:
         return head + ["_No applicable rules._"]
     header = "| Model / Rule | " + " | ".join(cols) + " |"
     sep = "|:---|" + "|".join([":---:"] * len(cols)) + "|"
-    rows = [f"| `{m}` | " + " | ".join(STATUS_EMOJI.get(idx[m].get(c) or "", "➖") for c in cols) + " |" for m in sorted(idx)]
+    rows = [
+        f"| `{m}` | " + " | ".join(STATUS_EMOJI.get(idx[m].get(c) or "", "➖") for c in cols) + " |"
+        for m in sorted(idx)
+    ]
     return head + [f"Rows = models · columns = applicable rule codes · {LEGEND}", "", header, sep, *rows]
 
 
@@ -266,8 +273,12 @@ def _api(method: str, url: str, token: str, data: dict | None = None):
         url,
         method=method,
         data=json.dumps(data).encode("utf-8") if data is not None else None,
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
-                 "Content-Type": "application/json", "X-GitHub-Api-Version": "2022-11-28"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
         raw = resp.read().decode("utf-8")
@@ -303,23 +314,30 @@ def estimated_cost(totals: dict, in_price: float, out_price: float) -> float:
 
 def usage_footer(totals: dict, model: str, in_price: float, out_price: float) -> str:
     cost = estimated_cost(totals, in_price, out_price)
-    return (f"<sub>🧮 {totals['calls']} `{model}` call(s) · "
-            f"{totals['prompt_tokens']:,} input + {totals['completion_tokens']:,} output "
-            f"({totals['total_tokens']:,} total) tokens · est. **~${cost:.4f}** at list price "
-            f"(GitHub Models free tier may bill $0).</sub>")
+    return (
+        f"<sub>🧮 {totals['calls']} `{model}` call(s) · "
+        f"{totals['prompt_tokens']:,} input + {totals['completion_tokens']:,} output "
+        f"({totals['total_tokens']:,} total) tokens · est. **~${cost:.4f}** at list price "
+        f"(GitHub Models free tier may bill $0).</sub>"
+    )
 
 
 def write_step_summary(totals: dict, model: str, in_price: float, out_price: float) -> None:
     cost = estimated_cost(totals, in_price, out_price)
-    block = "\n".join([
-        "## 🧮 testing-taxonomy review — token usage & cost", "",
-        f"- **Model:** `{model}`", f"- **Calls:** {totals['calls']}",
-        f"- **Input tokens:** {totals['prompt_tokens']:,}",
-        f"- **Output tokens:** {totals['completion_tokens']:,}",
-        f"- **Total tokens:** {totals['total_tokens']:,}",
-        f"- **Estimated cost:** ~${cost:.4f} (at {model} list price ${in_price}/1M in, "
-        f"${out_price}/1M out; GitHub Models free tier may bill $0).", "",
-    ])
+    block = "\n".join(
+        [
+            "## 🧮 testing-taxonomy review — token usage & cost",
+            "",
+            f"- **Model:** `{model}`",
+            f"- **Calls:** {totals['calls']}",
+            f"- **Input tokens:** {totals['prompt_tokens']:,}",
+            f"- **Output tokens:** {totals['completion_tokens']:,}",
+            f"- **Total tokens:** {totals['total_tokens']:,}",
+            f"- **Estimated cost:** ~${cost:.4f} (at {model} list price ${in_price}/1M in, "
+            f"${out_price}/1M out; GitHub Models free tier may bill $0).",
+            "",
+        ]
+    )
     log.info("%s", block)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
@@ -378,10 +396,16 @@ def cmd_review(args: Namespace) -> int:
         repo, pr = _require_env("GITHUB_REPOSITORY"), _require_env("PR_NUMBER")
         footer = "\n\n" + usage_footer(totals, args.model, args.cost_in, args.cost_out)
         res_changed = {"models": [m for m in res["models"] if m["model"] in changed_names]}
-        upsert_comment(repo, pr, token, MARKERS["matrix_changed"],
-                       matrix_comment(res_changed, MARKERS["matrix_changed"], "changed models") + footer)
-        upsert_comment(repo, pr, token, MARKERS["matrix_all"],
-                       matrix_comment(res, MARKERS["matrix_all"], "all models") + footer)
+        upsert_comment(
+            repo,
+            pr,
+            token,
+            MARKERS["matrix_changed"],
+            matrix_comment(res_changed, MARKERS["matrix_changed"], "changed models") + footer,
+        )
+        upsert_comment(
+            repo, pr, token, MARKERS["matrix_all"], matrix_comment(res, MARKERS["matrix_all"], "all models") + footer
+        )
         delete_retired_comments(repo, pr, token)
         write_step_summary(totals, args.model, args.cost_in, args.cost_out)
 

@@ -34,14 +34,15 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from adaf import config, selection, style
+from adaf import config, selection
+from adaf.utils import style
 from adaf.commands import checks, coverage, dataproducts, deprecations, taxonomy
 from adaf.commands import report as report_cmd
 from adaf.commands import review as review_cmd
 from adaf.commands import rules as rules_cmd
 from adaf.commands import sqlfluff as sqlfluff_cmd
-from adaf.formatting import render_from_args
-from adaf.logging_setup import configure_logging
+from adaf.utils.formatting import render_from_args
+from adaf.utils.logging_setup import configure_logging
 
 log = logging.getLogger(__name__)
 
@@ -68,56 +69,105 @@ def _add_selection(p: argparse.ArgumentParser) -> None:
     scope = p.add_mutually_exclusive_group()
     scope.add_argument("--changed-only", action="store_true", help="Only models changed vs --base-ref (default)")
     scope.add_argument("--all", action="store_true", dest="all_models", help="All models, not only changed ones")
-    p.add_argument("--base-ref", default=config.DEFAULT_BASE_REF,
-                   help="Git ref the changed-only scope diffs against (default: %(default)s)")
-    p.add_argument("--select", action="append", metavar="SELECTOR",
-                   help="dbt selector to narrow the scope (repeatable; union, like dbt)")
-    p.add_argument("--exclude", action="append", metavar="SELECTOR",
-                   help="dbt exclusion selector (repeatable; matches dbt --exclude)")
+    p.add_argument(
+        "--base-ref",
+        default=config.DEFAULT_BASE_REF,
+        help="Git ref the changed-only scope diffs against (default: %(default)s)",
+    )
+    p.add_argument(
+        "--select",
+        action="append",
+        metavar="SELECTOR",
+        help="dbt selector to narrow the scope (repeatable; union, like dbt)",
+    )
+    p.add_argument(
+        "--exclude",
+        action="append",
+        metavar="SELECTOR",
+        help="dbt exclusion selector (repeatable; matches dbt --exclude)",
+    )
     _add_output(p)
 
 
 def _add_output(p: argparse.ArgumentParser) -> None:
     """--json / --show-logs / --show-passes / --color — the renderer flags."""
-    p.add_argument("--json", action="store_true", dest="as_json",
-                   help="Emit machine-readable JSON to stdout (human log lines go to stderr)")
-    p.add_argument("--show-logs", action="store_true", dest="show_logs",
-                   help="Print the raw underlying-tool transcript even on success")
-    p.add_argument("--show-passes", action="store_true", dest="show_passes",
-                   help="Show passing results too (default: only failures)")
-    p.add_argument("--color", choices=["auto", "always", "never"], default="auto",
-                   help="Colourise output (default: %(default)s)")
+    p.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="Emit machine-readable JSON to stdout (human log lines go to stderr)",
+    )
+    p.add_argument(
+        "--show-logs",
+        action="store_true",
+        dest="show_logs",
+        help="Print the raw underlying-tool transcript even on success",
+    )
+    p.add_argument(
+        "--show-passes",
+        action="store_true",
+        dest="show_passes",
+        help="Show passing results too (default: only failures)",
+    )
+    p.add_argument(
+        "--color", choices=["auto", "always", "never"], default="auto", help="Colourise output (default: %(default)s)"
+    )
 
 
 def _add_fix(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--fix", action="store_true",
-                   help="Apply fixes instead of only checking (where the tool supports it)")
+    p.add_argument(
+        "--fix", action="store_true", help="Apply fixes instead of only checking (where the tool supports it)"
+    )
 
 
 def _add_manifest(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--manifest", type=Path, default=config.DEFAULT_MANIFEST,
-                   help="Path to dbt manifest.json (default: <project>/%(default)s)")
-    p.add_argument("--parse", action="store_true",
-                   help="Run `dbt parse` first to refresh the manifest before checking")
+    p.add_argument(
+        "--manifest",
+        type=Path,
+        default=config.DEFAULT_MANIFEST,
+        help="Path to dbt manifest.json (default: <project>/%(default)s)",
+    )
+    p.add_argument("--parse", action="store_true", help="Run `dbt parse` first to refresh the manifest before checking")
 
 
 def _add_catalog(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--catalog", type=Path, default=config.DEFAULT_CATALOG,
-                   help="Path to dbt catalog.json — resolved warehouse columns (default: <project>/%(default)s)")
-    p.add_argument("--docs-generate", action="store_true", dest="docs_generate",
-                   help="Run `dbt docs generate` first to refresh the manifest + catalog (needs a warehouse build)")
+    p.add_argument(
+        "--catalog",
+        type=Path,
+        default=config.DEFAULT_CATALOG,
+        help="Path to dbt catalog.json — resolved warehouse columns (default: <project>/%(default)s)",
+    )
+    p.add_argument(
+        "--docs-generate",
+        action="store_true",
+        dest="docs_generate",
+        help="Run `dbt docs generate` first to refresh the manifest + catalog (needs a warehouse build)",
+    )
 
 
 def _add_dataproduct_scope(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--selectors", type=Path, default=config.DEFAULT_SELECTORS,
-                   help="Path to dbt's selectors.yml defining the data products (default: <project>/%(default)s)")
-    p.add_argument("--product", action="append", metavar="NAME",
-                   help="Limit to this named data product (repeatable; default: all in selectors.yml)")
+    p.add_argument(
+        "--selectors",
+        type=Path,
+        default=config.DEFAULT_SELECTORS,
+        help="Path to dbt's selectors.yml defining the data products (default: <project>/%(default)s)",
+    )
+    p.add_argument(
+        "--product",
+        action="append",
+        metavar="NAME",
+        help="Limit to this named data product (repeatable; default: all in selectors.yml)",
+    )
 
 
 def _add_sdag_output(p: argparse.ArgumentParser) -> None:
-    p.add_argument("-o", "--output", type=Path, default=config.DEFAULT_SDAG_OUTPUT,
-                   help="Directory for the generated viewer assets (default: <project>/%(default)s)")
+    p.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=config.DEFAULT_SDAG_OUTPUT,
+        help="Directory for the generated viewer assets (default: <project>/%(default)s)",
+    )
 
 
 # ─── parser construction ─────────────────────────────────────────────────────
@@ -129,9 +179,12 @@ def build_parser() -> argparse.ArgumentParser:
     # parsed at the top level; main() normalises the possibly-absent attributes.
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--debug", action="store_true", default=argparse.SUPPRESS, help="Verbose debug logging")
-    common.add_argument("--project-dir", dest="project_dir", default=argparse.SUPPRESS,
-                        help="Path to the dbt project (a dir with dbt_project.yml). "
-                             "Overrides $ADAF_PROJECT_DIR and walk-up discovery.")
+    common.add_argument(
+        "--project-dir",
+        dest="project_dir",
+        default=argparse.SUPPRESS,
+        help="Path to the dbt project (a dir with dbt_project.yml). Overrides $ADAF_PROJECT_DIR and walk-up discovery.",
+    )
 
     parser = argparse.ArgumentParser(
         prog="adaf",
@@ -152,16 +205,22 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _add_report_group(sub, common: argparse.ArgumentParser) -> None:
     """``adaf report`` — generate the per-model taxonomy review markdown (mechanically, no hand-authoring)."""
-    rep = sub.add_parser("report", parents=[common],
-                         help="Generate a per-model taxonomy-review markdown with full finding lineage")
+    rep = sub.add_parser(
+        "report", parents=[common], help="Generate a per-model taxonomy-review markdown with full finding lineage"
+    )
     _add_selection(rep)
     _add_manifest(rep)
     _add_catalog(rep)  # warehouse-resolved columns → richer deterministic verdicts
-    rep.add_argument("--review", type=Path, default=None, metavar="REVIEW_JSON",
-                     help="`adaf review --json` output to reconcile against (adds an LLM-vs-deterministic "
-                          "FP/FN column per model)")
-    rep.add_argument("-o", "--output", type=Path, default=None,
-                     help="Write the markdown to this file (default: stdout)")
+    rep.add_argument(
+        "--review",
+        type=Path,
+        default=None,
+        metavar="REVIEW_JSON",
+        help="`adaf review --json` output to reconcile against (adds an LLM-vs-deterministic FP/FN column per model)",
+    )
+    rep.add_argument(
+        "-o", "--output", type=Path, default=None, help="Write the markdown to this file (default: stdout)"
+    )
     rep.set_defaults(func=report_cmd.cmd)
 
 
@@ -182,8 +241,9 @@ def _add_rules_group(sub, common: argparse.ArgumentParser) -> None:
     p_show.add_argument("--json", action="store_true", dest="as_json", help="Emit JSON to stdout")
     p_show.set_defaults(func=rules_cmd.cmd_show)
 
-    p_explain = rules_sub.add_parser("explain", parents=[common],
-                                     help="Show a rule AND the exact syntax to suppress it (false positives)")
+    p_explain = rules_sub.add_parser(
+        "explain", parents=[common], help="Show a rule AND the exact syntax to suppress it (false positives)"
+    )
     p_explain.add_argument("code", help="Rule code, e.g. MD-02")
     p_explain.add_argument("--json", action="store_true", dest="as_json", help="Emit the rule JSON to stdout")
     p_explain.set_defaults(func=rules_cmd.cmd_explain)
@@ -217,8 +277,9 @@ def _add_check_group(sub, common: argparse.ArgumentParser) -> None:
     _add_manifest(docs)
     docs.set_defaults(func=coverage.cmd_docs)
 
-    doc_columns = check_sub.add_parser("doc-columns", parents=[common],
-                                       help="Column description coverage (resolved via catalog.json)")
+    doc_columns = check_sub.add_parser(
+        "doc-columns", parents=[common], help="Column description coverage (resolved via catalog.json)"
+    )
     _add_selection(doc_columns)
     _add_manifest(doc_columns)
     _add_catalog(doc_columns)
@@ -229,8 +290,11 @@ def _add_check_group(sub, common: argparse.ArgumentParser) -> None:
     _add_manifest(tests)
     tests.set_defaults(func=coverage.cmd_tests)
 
-    tax = check_sub.add_parser("taxonomy", parents=[common],
-                               help="Deterministic catalogue detectors (grain/freshness/contracts/keys) over selected models")
+    tax = check_sub.add_parser(
+        "taxonomy",
+        parents=[common],
+        help="Deterministic catalogue detectors (grain/freshness/contracts/keys) over selected models",
+    )
     _add_selection(tax)
     _add_manifest(tax)
     _add_catalog(tax)  # optional warehouse-resolved columns enrich key-based + TM-* detection
@@ -239,8 +303,10 @@ def _add_check_group(sub, common: argparse.ArgumentParser) -> None:
 
     # system-boundaries selects by DATA PRODUCT (selectors.yml), not the changed-file scope.
     sysbound = check_sub.add_parser(
-        "system-boundaries", parents=[common],
-        help="Fail when an inbound/outbound system-boundary node of a data product has zero tests")
+        "system-boundaries",
+        parents=[common],
+        help="Fail when an inbound/outbound system-boundary node of a data product has zero tests",
+    )
     _add_manifest(sysbound)
     _add_dataproduct_scope(sysbound)
     _add_output(sysbound)
@@ -251,10 +317,19 @@ def _add_check_group(sub, common: argparse.ArgumentParser) -> None:
     _add_manifest(all_)
     _add_catalog(all_)
     _add_fix(all_)  # propagates to the fixable checks; no-op for the rest
-    all_.add_argument("--selectors", type=Path, default=config.DEFAULT_SELECTORS,
-                      help="Path to selectors.yml for the system-boundaries gate (default: <project>/%(default)s)")
-    all_.add_argument("--md", type=Path, default=None, dest="md_path",
-                      help="Also write a Markdown summary table to this file (e.g. for a PR comment)")
+    all_.add_argument(
+        "--selectors",
+        type=Path,
+        default=config.DEFAULT_SELECTORS,
+        help="Path to selectors.yml for the system-boundaries gate (default: <project>/%(default)s)",
+    )
+    all_.add_argument(
+        "--md",
+        type=Path,
+        default=None,
+        dest="md_path",
+        help="Also write a Markdown summary table to this file (e.g. for a PR comment)",
+    )
     all_.set_defaults(func=checks.cmd_all)
 
 
@@ -264,21 +339,24 @@ def _add_products_group(sub, common: argparse.ArgumentParser) -> None:
     products_sub = products.add_subparsers(dest="products_cmd", required=False)
 
     boundaries = products_sub.add_parser(
-        "boundaries", parents=[common],
-        help="Classify each node of a data product as inbound/outbound/both/internal")
+        "boundaries", parents=[common], help="Classify each node of a data product as inbound/outbound/both/internal"
+    )
     _add_manifest(boundaries)
     _add_dataproduct_scope(boundaries)
     _add_output(boundaries)
     boundaries.set_defaults(func=dataproducts.cmd)
 
-    generate = products_sub.add_parser("generate", parents=[common],
-                                       help="Build the sdag Cytoscape JSON + HTML viewer assets")
+    generate = products_sub.add_parser(
+        "generate", parents=[common], help="Build the sdag Cytoscape JSON + HTML viewer assets"
+    )
     _add_manifest(generate)
     _add_dataproduct_scope(generate)
     _add_sdag_output(generate)
     generate.set_defaults(func=dataproducts.cmd_generate)
 
-    serve = products_sub.add_parser("serve", parents=[common], help="Generate the sdag assets, then host them over HTTP")
+    serve = products_sub.add_parser(
+        "serve", parents=[common], help="Generate the sdag assets, then host them over HTTP"
+    )
     _add_manifest(serve)
     _add_dataproduct_scope(serve)
     _add_sdag_output(serve)
@@ -288,29 +366,53 @@ def _add_products_group(sub, common: argparse.ArgumentParser) -> None:
 
 def _add_review_group(sub, common: argparse.ArgumentParser) -> None:
     """``adaf review`` — LLM taxonomy review via GitHub Models (keyless)."""
-    rev = sub.add_parser("review", parents=[common],
-                         help="LLM taxonomy review of dbt models (GitHub Models; --post for PR comments)")
+    rev = sub.add_parser(
+        "review", parents=[common], help="LLM taxonomy review of dbt models (GitHub Models; --post for PR comments)"
+    )
     scope = rev.add_mutually_exclusive_group()
     scope.add_argument("--changed-only", action="store_true", help="Review only models changed vs --base-ref (default)")
     scope.add_argument("--all", action="store_true", dest="all_models", help="Review every model")
-    rev.add_argument("--base-ref", default=config.DEFAULT_BASE_REF,
-                     help="Git ref the changed-only scope diffs against (default: %(default)s)")
-    rev.add_argument("--json", action="store_true", dest="as_json",
-                     help="Emit the findings result + token usage as JSON to stdout (for the dev skill)")
-    rev.add_argument("--post", action="store_true",
-                     help="Upsert the changed + all coverage matrices as sticky PR comments "
-                          "(needs $GITHUB_REPOSITORY + $PR_NUMBER)")
-    rev.add_argument("--model", default=os.environ.get("MODEL", "openai/gpt-4o"),
-                     help="GitHub Models model id (default: %(default)s)")
-    rev.add_argument("--endpoint", default=os.environ.get("MODELS_ENDPOINT", "https://models.github.ai/inference"),
-                     help="Inference endpoint (default: %(default)s)")
+    rev.add_argument(
+        "--base-ref",
+        default=config.DEFAULT_BASE_REF,
+        help="Git ref the changed-only scope diffs against (default: %(default)s)",
+    )
+    rev.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="Emit the findings result + token usage as JSON to stdout (for the dev skill)",
+    )
+    rev.add_argument(
+        "--post",
+        action="store_true",
+        help="Upsert the changed + all coverage matrices as sticky PR comments (needs $GITHUB_REPOSITORY + $PR_NUMBER)",
+    )
+    rev.add_argument(
+        "--model",
+        default=os.environ.get("MODEL", "openai/gpt-4o"),
+        help="GitHub Models model id (default: %(default)s)",
+    )
+    rev.add_argument(
+        "--endpoint",
+        default=os.environ.get("MODELS_ENDPOINT", "https://models.github.ai/inference"),
+        help="Inference endpoint (default: %(default)s)",
+    )
     rev.add_argument("--token", default=None, help="GitHub token (default: $GITHUB_TOKEN)")
-    rev.add_argument("--cost-per-1m-input", type=float, dest="cost_in",
-                     default=float(os.environ.get("COST_PER_1M_INPUT", "2.5")),
-                     help="List price $/1M input tokens for the cost estimate (default: %(default)s)")
-    rev.add_argument("--cost-per-1m-output", type=float, dest="cost_out",
-                     default=float(os.environ.get("COST_PER_1M_OUTPUT", "10")),
-                     help="List price $/1M output tokens for the cost estimate (default: %(default)s)")
+    rev.add_argument(
+        "--cost-per-1m-input",
+        type=float,
+        dest="cost_in",
+        default=float(os.environ.get("COST_PER_1M_INPUT", "2.5")),
+        help="List price $/1M input tokens for the cost estimate (default: %(default)s)",
+    )
+    rev.add_argument(
+        "--cost-per-1m-output",
+        type=float,
+        dest="cost_out",
+        default=float(os.environ.get("COST_PER_1M_OUTPUT", "10")),
+        help="List price $/1M output tokens for the cost estimate (default: %(default)s)",
+    )
     rev.set_defaults(func=review_cmd.cmd_review)
 
 

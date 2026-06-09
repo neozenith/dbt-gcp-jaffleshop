@@ -51,11 +51,14 @@ def test_validate_requires_models_array() -> None:
 def test_matrix_table_marks_present_missing_na() -> None:
     result = {
         "models": [
-            {"model": "orders", "findings": [
-                {"rule_code": "MD-01", "status": "applicable_present"},
-                {"rule_code": "EN-03", "status": "applicable_missing"},
-                {"rule_code": "MS-05", "status": "not_applicable"},
-            ]},
+            {
+                "model": "orders",
+                "findings": [
+                    {"rule_code": "MD-01", "status": "applicable_present"},
+                    {"rule_code": "EN-03", "status": "applicable_missing"},
+                    {"rule_code": "MS-05", "status": "not_applicable"},
+                ],
+            },
         ]
     }
     lines = review.matrix_table(result, "test scope")
@@ -76,10 +79,17 @@ def test_apply_suppressions_demotes_suppressed_gaps(tmp_path) -> None:
     (tmp_path / CONFIG_NAME).write_text(
         "disable:\n  - rules: [MD-02]\n    paths: ['models/marts/orders.sql']\n    reason: demo\n", encoding="utf-8"
     )
-    result = {"models": [{"model": "orders", "findings": [
-        {"rule_code": "MD-02", "status": "applicable_missing"},
-        {"rule_code": "EN-03", "status": "applicable_missing"},
-    ]}]}
+    result = {
+        "models": [
+            {
+                "model": "orders",
+                "findings": [
+                    {"rule_code": "MD-02", "status": "applicable_missing"},
+                    {"rule_code": "EN-03", "status": "applicable_missing"},
+                ],
+            }
+        ]
+    }
     demoted = review.apply_suppressions(result, {"orders": "models/marts/orders.sql"}, Suppressions.load(tmp_path))
     statuses = {f["rule_code"]: f["status"] for f in result["models"][0]["findings"]}
     assert demoted == 1

@@ -4,7 +4,7 @@ from pathlib import Path
 # Local
 from adaf.commands.coverage import evaluate_columns, evaluate_docs, evaluate_tests
 from adaf.commands.dataproducts import BoundaryTestRow, SystemBoundaryReport
-from adaf.formatting import markdown_summary
+from adaf.utils.formatting import markdown_summary
 
 
 def test_markdown_summary_is_a_table_with_status_and_detail(manifest, catalog):

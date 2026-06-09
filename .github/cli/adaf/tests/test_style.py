@@ -1,5 +1,5 @@
 # Local
-from adaf import style
+from adaf.utils import style
 
 
 def test_disabled_returns_plain_text_but_keeps_emoji():

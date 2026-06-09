@@ -1,49 +1,60 @@
-"""``products boundaries`` — classify each node of a data product as a system-boundary node.
+"""``products boundaries`` — classify each node of a data product as a system-boundary node, and
+``check system-boundaries`` — gate each boundary node on the per-class artifacts it owes.
 
 A "data product" is a NAMED selector in ``selectors.yml`` (e.g. ``supply``, ``demand``). Its
 membership is whatever dbt itself resolves for that selector — including graph-operator expansion
 (``+model`` pulls in upstream sources) — so we ask dbt via ``dbt ls --selector <name> --output json``
-rather than re-implementing the selector grammar (mirrors ``selection.py``'s ``--select`` path, and
-deliberately unlike a hand-rolled resolver that wouldn't honour ``+``/``parents``).
+rather than re-implementing the selector grammar.
 
 For each product we load the data-lineage DAG from ``manifest.json`` (``graph.py``), restrict the
 membership to data nodes, and classify every member as a system-boundary node — inbound / outbound /
-both — or, when no lineage crosses the product boundary at that node, internal. See ``graph.py`` for
-the exact rule.
-
-The classification is descriptive today; it is the intended input to a future gate that asserts the
-right tests / data contracts exist on each boundary node according to its class (inbound nodes need an
-ingestion contract, outbound nodes a published contract, etc.).
-
-Boundary analysis is read-only and never gates, so its report's ``ok`` is always True — it reuses the
-shared Report renderer purely for the ``--json`` / coloured-stderr / ``--show-passes`` plumbing.
+both — or internal. The result dataclasses live in ``adaf.reports.dataproducts`` (re-exported here).
 """
 
 # Standard Library
 import json
 import logging
 import subprocess
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar
 
 # Third Party
 import yaml
 
 # Local
-from adaf import config, style, viewer
-from adaf.formatting import render_from_args
+from adaf import config, viewer
 from adaf.graph import Graph, classify_boundary
+from adaf.reports.dataproducts import (
+    BoundaryReport,
+    BoundaryTestRow,
+    MemberRow,
+    ProductBoundary,
+    SystemBoundaryReport,
+)
 from adaf.taxonomy import NodeFacts, load_node_facts
+from adaf.utils.formatting import render_from_args
 
 log = logging.getLogger(__name__)
 
-INFO = logging.INFO
-ERROR = logging.ERROR
-
-# Display/sort order for the four classifications: boundary roles first (most interesting), interior
-# last. Also the canonical key order in the JSON ``counts`` block.
-CLASS_ORDER = ["inbound", "outbound", "both", "internal"]
+__all__ = [
+    "BoundaryReport",
+    "BoundaryTestRow",
+    "MemberRow",
+    "ProductBoundary",
+    "SystemBoundaryReport",
+    "dbt_parse",
+    "load_graph",
+    "load_selector_names",
+    "resolve_members",
+    "evaluate",
+    "cmd",
+    "required_artifacts",
+    "load_exposure_targets",
+    "load_semantic_model_targets",
+    "evaluate_system_boundaries",
+    "cmd_check",
+    "cmd_generate",
+    "cmd_serve",
+]
 
 
 # ─── I/O: manifest graph, selector names, selector membership ────────────────
@@ -85,12 +96,7 @@ def load_selector_names(path: Path | str) -> list[tuple[str, str]]:
 
 
 def resolve_members(name: str, *, cwd: Path | None = None) -> set[str]:
-    """unique_ids dbt resolves for the named selector — full grammar, via ``dbt ls``.
-
-    ``--quiet`` suppresses dbt's banner; ``--output json`` emits one object per node, from which we
-    keep ``unique_id``. We guard on ``startswith("{")`` so any stray non-JSON line is ignored. Fail
-    loud if dbt errors (mirrors ``selection.dbt_ls_paths``).
-    """
+    """unique_ids dbt resolves for the named selector — full grammar, via ``dbt ls``."""
     cwd = cwd or config.PROJECT_ROOT
     cmd = ["dbt", "ls", "--quiet", "--selector", name, "--output", "json", "--output-keys", "unique_id"]
     proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
@@ -108,137 +114,11 @@ def resolve_members(name: str, *, cwd: Path | None = None) -> set[str]:
     return uids
 
 
-# ─── Report ──────────────────────────────────────────────────────────────────
-
-
-@dataclass
-class MemberRow:
-    """One classified node within a data product."""
-
-    unique_id: str
-    name: str
-    resource_type: str
-    classification: str  # inbound | outbound | both | internal
-    external_parents: list[str]
-    external_children: list[str]
-
-    @property
-    def is_boundary(self) -> bool:
-        return self.classification != "internal"
-
-
-@dataclass
-class ProductBoundary:
-    """A data product (named selector) with each of its data nodes classified."""
-
-    product: str
-    description: str
-    rows: list[MemberRow]
-
-    @property
-    def counts(self) -> dict[str, int]:
-        counts = {k: 0 for k in CLASS_ORDER}
-        for row in self.rows:
-            counts[row.classification] += 1
-        return counts
-
-
-@dataclass
-class BoundaryReport:
-    name: ClassVar[str] = "boundaries"
-    products: list[ProductBoundary]
-    scope: str
-
-    @property
-    def ok(self) -> bool:
-        # Descriptive analysis — there is no gate yet, so it always "passes" (exit 0).
-        return True
-
-    def summary(self) -> str:
-        if not self.products:
-            return "no data products defined"
-        boundary = sum(c for p in self.products for k, c in p.counts.items() if k != "internal")
-        nodes = sum(len(p.rows) for p in self.products)
-        return f"{boundary}/{nodes} boundary node(s) across {len(self.products)} data product(s)"
-
-    def to_dict(self) -> dict:
-        return {
-            "analysis": self.name,
-            "ok": self.ok,
-            "scope": self.scope,
-            "products": [
-                {
-                    "product": p.product,
-                    "description": p.description,
-                    "n_members": len(p.rows),
-                    "counts": p.counts,
-                    "nodes": [
-                        {
-                            "unique_id": r.unique_id,
-                            "name": r.name,
-                            "resource_type": r.resource_type,
-                            "classification": r.classification,
-                            "external_parents": r.external_parents,
-                            "external_children": r.external_children,
-                        }
-                        for r in sorted(p.rows, key=_row_sort_key)
-                    ],
-                }
-                for p in self.products
-            ],
-        }
-
-    def human_lines(self, *, show_passes: bool = False) -> list[tuple[int, str]]:
-        label = style.section("boundaries")
-        if not self.products:
-            return [(INFO, f"{label}  {style.dim('— no data products defined in selectors.yml')}")]
-        lines: list[tuple[int, str]] = [
-            (
-                INFO,
-                f"{label}  {style.bold(f'{len(self.products)} data product(s)')} "
-                f"{style.dim('— system-boundary classification')}",
-            )
-        ]
-        for p in self.products:
-            counts = p.counts
-            breakdown = ", ".join(f"{counts[k]} {k}" for k in CLASS_ORDER if counts[k])
-            lines.append(
-                (INFO, f"   {style.bold(style.cyan(p.product))} {style.dim(f'({len(p.rows)} node(s): {breakdown})')}")
-            )
-            shown = p.rows if show_passes else [r for r in p.rows if r.is_boundary]
-            for r in sorted(shown, key=_row_sort_key):
-                lines.append((INFO, style.boundary_item(r.classification, f"{r.name} ({r.resource_type}){_detail(r)}")))
-            hidden = counts["internal"]
-            if not show_passes and hidden:
-                note = f"· {hidden} internal node(s) hidden — --show-passes to show"
-                lines.append((INFO, f"      {style.dim(note)}"))
-        return lines
-
-
-def _row_sort_key(row: MemberRow) -> tuple[int, str]:
-    """Boundary roles first (in CLASS_ORDER), then alphabetical by name."""
-    return (CLASS_ORDER.index(row.classification), row.name)
-
-
-def _detail(row: MemberRow) -> str:
-    """A concise `← N ext parent(s) → M ext child(ren)` suffix, dimmed; empty for a clean root/leaf."""
-    bits: list[str] = []
-    if row.external_parents:
-        bits.append(f"← {len(row.external_parents)} ext parent(s)")
-    if row.external_children:
-        bits.append(f"→ {len(row.external_children)} ext child(ren)")
-    return f"  {style.dim(' '.join(bits))}" if bits else ""
-
-
-# ─── Evaluation + handler ────────────────────────────────────────────────────
+# ─── products boundaries: evaluate + handler ─────────────────────────────────
 
 
 def evaluate(graph: Graph, named_selectors: list[tuple[str, str]]) -> BoundaryReport:
-    """Resolve each named selector to its members and classify them against the graph.
-
-    The membership from dbt is intersected with the graph's data nodes, so tests / semantic models /
-    metrics pulled in by ``+`` are dropped (they are attachments, not data lineage — see graph.py).
-    """
+    """Resolve each named selector to its members and classify them against the graph."""
     data_nodes = set(graph.nodes())
     products: list[ProductBoundary] = []
     for name, description in named_selectors:
@@ -278,11 +158,7 @@ def _filter_named(named_selectors: list[tuple[str, str]], wanted: list[str], sel
 
 
 def _select_named(args) -> tuple[Graph, list[tuple[str, str]]]:
-    """Load the graph + the named selectors, narrowed to ``--product`` if given.
-
-    Shared by ``products boundaries`` (descriptive) and ``check system-boundaries`` (gating) — both
-    operate over the same data-product selection axis.
-    """
+    """Load the graph + the named selectors, narrowed to ``--product`` if given."""
     graph = load_graph(args.manifest, parse=getattr(args, "parse", False))
     named_selectors = _filter_named(load_selector_names(args.selectors), list(args.product or []), args.selectors)
     return graph, named_selectors
@@ -293,22 +169,13 @@ def cmd(args) -> int:
     return render_from_args(evaluate(graph, named_selectors), args)
 
 
-# ─── check system-boundaries: gate untested boundary nodes ───────────────────
-#
-# Promotes the descriptive boundary analysis into a CI gate: every node ON a data product's system
-# boundary (inbound / outbound / both) MUST carry at least one test — that test is the enforceable
-# half of the data contract at the product's edge. Internal nodes are NOT gated (they are interior to
-# the product; their correctness is the producing models' own concern). A node shared by two products
-# is evaluated under each, so an untested shared boundary is flagged for every product it endangers.
+# ─── check system-boundaries: gate boundary nodes on their per-class artifacts ─
 
 
-# Per-class artifact requirements at a product's system boundary, beyond the ≥1-test baseline.
 # A published OUTBOUND model is a contract with downstream consumers, so it must declare its full
 # dbt-native interface; an INBOUND source is data you don't own, so prove it's arriving on time.
 #   outbound model  → enforced contract + a dbt exposure naming the consumer + a semantic_model
-#                     (the governed, queryable definition of its measures/dimensions)
 #   inbound source  → a freshness SLA  (and we additionally SUGGEST good tests — see _inbound_suggestions)
-# A `both`-class node owes the union. Inbound models / outbound sources have no extra HARD artifact.
 def required_artifacts(classification: str, resource_type: str) -> list[str]:
     req: list[str] = []
     if classification in ("inbound", "both") and resource_type == "source":
@@ -318,106 +185,8 @@ def required_artifacts(classification: str, resource_type: str) -> list[str]:
     return req
 
 
-@dataclass
-class BoundaryTestRow:
-    """One boundary node of a data product: its test count, the per-class artifacts it owes, and any
-    deterministic test suggestions (advisory — for inbound nodes)."""
-
-    product: str
-    unique_id: str
-    name: str
-    resource_type: str
-    classification: str  # inbound | outbound | both (internal nodes are not gated, so never here)
-    test_count: int
-    required: list[str] = field(default_factory=list)  # artifacts this boundary class owes
-    missing: list[str] = field(default_factory=list)  # required artifacts that are absent
-    suggestions: list[str] = field(default_factory=list)  # advisory deterministic test recommendations
-
-    @property
-    def ok(self) -> bool:
-        return self.test_count > 0 and not self.missing
-
-    @property
-    def present(self) -> list[str]:
-        return [a for a in self.required if a not in self.missing]
-
-
-@dataclass
-class SystemBoundaryReport:
-    name: ClassVar[str] = "system-boundaries"
-    scope: str
-    rows: list[BoundaryTestRow]
-    error: str | None = None  # set when membership couldn't be resolved (check-all keeps running)
-
-    @property
-    def ok(self) -> bool:
-        return self.error is None and all(r.ok for r in self.rows)
-
-    def summary(self) -> str:
-        if self.error:
-            return "could not resolve data products"
-        if not self.rows:
-            return "no boundary nodes"
-        bad = sum(1 for r in self.rows if not r.ok)
-        return f"all {len(self.rows)} boundary node(s) satisfied" if self.ok else f"{bad} boundary node(s) under-protected"
-
-    def to_dict(self) -> dict:
-        return {
-            "check": self.name,
-            "ok": self.ok,
-            "scope": self.scope,
-            "error": self.error,
-            "results": [vars(r) | {"ok": r.ok} for r in sorted(self.rows, key=_test_row_sort_key)],
-        }
-
-    def human_lines(self, *, show_passes: bool = False) -> list[tuple[int, str]]:
-        label = style.section("system-boundaries")
-        if self.error:
-            return [(ERROR, f"{label}  {style.failed(self.error)}")]
-        if not self.rows:
-            return [(INFO, f"{label}  {style.dim('— no boundary nodes to gate')}")]
-        if self.ok:
-            lines: list[tuple[int, str]] = [
-                (INFO, f"{label}  {style.passed(f'all {len(self.rows)} boundary node(s) satisfied')}")
-            ]
-        else:
-            bad = sum(1 for r in self.rows if not r.ok)
-            lines = [(ERROR, f"{label}  {style.failed(f'{bad} boundary node(s) under-protected')}")]
-        # Group rows by product so each product's at-risk edge is clear. Failing rows always show;
-        # passing rows that carry advisory suggestions show too (the suggestions are the point).
-        shown = self.rows if show_passes else [r for r in self.rows if not r.ok or r.suggestions]
-        for product in dict.fromkeys(r.product for r in self.rows):  # stable, definition order
-            product_rows = [r for r in shown if r.product == product]
-            if not product_rows:
-                continue
-            lines.append((INFO, f"   {style.bold(style.cyan(product))}"))
-            for r in sorted(product_rows, key=_test_row_sort_key):
-                desc = f"{r.name} ({r.resource_type}, {r.classification})"
-                req = f" · needs: {', '.join(r.required)}" if r.required else ""
-                if r.ok:
-                    lines.append((INFO, style.pass_item(f"{desc} — {r.test_count} test(s){req}")))
-                else:
-                    gaps = []
-                    if r.test_count == 0:
-                        gaps.append("no tests")
-                    if r.missing:
-                        gaps.append("missing " + ", ".join(r.missing))
-                    lines.append((ERROR, style.fail_item(f"{desc} — {'; '.join(gaps)}{req}")))
-                for sug in r.suggestions:  # advisory, deterministic test recommendations
-                    lines.append((INFO, f"      {style.dim(f'↳ suggest: {sug}')}"))
-        return lines
-
-
-def _test_row_sort_key(row: BoundaryTestRow) -> tuple[str, int, str]:
-    """Group by product, then boundary role (CLASS_ORDER), then name."""
-    return (row.product, CLASS_ORDER.index(row.classification), row.name)
-
-
 def load_exposure_targets(manifest_path: Path | str) -> set[str]:
-    """unique_ids of every node referenced by an ``exposures:`` block (its ``depends_on.nodes``).
-
-    A node is "published" — i.e. has a declared downstream consumer — iff it appears here.
-    """
+    """unique_ids of every node referenced by an ``exposures:`` block (its ``depends_on.nodes``)."""
     data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     targets: set[str] = set()
     for exp in (data.get("exposures") or {}).values():
@@ -426,10 +195,7 @@ def load_exposure_targets(manifest_path: Path | str) -> set[str]:
 
 
 def load_semantic_model_targets(manifest_path: Path | str) -> set[str]:
-    """unique_ids of every model a ``semantic_models:`` entry is defined on (its ``depends_on.nodes``).
-
-    A model is "governed" — queryable through the semantic layer — iff it appears here.
-    """
+    """unique_ids of every model a ``semantic_models:`` entry is defined on (its ``depends_on.nodes``)."""
     data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     targets: set[str] = set()
     for sm in (data.get("semantic_models") or {}).values():
@@ -453,8 +219,14 @@ def _inbound_suggestions(nf: NodeFacts | None) -> list[str]:
     return out
 
 
-def _missing_artifacts(uid: str, classification: str, resource_type: str, facts: dict[str, NodeFacts] | None,
-                       exposures: set[str] | None, semantic: set[str] | None) -> tuple[list[str], list[str]]:
+def _missing_artifacts(
+    uid: str,
+    classification: str,
+    resource_type: str,
+    facts: dict[str, NodeFacts] | None,
+    exposures: set[str] | None,
+    semantic: set[str] | None,
+) -> tuple[list[str], list[str]]:
     """(required, missing) artifacts for a boundary node. With no facts, nothing is required
     (preserves the legacy ≥1-test-only gate for callers that don't pass the extra context)."""
     required = required_artifacts(classification, resource_type)
@@ -524,7 +296,9 @@ def cmd_check(args) -> int:
     facts = {n.unique_id: n for n in load_node_facts(args.manifest)}
     return render_from_args(
         evaluate_system_boundaries(
-            graph, named_selectors, node_facts=facts,
+            graph,
+            named_selectors,
+            node_facts=facts,
             exposure_targets=load_exposure_targets(args.manifest),
             semantic_model_targets=load_semantic_model_targets(args.manifest),
         ),
@@ -533,11 +307,6 @@ def cmd_check(args) -> int:
 
 
 # ─── products generate / serve: the interactive sdag viewer ──────────────────
-#
-# The visualisation half: render the full lineage with the data products overlaid as compound boxes
-# (full graph) and as collapsed super-nodes (super graph), then serve the static bundle. Membership
-# uses the RAW resolve_members (no data-node intersection) so the viewer shows tests / sources /
-# semantic models too; the heavy lifting lives in viewer.py.
 
 
 def _build_viewer_graphs(args) -> tuple[dict, dict, str]:

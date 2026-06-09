@@ -50,9 +50,9 @@ def review_response_format() -> dict[str, Any]:
     from the catalogue so the LLM's allowed rule codes can NEVER drift from the SSoT — the core
     no-drift invariant of ADR-0005 (previously enforced only inside the review action)."""
     schema = json.loads(json.dumps(load_review_schema()))  # deep copy before mutating
-    (schema["properties"]["models"]["items"]["properties"]["findings"]["items"]["properties"]["rule_code"][
-        "enum"
-    ]) = rule_codes()
+    (
+        schema["properties"]["models"]["items"]["properties"]["findings"]["items"]["properties"]["rule_code"]["enum"]
+    ) = rule_codes()
     for k in ("$schema", "title", "description"):
         schema.pop(k, None)
     return {"type": "json_schema", "json_schema": {"name": "testing_taxonomy_review", "strict": True, "schema": schema}}

@@ -3,7 +3,7 @@ from pathlib import Path
 
 # Local
 from adaf.commands.sqlfluff import FORMAT_RULES, SqlfluffReport, _command, run
-from adaf.toollog import ToolLog
+from adaf.utils.toollog import ToolLog
 
 
 def test_command_mapping_lint_check_and_fix():

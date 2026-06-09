@@ -2,7 +2,7 @@
 from pathlib import Path
 
 # Local
-from adaf.toollog import ToolLog, run_tool
+from adaf.utils.toollog import ToolLog, run_tool
 
 
 def test_run_tool_captures_success(tmp_path: Path):

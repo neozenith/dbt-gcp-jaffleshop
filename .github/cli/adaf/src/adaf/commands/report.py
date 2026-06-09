@@ -153,9 +153,13 @@ def _reconcile_rows(n: NodeFacts, suppressions: Suppressions, llm: dict[str, str
         llm_v = llm.get(code)
         assessment = _flag(det_token, llm_v)
         r = next((v for k, v in rank.items() if assessment.startswith(k)), 9)
-        det_cell = _det_display(det_token, rule) + (f" — {evidence}" if evidence and det_token in ("gap", "pass") else "")
+        det_cell = _det_display(det_token, rule) + (
+            f" — {evidence}" if evidence and det_token in ("gap", "pass") else ""
+        )
         llm_cell = llm_v or "_(not emitted)_"
-        rows.append((r, f"| {_rule(code)} | {'/'.join(rule.get('dama', []))} | {det_cell} | {llm_cell} | {assessment} |"))
+        rows.append(
+            (r, f"| {_rule(code)} | {'/'.join(rule.get('dama', []))} | {det_cell} | {llm_cell} | {assessment} |")
+        )
     return sorted(rows, key=lambda t: (t[0], t[1]))
 
 
@@ -276,7 +280,9 @@ def _decisions(recs: list[_Record]) -> list[str]:
 
     if by["supp"]:
         out += ["### 🟡 Suppressed but LLM-flagged", ""]
-        out += [f"- `{r[0].name}` · `{r[1]}` — suppressed in `adaf.yml`, but the LLM still raised it." for r in by["supp"]]
+        out += [
+            f"- `{r[0].name}` · `{r[1]}` — suppressed in `adaf.yml`, but the LLM still raised it." for r in by["supp"]
+        ]
         out.append("")
     return out
 
@@ -294,7 +300,12 @@ def _status_badges(n: NodeFacts, suppressions: Suppressions) -> str:
 
 
 def _model_block(n: NodeFacts, suppressions: Suppressions, llm_idx: dict[str, dict[str, str]] | None) -> list[str]:
-    out = [f"### `{n.name}` · {n.resource_type}" + (f" · `{n.layer}`" if n.layer else ""), "", _status_badges(n, suppressions), ""]
+    out = [
+        f"### `{n.name}` · {n.resource_type}" + (f" · `{n.layer}`" if n.layer else ""),
+        "",
+        _status_badges(n, suppressions),
+        "",
+    ]
 
     gaps = [_rule(code) for code in DETECTORS if _det_verdict(n, code, suppressions)[0] == "gap"]
     if gaps:
@@ -324,8 +335,10 @@ def _model_block(n: NodeFacts, suppressions: Suppressions, llm_idx: dict[str, di
         det, ev = _det_verdict(n, code, suppressions)
         if det == "suppressed":
             ev = f"{ev} — suppressed: {suppressions.reason_for(code, n.original_file_path)}"
-        out.append(f"| {_rule(code)} | {'no' if det == 'n/a' else 'yes'} | {_det_display(det, get_rule(code) or {})} "
-                   f"| {ev or '—'} | `{DETECTORS[code].__name__}` |")
+        out.append(
+            f"| {_rule(code)} | {'no' if det == 'n/a' else 'yes'} | {_det_display(det, get_rule(code) or {})} "
+            f"| {ev or '—'} | `{DETECTORS[code].__name__}` |"
+        )
     if llm_idx is not None:
         out += [
             "",

@@ -45,10 +45,7 @@ class Manifest:
         for uid, node in nodes.items():
             if node.get("resource_type") != "model":
                 continue
-            columns = {
-                name: (col.get("description") or "")
-                for name, col in (node.get("columns") or {}).items()
-            }
+            columns = {name: (col.get("description") or "") for name, col in (node.get("columns") or {}).items()}
             models[uid] = ModelDoc(
                 unique_id=uid,
                 name=node.get("name", ""),

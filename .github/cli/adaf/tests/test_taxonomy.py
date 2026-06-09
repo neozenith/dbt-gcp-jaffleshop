@@ -24,9 +24,15 @@ from adaf.taxonomy import (
 
 def _model(name, layer, columns, contract=False, tests=None) -> NodeFacts:
     return NodeFacts(
-        unique_id=f"model.p.{name}", name=name, resource_type="model",
-        original_file_path=f"models/{layer}/{name}.sql", layer=layer, columns=columns,
-        contract_enforced=contract, has_freshness=False, tests=tests or [],
+        unique_id=f"model.p.{name}",
+        name=name,
+        resource_type="model",
+        original_file_path=f"models/{layer}/{name}.sql",
+        layer=layer,
+        columns=columns,
+        contract_enforced=contract,
+        has_freshness=False,
+        tests=tests or [],
     )
 
 
@@ -35,14 +41,18 @@ def _model(name, layer, columns, contract=False, tests=None) -> NodeFacts:
 
 def test_source_freshness_empty_structure_is_not_a_sla() -> None:
     # dbt always writes this empty shape when no freshness is configured.
-    node = {"loaded_at_field": "ts", "freshness": {"warn_after": {"count": None, "period": None},
-                                                   "error_after": {"count": None, "period": None}}}
+    node = {
+        "loaded_at_field": "ts",
+        "freshness": {"warn_after": {"count": None, "period": None}, "error_after": {"count": None, "period": None}},
+    }
     assert _source_has_freshness(node) is False
 
 
 def test_source_freshness_real_sla_is_detected() -> None:
-    node = {"loaded_at_field": "ts", "freshness": {"warn_after": {"count": 24, "period": "hour"},
-                                                   "error_after": {"count": None}}}
+    node = {
+        "loaded_at_field": "ts",
+        "freshness": {"warn_after": {"count": 24, "period": "hour"}, "error_after": {"count": None}},
+    }
     assert _source_has_freshness(node) is True
 
 
@@ -55,7 +65,9 @@ def test_source_freshness_requires_loaded_at_field() -> None:
 
 
 def test_md01_present_with_grain_test_and_missing_without() -> None:
-    with_grain = _model("orders", "marts", ["order_id"], tests=[AttachedTest("unique_combination_of_columns", "dbt_utils", None)])
+    with_grain = _model(
+        "orders", "marts", ["order_id"], tests=[AttachedTest("unique_combination_of_columns", "dbt_utils", None)]
+    )
     without = _model("products", "marts", ["product_id"])
     assert _detect_md01(with_grain)[0] == PRESENT
     assert _detect_md01(without)[0] == MISSING
@@ -75,16 +87,21 @@ def test_md02_only_flags_marts_without_a_contract() -> None:
 
 
 def test_en01_pk_needs_unique_and_not_null() -> None:
-    good = _model("customers", "marts", ["customer_id"],
-                  tests=[AttachedTest("unique", None, "customer_id"), AttachedTest("not_null", None, "customer_id")])
+    good = _model(
+        "customers",
+        "marts",
+        ["customer_id"],
+        tests=[AttachedTest("unique", None, "customer_id"), AttachedTest("not_null", None, "customer_id")],
+    )
     bad = _model("customers", "marts", ["customer_id"], tests=[AttachedTest("unique", None, "customer_id")])
     assert _detect_en01(good)[0] == PRESENT
     assert _detect_en01(bad)[0] == MISSING and "not_null" in _detect_en01(bad)[1]
 
 
 def test_en03_flags_fk_without_relationships() -> None:
-    n = _model("order_items", "marts", ["order_item_id", "order_id"],
-               tests=[AttachedTest("unique", None, "order_item_id")])  # order_id (FK) has no relationships test
+    n = _model(
+        "order_items", "marts", ["order_item_id", "order_id"], tests=[AttachedTest("unique", None, "order_item_id")]
+    )  # order_id (FK) has no relationships test
     status, detail = _detect_en03(n)
     assert status == MISSING and "order_id" in detail
 
@@ -95,17 +112,29 @@ def test_en03_flags_fk_without_relationships() -> None:
 def test_node_facts_from_manifest_attributes_tests() -> None:
     manifest = {
         "nodes": {
-            "model.p.orders": {"resource_type": "model", "name": "orders",
-                               "original_file_path": "models/marts/orders.sql",
-                               "columns": {"order_id": {}}, "contract": {"enforced": True}},
-            "test.p.u": {"resource_type": "test", "column_name": "order_id",
-                         "test_metadata": {"name": "unique", "kwargs": {"column_name": "order_id"}},
-                         "depends_on": {"nodes": ["model.p.orders"]}},
+            "model.p.orders": {
+                "resource_type": "model",
+                "name": "orders",
+                "original_file_path": "models/marts/orders.sql",
+                "columns": {"order_id": {}},
+                "contract": {"enforced": True},
+            },
+            "test.p.u": {
+                "resource_type": "test",
+                "column_name": "order_id",
+                "test_metadata": {"name": "unique", "kwargs": {"column_name": "order_id"}},
+                "depends_on": {"nodes": ["model.p.orders"]},
+            },
         },
         "sources": {
-            "source.p.raw.raw_orders": {"resource_type": "source", "name": "raw_orders",
-                                        "original_file_path": "models/staging/__sources.yml",
-                                        "columns": {}, "loaded_at_field": None, "freshness": {}},
+            "source.p.raw.raw_orders": {
+                "resource_type": "source",
+                "name": "raw_orders",
+                "original_file_path": "models/staging/__sources.yml",
+                "columns": {},
+                "loaded_at_field": None,
+                "freshness": {},
+            },
         },
     }
     facts = {f.name: f for f in node_facts_from_manifest(manifest)}

@@ -6,79 +6,25 @@ SQLFluff splits the concern into two tools, which map onto our two subcommands:
 * **format** — the opinionated layout+keyword-case subset that ``sqlfluff format`` can
   auto-fix.        check → ``sqlfluff lint --rules <subset>``;  ``--fix`` → ``sqlfluff format``.
 
-In check mode SQLFluff's exit code IS the signal (non-zero = violations). The full
-violation detail — and, after ``--fix``, the "lint for unfixable violations" section listing
-what must be fixed by hand — is captured in the report's ToolLog and printed on failure.
+In check mode SQLFluff's exit code IS the signal (non-zero = violations). The full violation detail
+is captured in the report's ToolLog. The result dataclass lives in ``adaf.reports.sqlfluff``.
 """
 
 # Standard Library
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
 
 # Local
-from adaf import config, style
-from adaf.toollog import ToolLog, run_tool
+from adaf import config
+from adaf.reports.sqlfluff import SqlfluffReport
+from adaf.utils.toollog import run_tool
 
 log = logging.getLogger(__name__)
 
-INFO = logging.INFO
-ERROR = logging.ERROR
+__all__ = ["SqlfluffReport", "FORMAT_RULES", "run"]
 
-# The layout + keyword-case rules `sqlfluff format` is able to auto-fix — the formatter's
-# remit, kept identical to the Makefile's old `format-check` target.
+# The layout + keyword-case rules `sqlfluff format` is able to auto-fix — the formatter's remit.
 FORMAT_RULES = "layout,capitalisation.keywords"
-
-_SUMMARY = {
-    ("lint", "check"): ("lint clean", "lint violations found"),
-    ("lint", "fix"): ("lint auto-fixes applied", "unfixable lint violations remain"),
-    ("format", "check"): ("formatting clean", "formatting drift found (run with --fix)"),
-    ("format", "fix"): ("formatting applied", "formatter errored"),
-}
-
-
-@dataclass
-class SqlfluffReport:
-    name: str  # "lint" or "format"
-    mode: str  # "check" or "fix"
-    scope: str
-    targets: list[str]
-    returncode: int
-    logs: list[ToolLog] = field(default_factory=list)
-    skipped: bool = False
-
-    @property
-    def ok(self) -> bool:
-        return self.skipped or self.returncode == 0
-
-    def summary(self) -> str:
-        if self.skipped:
-            return "no models"
-        ok_msg, fail_msg = _SUMMARY[(self.name, self.mode)]
-        return ok_msg if self.ok else fail_msg
-
-    def to_dict(self) -> dict:
-        return {
-            "check": self.name,
-            "ok": self.ok,
-            "mode": self.mode,
-            "scope": self.scope,
-            "targets": self.targets,
-            "returncode": self.returncode,
-            "skipped": self.skipped,
-            "logs": [tool_log.to_dict() for tool_log in self.logs],
-        }
-
-    def human_lines(self, *, show_passes: bool = False) -> list[tuple[int, str]]:
-        label = style.section(self.name)
-        verb = "fix" if self.mode == "fix" else "check"
-        if self.skipped:
-            return [(INFO, f"{label}  {style.dim(f'no models to {verb} — nothing to do.')}")]
-        ok_msg, fail_msg = _SUMMARY[(self.name, self.mode)]
-        suffix = style.dim(f" ({self.mode}, {len(self.targets)} model(s))")
-        if self.ok:
-            return [(INFO, f"{label}  {style.passed(ok_msg)}{suffix}")]
-        return [(ERROR, f"{label}  {style.failed(fail_msg + ' — see tool logs')}{suffix}")]
 
 
 def _command(name: str, mode: str, targets: list[str]) -> list[str]:

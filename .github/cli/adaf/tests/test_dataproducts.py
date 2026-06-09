@@ -271,8 +271,16 @@ from adaf.taxonomy import AttachedTest, NodeFacts  # noqa: E402
 
 
 def _facts(**over):
-    base = dict(unique_id="x", name="x", resource_type="model", original_file_path="", layer="marts",
-                columns=[], contract_enforced=False, has_freshness=False)
+    base = dict(
+        unique_id="x",
+        name="x",
+        resource_type="model",
+        original_file_path="",
+        layer="marts",
+        columns=[],
+        contract_enforced=False,
+        has_freshness=False,
+    )
     base.update(over)
     return NodeFacts(**base)
 
@@ -311,8 +319,17 @@ def test_missing_artifacts_without_facts_is_legacy_no_requirements():
 
 
 def test_inbound_suggestions_recommend_key_tests_on_untested_source_keys():
-    src = NodeFacts("s", "raw_orders", "source", "", "", ["order_id", "amount"], False, False,
-                    tests=[AttachedTest("unique", None, "order_id")])  # order_id has unique but not not_null
+    src = NodeFacts(
+        "s",
+        "raw_orders",
+        "source",
+        "",
+        "",
+        ["order_id", "amount"],
+        False,
+        False,
+        tests=[AttachedTest("unique", None, "order_id")],
+    )  # order_id has unique but not not_null
     sugg = _inbound_suggestions(src)
     assert any("order_id" in s and "not_null" in s for s in sugg)
 
@@ -323,14 +340,25 @@ def test_inbound_suggestions_apply_to_entry_point_models_too():
 
 
 def test_inbound_suggestions_empty_for_well_tested_nodes():
-    fully = NodeFacts("s", "raw", "source", "", "", ["k_id"], False, has_freshness=True,
-                      tests=[AttachedTest("unique", None, "k_id"), AttachedTest("not_null", None, "k_id")])
+    fully = NodeFacts(
+        "s",
+        "raw",
+        "source",
+        "",
+        "",
+        ["k_id"],
+        False,
+        has_freshness=True,
+        tests=[AttachedTest("unique", None, "k_id"), AttachedTest("not_null", None, "k_id")],
+    )
     no_keys = _facts(resource_type="model", columns=["amount", "name"])
     assert _inbound_suggestions(fully) == [] and _inbound_suggestions(no_keys) == []
 
 
 def test_boundary_row_ok_requires_tests_and_artifacts():
     untested = BoundaryTestRow("p", "m", "m", "model", "outbound", 0, required=["contract"], missing=["contract"])
-    tested_but_missing = BoundaryTestRow("p", "m", "m", "model", "outbound", 3, required=["contract"], missing=["contract"])
+    tested_but_missing = BoundaryTestRow(
+        "p", "m", "m", "model", "outbound", 3, required=["contract"], missing=["contract"]
+    )
     satisfied = BoundaryTestRow("p", "m", "m", "model", "outbound", 3, required=["contract"], missing=[])
     assert untested.ok is False and tested_but_missing.ok is False and satisfied.ok is True

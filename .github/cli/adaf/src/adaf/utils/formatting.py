@@ -20,7 +20,7 @@ import logging
 import sys
 
 # Local
-from adaf import style
+from adaf.utils import style
 
 log = logging.getLogger(__name__)
 
