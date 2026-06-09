@@ -266,8 +266,8 @@ def test_gate_error_state_fails_and_renders_without_crashing():
 
 # ─── extended boundary artifacts (freshness / contract / exposure per class) ──
 
-from adaf.commands.dataproducts import _missing_artifacts, required_artifacts  # noqa: E402
-from adaf.taxonomy import NodeFacts  # noqa: E402
+from adaf.commands.dataproducts import _inbound_suggestions, _missing_artifacts, required_artifacts  # noqa: E402
+from adaf.taxonomy import AttachedTest, NodeFacts  # noqa: E402
 
 
 def _facts(**over):
@@ -279,35 +279,54 @@ def _facts(**over):
 
 def test_required_artifacts_per_class():
     assert required_artifacts("inbound", "source") == ["freshness"]
-    assert required_artifacts("outbound", "model") == ["contract", "exposure"]
-    assert required_artifacts("both", "model") == ["contract", "exposure"]
+    assert required_artifacts("outbound", "model") == ["contract", "exposure", "semantic_model"]
+    assert required_artifacts("both", "model") == ["contract", "exposure", "semantic_model"]
     assert required_artifacts("inbound", "model") == []  # inbound models owe no extra artifact
     assert required_artifacts("internal", "model") == []
 
 
-def test_missing_artifacts_outbound_model_needs_contract_and_exposure():
+def test_missing_artifacts_outbound_model_needs_contract_exposure_semantic():
     facts = {"m": _facts(unique_id="m", contract_enforced=False)}
-    required, missing = _missing_artifacts("m", "outbound", "model", facts, exposures=set())
-    assert required == ["contract", "exposure"]
-    assert set(missing) == {"contract", "exposure"}
+    required, missing = _missing_artifacts("m", "outbound", "model", facts, exposures=set(), semantic=set())
+    assert required == ["contract", "exposure", "semantic_model"]
+    assert set(missing) == {"contract", "exposure", "semantic_model"}
 
 
-def test_missing_artifacts_satisfied_when_contract_and_exposure_present():
+def test_missing_artifacts_satisfied_when_all_three_present():
     facts = {"m": _facts(unique_id="m", contract_enforced=True)}
-    _, missing = _missing_artifacts("m", "outbound", "model", facts, exposures={"m"})
+    _, missing = _missing_artifacts("m", "outbound", "model", facts, exposures={"m"}, semantic={"m"})
     assert missing == []
 
 
 def test_missing_artifacts_inbound_source_needs_freshness():
     facts = {"s": _facts(unique_id="s", resource_type="source", has_freshness=False)}
-    _, missing = _missing_artifacts("s", "inbound", "source", facts, exposures=set())
+    _, missing = _missing_artifacts("s", "inbound", "source", facts, exposures=set(), semantic=set())
     assert missing == ["freshness"]
 
 
 def test_missing_artifacts_without_facts_is_legacy_no_requirements():
     # The no-facts path (used by the existing unit suite) requires nothing — only the ≥1-test gate.
-    required, missing = _missing_artifacts("m", "outbound", "model", None, None)
+    required, missing = _missing_artifacts("m", "outbound", "model", None, None, None)
     assert required == [] and missing == []
+
+
+def test_inbound_suggestions_recommend_key_tests_on_untested_source_keys():
+    src = NodeFacts("s", "raw_orders", "source", "", "", ["order_id", "amount"], False, False,
+                    tests=[AttachedTest("unique", None, "order_id")])  # order_id has unique but not not_null
+    sugg = _inbound_suggestions(src)
+    assert any("order_id" in s and "not_null" in s for s in sugg)
+
+
+def test_inbound_suggestions_apply_to_entry_point_models_too():
+    model = NodeFacts("m", "stg_orders", "model", "", "staging", ["order_id"], False, False, tests=[])
+    assert any("order_id" in s for s in _inbound_suggestions(model))  # untested key on an inbound model
+
+
+def test_inbound_suggestions_empty_for_well_tested_nodes():
+    fully = NodeFacts("s", "raw", "source", "", "", ["k_id"], False, has_freshness=True,
+                      tests=[AttachedTest("unique", None, "k_id"), AttachedTest("not_null", None, "k_id")])
+    no_keys = _facts(resource_type="model", columns=["amount", "name"])
+    assert _inbound_suggestions(fully) == [] and _inbound_suggestions(no_keys) == []
 
 
 def test_boundary_row_ok_requires_tests_and_artifacts():

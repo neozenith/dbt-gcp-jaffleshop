@@ -303,23 +303,25 @@ def cmd(args) -> int:
 
 
 # Per-class artifact requirements at a product's system boundary, beyond the ≥1-test baseline.
-# Maps the catalogue's boundary_class intent to enforceable artifacts (TM-AU-01 / MD-02 + exposure):
-#   inbound source  → a freshness SLA (you don't own it; prove it's arriving on time)
-#   outbound model  → an enforced contract AND an exposure (a published edge must declare its shape
-#                     and name its consumer)
-# A `both`-class node owes the union. Inbound models and outbound sources have no extra artifact.
+# A published OUTBOUND model is a contract with downstream consumers, so it must declare its full
+# dbt-native interface; an INBOUND source is data you don't own, so prove it's arriving on time.
+#   outbound model  → enforced contract + a dbt exposure naming the consumer + a semantic_model
+#                     (the governed, queryable definition of its measures/dimensions)
+#   inbound source  → a freshness SLA  (and we additionally SUGGEST good tests — see _inbound_suggestions)
+# A `both`-class node owes the union. Inbound models / outbound sources have no extra HARD artifact.
 def required_artifacts(classification: str, resource_type: str) -> list[str]:
     req: list[str] = []
     if classification in ("inbound", "both") and resource_type == "source":
         req.append("freshness")
     if classification in ("outbound", "both") and resource_type == "model":
-        req += ["contract", "exposure"]
+        req += ["contract", "exposure", "semantic_model"]
     return req
 
 
 @dataclass
 class BoundaryTestRow:
-    """One boundary node of a data product: its test count, plus the per-class artifacts it owes."""
+    """One boundary node of a data product: its test count, the per-class artifacts it owes, and any
+    deterministic test suggestions (advisory — for inbound nodes)."""
 
     product: str
     unique_id: str
@@ -329,6 +331,7 @@ class BoundaryTestRow:
     test_count: int
     required: list[str] = field(default_factory=list)  # artifacts this boundary class owes
     missing: list[str] = field(default_factory=list)  # required artifacts that are absent
+    suggestions: list[str] = field(default_factory=list)  # advisory deterministic test recommendations
 
     @property
     def ok(self) -> bool:
@@ -380,8 +383,9 @@ class SystemBoundaryReport:
         else:
             bad = sum(1 for r in self.rows if not r.ok)
             lines = [(ERROR, f"{label}  {style.failed(f'{bad} boundary node(s) under-protected')}")]
-        # Group rows by product so each product's at-risk edge is clear.
-        shown = self.rows if show_passes else [r for r in self.rows if not r.ok]
+        # Group rows by product so each product's at-risk edge is clear. Failing rows always show;
+        # passing rows that carry advisory suggestions show too (the suggestions are the point).
+        shown = self.rows if show_passes else [r for r in self.rows if not r.ok or r.suggestions]
         for product in dict.fromkeys(r.product for r in self.rows):  # stable, definition order
             product_rows = [r for r in shown if r.product == product]
             if not product_rows:
@@ -399,6 +403,8 @@ class SystemBoundaryReport:
                     if r.missing:
                         gaps.append("missing " + ", ".join(r.missing))
                     lines.append((ERROR, style.fail_item(f"{desc} — {'; '.join(gaps)}{req}")))
+                for sug in r.suggestions:  # advisory, deterministic test recommendations
+                    lines.append((INFO, f"      {style.dim(f'↳ suggest: {sug}')}"))
         return lines
 
 
@@ -419,9 +425,37 @@ def load_exposure_targets(manifest_path: Path | str) -> set[str]:
     return targets
 
 
-def _missing_artifacts(uid: str, classification: str, resource_type: str,
-                       facts: dict[str, NodeFacts] | None, exposures: set[str] | None) -> tuple[list[str], list[str]]:
-    """(required, missing) artifacts for a boundary node. With no facts/exposures, nothing is required
+def load_semantic_model_targets(manifest_path: Path | str) -> set[str]:
+    """unique_ids of every model a ``semantic_models:`` entry is defined on (its ``depends_on.nodes``).
+
+    A model is "governed" — queryable through the semantic layer — iff it appears here.
+    """
+    data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    targets: set[str] = set()
+    for sm in (data.get("semantic_models") or {}).values():
+        targets.update((sm.get("depends_on") or {}).get("nodes", []))
+    return targets
+
+
+def _inbound_suggestions(nf: NodeFacts | None) -> list[str]:
+    """Deterministic, advisory test recommendations for an inbound boundary node (source OR the
+    product's entry-point model), derived from its columns + tests. Not gated — guidance for hardening
+    the data the product depends on: key columns at an entry point should carry unique + not_null."""
+    if nf is None:
+        return []
+    out: list[str] = []
+    for col in nf.id_columns():
+        want = [t for t in ("unique", "not_null") if t not in nf.tests_on(col)]
+        if want:
+            out.append(f"add {', '.join(want)} on key `{col}`")
+    if nf.resource_type == "source" and not nf.has_freshness:
+        out.append("declare a freshness SLA (loaded_at_field + warn_after/error_after)")
+    return out
+
+
+def _missing_artifacts(uid: str, classification: str, resource_type: str, facts: dict[str, NodeFacts] | None,
+                       exposures: set[str] | None, semantic: set[str] | None) -> tuple[list[str], list[str]]:
+    """(required, missing) artifacts for a boundary node. With no facts, nothing is required
     (preserves the legacy ≥1-test-only gate for callers that don't pass the extra context)."""
     required = required_artifacts(classification, resource_type)
     if not required or facts is None:
@@ -435,6 +469,8 @@ def _missing_artifacts(uid: str, classification: str, resource_type: str,
             missing.append(art)
         elif art == "exposure" and uid not in (exposures or set()):
             missing.append(art)
+        elif art == "semantic_model" and uid not in (semantic or set()):
+            missing.append(art)
     return required, missing
 
 
@@ -444,10 +480,12 @@ def evaluate_system_boundaries(
     *,
     node_facts: dict[str, NodeFacts] | None = None,
     exposure_targets: set[str] | None = None,
+    semantic_model_targets: set[str] | None = None,
 ) -> SystemBoundaryReport:
-    """Classify each product's nodes; emit a row per BOUNDARY node with its test count and the
-    per-class artifacts it owes (freshness / contract / exposure). When ``node_facts`` is omitted the
-    gate degrades to the legacy ≥1-test check (used by the existing unit tests)."""
+    """Classify each product's nodes; emit a row per BOUNDARY node with its test count, the per-class
+    artifacts it owes (outbound: contract/exposure/semantic_model; inbound: freshness), and advisory
+    test suggestions for inbound nodes. When ``node_facts`` is omitted the gate degrades to the legacy
+    ≥1-test check (used by the existing unit tests)."""
     data_nodes = set(graph.nodes())
     rows: list[BoundaryTestRow] = []
     for name, _description in named_selectors:
@@ -458,7 +496,12 @@ def evaluate_system_boundaries(
                 continue  # internal nodes are interior to the product — not gated
             info = graph.info(uid)
             resource_type = info.resource_type if info else "?"
-            required, missing = _missing_artifacts(uid, nb.classification, resource_type, node_facts, exposure_targets)
+            required, missing = _missing_artifacts(
+                uid, nb.classification, resource_type, node_facts, exposure_targets, semantic_model_targets
+            )
+            suggestions = (
+                _inbound_suggestions((node_facts or {}).get(uid)) if nb.classification in ("inbound", "both") else []
+            )
             rows.append(
                 BoundaryTestRow(
                     product=name,
@@ -469,6 +512,7 @@ def evaluate_system_boundaries(
                     test_count=info.test_count if info else 0,
                     required=required,
                     missing=missing,
+                    suggestions=suggestions,
                 )
             )
     scope = f"system boundaries of {len(named_selectors)} data product(s)"
@@ -478,9 +522,13 @@ def evaluate_system_boundaries(
 def cmd_check(args) -> int:
     graph, named_selectors = _select_named(args)
     facts = {n.unique_id: n for n in load_node_facts(args.manifest)}
-    exposures = load_exposure_targets(args.manifest)
     return render_from_args(
-        evaluate_system_boundaries(graph, named_selectors, node_facts=facts, exposure_targets=exposures), args
+        evaluate_system_boundaries(
+            graph, named_selectors, node_facts=facts,
+            exposure_targets=load_exposure_targets(args.manifest),
+            semantic_model_targets=load_semantic_model_targets(args.manifest),
+        ),
+        args,
     )
 
 

@@ -71,9 +71,10 @@ def cmd_all(args) -> int:
         graph = Graph.load(args.manifest)
         named_selectors = dataproducts.load_selector_names(args.selectors)
         facts = {n.unique_id: n for n in load_node_facts(args.manifest)}
-        exposures = dataproducts.load_exposure_targets(args.manifest)
         sysbound_report = dataproducts.evaluate_system_boundaries(
-            graph, named_selectors, node_facts=facts, exposure_targets=exposures
+            graph, named_selectors, node_facts=facts,
+            exposure_targets=dataproducts.load_exposure_targets(args.manifest),
+            semantic_model_targets=dataproducts.load_semantic_model_targets(args.manifest),
         )
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
         sysbound_report = dataproducts.SystemBoundaryReport(scope="all data products", rows=[], error=str(exc))
