@@ -1,4 +1,4 @@
-# Pin the timezone semantics via contract
+# TM-SC-03 · Pin the timezone semantics via contract
 
 > **Rule:** TM-SC-03 · **Role:** time (event-time scalar) · **DAMA-UK6:** Validity · **Wang–Strong:** Believability + Interpretability · **Cost class:** free (compile-time)
 

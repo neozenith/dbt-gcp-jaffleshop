@@ -14,6 +14,7 @@ error) is caught and surfaced as a visible failing row rather than crashing the 
 import json
 import logging
 import sys
+from typing import Any
 
 # Local
 from adaf import config, selection, style
@@ -77,8 +78,8 @@ def cmd_all(args) -> int:
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
         sysbound_report = dataproducts.SystemBoundaryReport(scope="all data products", rows=[], error=str(exc))
 
-    reports = [dep_report, lint_report, format_report, docs_report, columns_report,
-               tests_report, taxonomy_report, sysbound_report]
+    reports: list[Any] = [dep_report, lint_report, format_report, docs_report, columns_report,
+                          tests_report, taxonomy_report, sysbound_report]
     ok = all(r.ok for r in reports)
 
     # Optional Markdown summary file (a PR-comment body). The full per-check detail stays in the

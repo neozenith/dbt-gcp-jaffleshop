@@ -1,4 +1,4 @@
-# Watch every column with automated monitors
+# MD-09 · Watch every column with automated monitors
 
 > **Rule:** MD-09 · **Role:** model-level · **DAMA-UK6:** Completeness + Accuracy · **Wang–Strong:** Completeness + Accuracy · **Cost class:** history-bound
 

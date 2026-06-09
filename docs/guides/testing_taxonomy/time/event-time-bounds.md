@@ -1,4 +1,4 @@
-# Bound event-time scalars: no future, no sentinels
+# TM-SC-01 · Bound event-time scalars: no future, no sentinels
 
 > **Rule:** TM-SC-01 · **Role:** time (event-time scalar) · **DAMA-UK6:** Validity · **Wang–Strong:** Believability · **Cost class:** cheap
 

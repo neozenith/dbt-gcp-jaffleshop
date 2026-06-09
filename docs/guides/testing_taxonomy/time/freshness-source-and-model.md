@@ -1,4 +1,4 @@
-# Assert freshness at source and at model
+# TM-AU-01 · Assert freshness at source and at model
 
 > **Rule:** TM-AU-01 · **Role:** time (system-time / audit) · **DAMA-UK6:** Timeliness · **Wang–Strong:** Timeliness · **Cost class:** cheap (filtered) / scan-bound (unfiltered)
 

@@ -1,4 +1,4 @@
-# Scope referential integrity around soft-deletes
+# EN-04 · Scope referential integrity around soft-deletes
 
 > **Rule:** EN-04 · **Role:** entity · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** scan-bound
 

@@ -1,4 +1,4 @@
-# Prove refactor parity with audit_helper
+# MD-04 · Prove refactor parity with audit_helper
 
 > **Rule:** MD-04 · **Role:** model-level · **DAMA-UK6:** Accuracy · **Wang–Strong:** Accuracy · **Cost class:** scan-bound
 

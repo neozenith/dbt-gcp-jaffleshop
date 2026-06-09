@@ -1,4 +1,4 @@
-# Ship a breaking change via versioning
+# MD-03 · Ship a breaking change via versioning
 
 > **Rule:** MD-03 · **Role:** model-level · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** free (declaration)
 

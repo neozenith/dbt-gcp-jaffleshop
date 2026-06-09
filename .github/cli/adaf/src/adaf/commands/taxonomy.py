@@ -12,7 +12,6 @@ is global hygiene and has no changed-file notion). ``--strict`` promotes warning
 import logging
 from argparse import Namespace
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import ClassVar
 
 from adaf import config, selection, style
@@ -195,7 +194,7 @@ def build_report(args: Namespace) -> TaxonomyReport:
     files = selection.resolve_model_files(sel)
     in_scope = {str(f) for f in files}
     manifest = config.under_root(args.manifest)
-    if not Path(manifest).exists():
+    if manifest is None or not manifest.exists():
         return TaxonomyReport(
             selection.describe(sel),
             [],
@@ -203,7 +202,7 @@ def build_report(args: Namespace) -> TaxonomyReport:
             error=f"dbt manifest not found at '{manifest}'. Run `dbt parse` or pass --parse.",
         )
     catalog = config.under_root(getattr(args, "catalog", None))
-    nodes = load_node_facts(manifest, catalog if catalog and Path(catalog).exists() else None)
+    nodes = load_node_facts(manifest, catalog if catalog and catalog.exists() else None)
     suppressions = Suppressions.load(config.PROJECT_ROOT)
     return evaluate(
         nodes, in_scope, strict=getattr(args, "strict", False), scope=selection.describe(sel), suppressions=suppressions

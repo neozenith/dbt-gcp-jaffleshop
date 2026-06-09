@@ -1,4 +1,4 @@
-# Pin a measure's numeric bounds
+# MS-01 · Pin a measure's numeric bounds
 
 > **Rule:** MS-01 · **Role:** measure · **DAMA-UK6:** Validity · **Wang–Strong:** Believability · **Cost class:** cheap
 

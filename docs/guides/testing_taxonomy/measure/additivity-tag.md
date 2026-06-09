@@ -1,4 +1,4 @@
-# Tag a measure's additivity and enforce it in the semantic layer
+# MS-02 · Tag a measure's additivity and enforce it in the semantic layer
 
 > **Rule:** MS-02 · **Role:** measure · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency + Interpretability · **Cost class:** free (declaration) + runtime (cross-grain reconciliation)
 

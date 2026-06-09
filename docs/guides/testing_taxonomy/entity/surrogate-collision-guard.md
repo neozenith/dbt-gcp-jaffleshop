@@ -1,4 +1,4 @@
-# Guard against surrogate-key hash collisions
+# EN-05 · Guard against surrogate-key hash collisions
 
 > **Rule:** EN-05 · **Role:** entity · **DAMA-UK6:** Uniqueness · **Wang–Strong:** Concise representation · **Cost class:** scan-bound
 

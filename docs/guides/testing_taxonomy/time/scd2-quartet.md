@@ -1,4 +1,4 @@
-# Apply the four tests every SCD2 dimension needs
+# TM-AU-02 · Apply the four tests every SCD2 dimension needs
 
 > **Rule:** TM-AU-02 · **Role:** time (system-time / audit) · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** scan-bound
 

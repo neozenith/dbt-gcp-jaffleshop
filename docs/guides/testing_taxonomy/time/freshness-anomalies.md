@@ -1,4 +1,4 @@
-# Detect freshness drift against a learned cadence
+# TM-AU-03 · Detect freshness drift against a learned cadence
 
 > **Rule:** TM-AU-03 · **Role:** time (system-time / audit) · **DAMA-UK6:** Timeliness · **Wang–Strong:** Timeliness · **Cost class:** history-bound
 

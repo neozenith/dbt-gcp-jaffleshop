@@ -1,4 +1,4 @@
-# Assert composite-key uniqueness (the grain test)
+# EN-02 · Assert composite-key uniqueness (the grain test)
 
 > **Rule:** EN-02 · **Role:** entity · **DAMA-UK6:** Uniqueness · **Wang–Strong:** Concise representation · **Cost class:** scan-bound
 

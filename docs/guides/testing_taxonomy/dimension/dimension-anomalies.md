@@ -1,4 +1,4 @@
-# Detect anomalies per dimension value
+# DM-05 · Detect anomalies per dimension value
 
 > **Rule:** DM-05 · **Role:** dimension · **DAMA-UK6:** Accuracy + Timeliness · **Wang–Strong:** Accuracy + Timeliness · **Cost class:** history-bound
 

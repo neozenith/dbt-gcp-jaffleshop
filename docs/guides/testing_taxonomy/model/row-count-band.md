@@ -1,4 +1,4 @@
-# Bound the model's row count
+# MD-06 · Bound the model's row count
 
 > **Rule:** MD-06 · **Role:** model-level · **DAMA-UK6:** Accuracy + Completeness · **Wang–Strong:** Accuracy + Completeness · **Cost class:** cheap
 

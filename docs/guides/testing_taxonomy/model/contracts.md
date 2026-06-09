@@ -1,4 +1,4 @@
-# Lock the model's schema shape via contract
+# MD-02 · Lock the model's schema shape via contract
 
 > **Rule:** MD-02 · **Role:** model-level · **DAMA-UK6:** Validity · **Wang–Strong:** Believability + Representational consistency · **Cost class:** free (compile-time)
 

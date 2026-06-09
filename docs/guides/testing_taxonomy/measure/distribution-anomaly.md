@@ -1,4 +1,4 @@
-# Detect distribution drift in a measure column
+# MS-05 · Detect distribution drift in a measure column
 
 > **Rule:** MS-05 · **Role:** measure · **DAMA-UK6:** Accuracy · **Wang–Strong:** Accuracy · **Cost class:** history-bound
 

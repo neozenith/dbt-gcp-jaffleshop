@@ -1,4 +1,4 @@
-# Detect volume anomalies with a learned band
+# MD-07 · Detect volume anomalies with a learned band
 
 > **Rule:** MD-07 · **Role:** model-level · **DAMA-UK6:** Accuracy + Timeliness · **Wang–Strong:** Accuracy + Timeliness · **Cost class:** history-bound
 

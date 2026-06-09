@@ -1,4 +1,4 @@
-# Assert causality on paired timestamps
+# TM-SC-02 · Assert causality on paired timestamps
 
 > **Rule:** TM-SC-02 · **Role:** time (event-time scalar pair) · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** cheap
 

@@ -1,4 +1,4 @@
-# Assert single-column uniqueness and non-null
+# EN-01 · Assert single-column uniqueness and non-null
 
 > **Rule:** EN-01 · **Role:** entity · **DAMA-UK6:** Uniqueness + Completeness · **Wang–Strong:** Concise representation + Completeness · **Cost class:** cheap (scan-bound only if unscoped)
 

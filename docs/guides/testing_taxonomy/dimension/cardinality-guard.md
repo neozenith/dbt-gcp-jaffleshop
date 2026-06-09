@@ -1,4 +1,4 @@
-# Guard a dimension's cardinality with a bounded count
+# DM-02 · Guard a dimension's cardinality with a bounded count
 
 > **Rule:** DM-02 · **Role:** dimension · **DAMA-UK6:** Validity + Accuracy · **Wang–Strong:** Believability + Accuracy · **Cost class:** cheap
 

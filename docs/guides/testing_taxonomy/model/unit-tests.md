@@ -1,4 +1,4 @@
-# Test branching SQL logic with unit tests
+# MD-05 · Test branching SQL logic with unit tests
 
 > **Rule:** MD-05 · **Role:** model-level · **DAMA-UK6:** Accuracy · **Wang–Strong:** Accuracy · **Cost class:** free (no warehouse scan)
 

@@ -1,4 +1,4 @@
-# Pair every amount column with a currency column
+# MS-03 · Pair every amount column with a currency column
 
 > **Rule:** MS-03 · **Role:** measure · **DAMA-UK6:** Validity + Accuracy · **Wang–Strong:** Believability + Accuracy · **Cost class:** free (contract) + cheap (test)
 

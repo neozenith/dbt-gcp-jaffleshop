@@ -1,4 +1,4 @@
-# Detect schema drift on sources you don't own
+# MD-08 · Detect schema drift on sources you don't own
 
 > **Rule:** MD-08 · **Role:** model-level · **DAMA-UK6:** Validity · **Wang–Strong:** Believability · **Cost class:** history-bound
 

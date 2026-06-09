@@ -1,4 +1,4 @@
-# Assert an enum contract on a categorical dimension
+# DM-01 · Assert an enum contract on a categorical dimension
 
 > **Rule:** DM-01 · **Role:** dimension · **DAMA-UK6:** Validity · **Wang–Strong:** Believability + Interpretability · **Cost class:** cheap
 

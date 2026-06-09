@@ -1,4 +1,4 @@
-# Assert referential integrity on foreign keys
+# EN-03 · Assert referential integrity on foreign keys
 
 > **Rule:** EN-03 · **Role:** entity · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** scan-bound
 

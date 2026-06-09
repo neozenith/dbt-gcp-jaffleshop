@@ -1,4 +1,4 @@
-# Validate a JSON column against an expected shape
+# MD-10 · Validate a JSON column against an expected shape
 
 > **Rule:** MD-10 · **Role:** model-level · **DAMA-UK6:** Validity · **Wang–Strong:** Believability + Interpretability · **Cost class:** cheap
 

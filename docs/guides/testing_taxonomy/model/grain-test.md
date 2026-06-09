@@ -1,4 +1,4 @@
-# The one test every model must have: the grain test
+# MD-01 · The one test every model must have: the grain test
 
 > **Rule:** MD-01 · **Role:** model-level · **DAMA-UK6:** Uniqueness · **Wang–Strong:** Concise representation · **Cost class:** scan-bound
 

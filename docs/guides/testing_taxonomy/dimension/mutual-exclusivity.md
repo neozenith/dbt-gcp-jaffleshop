@@ -1,4 +1,4 @@
-# Assert sibling flags do not co-fire
+# DM-04 · Assert sibling flags do not co-fire
 
 > **Rule:** DM-04 · **Role:** dimension · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** cheap
 

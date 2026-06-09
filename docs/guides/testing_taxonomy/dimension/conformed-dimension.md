@@ -1,4 +1,4 @@
-# Govern a shared dimension's values via a seed
+# DM-03 · Govern a shared dimension's values via a seed
 
 > **Rule:** DM-03 · **Role:** dimension · **DAMA-UK6:** Consistency · **Wang–Strong:** Representational consistency · **Cost class:** cheap
 

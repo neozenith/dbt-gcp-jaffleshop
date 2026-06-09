@@ -1,4 +1,4 @@
-# Guard against NaN and Inf in computed measures
+# MS-04 · Guard against NaN and Inf in computed measures
 
 > **Rule:** MS-04 · **Role:** measure · **DAMA-UK6:** Validity · **Wang–Strong:** Believability · **Cost class:** cheap
 

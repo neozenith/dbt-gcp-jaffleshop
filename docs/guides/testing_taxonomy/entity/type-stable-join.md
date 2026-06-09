@@ -1,4 +1,4 @@
-# Lock the join column's data type via contract
+# EN-06 · Lock the join column's data type via contract
 
 > **Rule:** EN-06 · **Role:** entity · **DAMA-UK6:** Validity · **Wang–Strong:** Believability + Representational consistency · **Cost class:** free (compile-time)
 

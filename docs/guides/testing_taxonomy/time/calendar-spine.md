@@ -1,4 +1,4 @@
-# Assert a date dimension has no gaps
+# TM-GR-01 · Assert a date dimension has no gaps
 
 > **Rule:** TM-GR-01 · **Role:** time (time-grain dimension) · **DAMA-UK6:** Completeness + Timeliness · **Wang–Strong:** Completeness + Timeliness · **Cost class:** cheap
 

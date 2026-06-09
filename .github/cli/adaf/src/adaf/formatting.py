@@ -24,6 +24,11 @@ from adaf import style
 
 log = logging.getLogger(__name__)
 
+# Every check produces a *Report* — a duck-typed shape (``name``, ``ok``, ``summary()``, ``to_dict()``,
+# ``human_lines()``, optional ``logs``/``scope``/``error``) that `render`/`check all` are generic over
+# (see CLAUDE.md). The concrete reports vary (some carry ``name`` as a ClassVar, SqlfluffReport as an
+# instance field), so consumers annotate the aggregate as ``list[Any]`` rather than a strict Protocol.
+
 
 def emit_tool_logs(report, *, show_logs: bool) -> None:
     """Print a report's underlying-tool transcripts when it failed (or show_logs is set)."""
