@@ -18,9 +18,10 @@ import subprocess
 from pathlib import Path
 
 # Local
-from adaf import config, selection
-from adaf.catalog import Catalog
-from adaf.manifest import Manifest
+from adaf import config
+from adaf.dbt import selection
+from adaf.dbt.catalog import Catalog
+from adaf.dbt.manifest import Manifest
 from adaf.reports.coverage import ColumnsReport, ColumnsRow, DocsReport, DocsRow, TestsReport, TestsRow
 from adaf.utils.formatting import render_from_args
 

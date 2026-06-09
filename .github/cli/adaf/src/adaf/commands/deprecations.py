@@ -19,7 +19,8 @@ import logging
 from pathlib import Path
 
 # Local
-from adaf import config, selection
+from adaf import config
+from adaf.dbt import selection
 from adaf.gitutil import dirs_of
 from adaf.reports.deprecations import DeprecationsReport
 from adaf.utils.formatting import render_from_args

@@ -10,8 +10,8 @@ resource types are ignored.
 import pytest
 
 # Local
-from adaf.catalog import Catalog
-from adaf.manifest import Manifest
+from adaf.dbt.catalog import Catalog
+from adaf.dbt.manifest import Manifest
 
 MANIFEST_DATA = {
     "nodes": {

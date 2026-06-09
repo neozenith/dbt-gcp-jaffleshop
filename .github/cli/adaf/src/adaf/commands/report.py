@@ -21,7 +21,8 @@ from datetime import datetime, timezone
 from itertools import groupby
 from pathlib import Path
 
-from adaf import config, selection
+from adaf import config
+from adaf.dbt import selection
 from adaf.rules import all_rules, get_rule, load_catalog
 from adaf.suppression import Suppressions
 from adaf.taxonomy import DETECTORS, NOT_APPLICABLE, PRESENT, NodeFacts, load_node_facts

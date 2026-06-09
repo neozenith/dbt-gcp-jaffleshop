@@ -34,7 +34,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from adaf import config, selection
+from adaf import config
+from adaf.dbt import selection
 from adaf.utils import style
 from adaf.commands import checks, coverage, dataproducts, deprecations, taxonomy
 from adaf.commands import report as report_cmd

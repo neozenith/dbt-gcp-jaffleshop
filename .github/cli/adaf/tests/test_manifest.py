@@ -1,5 +1,5 @@
 # Local
-from adaf.manifest import Manifest
+from adaf.dbt.manifest import Manifest
 
 from conftest import MANIFEST_DATA
 

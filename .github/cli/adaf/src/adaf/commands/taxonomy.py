@@ -13,7 +13,8 @@ The result dataclasses live in ``adaf.reports.taxonomy`` (re-exported here for b
 
 from argparse import Namespace
 
-from adaf import config, selection
+from adaf import config
+from adaf.dbt import selection
 from adaf.reports.taxonomy import SuppressedFinding, TaxonomyFinding, TaxonomyReport
 from adaf.rules import get_rule
 from adaf.suppression import Suppressions

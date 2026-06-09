@@ -17,7 +17,8 @@ import sys
 from typing import Any
 
 # Local
-from adaf import config, selection
+from adaf import config
+from adaf.dbt import selection
 from adaf.utils import style
 from adaf.commands import coverage, dataproducts, deprecations, sqlfluff, taxonomy
 from adaf.utils.formatting import emit_tool_logs, markdown_summary

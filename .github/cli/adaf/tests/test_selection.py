@@ -3,8 +3,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 # Local
-from adaf import selection
-from adaf.selection import Selection
+from adaf.dbt import selection
+from adaf.dbt.selection import Selection
 
 
 def test_from_args_defaults_to_changed_only():

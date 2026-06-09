@@ -25,7 +25,8 @@ import urllib.request
 from argparse import Namespace
 from pathlib import Path
 
-from adaf import config, gitutil, selection
+from adaf import config, gitutil
+from adaf.dbt import selection
 from adaf.rules import all_rules, review_response_format, rule_codes
 from adaf.suppression import Suppressions
 

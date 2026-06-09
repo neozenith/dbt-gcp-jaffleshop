@@ -1,5 +1,5 @@
 # Local
-from adaf.catalog import Catalog
+from adaf.dbt.catalog import Catalog
 
 
 def test_columns_for_returns_actual_columns_in_catalog_order():

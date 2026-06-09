@@ -37,11 +37,12 @@ second place. Add a rule by editing `catalog.json` only; `adaf rules validate`
 │   ├── app.py              # argparse wiring + main(). NO business logic. Lazy project discovery.
 │   ├── __main__.py         # `python -m adaf` entry
 │   ├── config.py           # PROJECT_ROOT discovery (dbt_project.yml walk-up), default paths
-│   ├── selection.py        # --changed-only/--all/--select/--exclude → list[Path] of models
 │   ├── gitutil.py          # changed-file detection (merge-base vs --base-ref)
-│   ├── manifest.py         # manifest.json → ModelDoc (description, declared columns, test_count)
-│   ├── catalog.py          # catalog.json → RESOLVED warehouse columns per model
 │   ├── graph.py            # data-node lineage DAG + classify_boundary() — pure
+│   ├── dbt/                # dbt primitives, grouped: thin readers/resolvers over dbt's artifacts
+│   │   ├── manifest.py     #   manifest.json → ModelDoc (description, declared columns, test_count)
+│   │   ├── catalog.py      #   catalog.json → RESOLVED warehouse columns per model
+│   │   └── selection.py    #   --changed-only/--all/--select/--exclude → list[Path] (dbt ls + git)
 │   ├── taxonomy.py         # NodeFacts + the deterministic detectors (DETECTORS registry)
 │   ├── suppression.py      # adaf.yml + inline `-- adaf-disable` parsing
 │   ├── viewer.py + assets/ # sdag Cytoscape viewer (products generate/serve)

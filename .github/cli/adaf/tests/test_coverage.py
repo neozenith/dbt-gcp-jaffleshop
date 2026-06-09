@@ -2,9 +2,9 @@
 from pathlib import Path
 
 # Local
-from adaf.catalog import Catalog
+from adaf.dbt.catalog import Catalog
 from adaf.commands.coverage import ColumnsReport, evaluate_columns, evaluate_docs, evaluate_tests
-from adaf.manifest import Manifest
+from adaf.dbt.manifest import Manifest
 
 SCOPE = "changed models vs main"
 
