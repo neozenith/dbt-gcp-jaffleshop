@@ -32,6 +32,10 @@ NOT_APPLICABLE = "not_applicable"
 TEMPORAL_TYPES = frozenset({"DATE", "DATETIME", "TIMESTAMP", "TIME"})
 # TZ-sensitive types: an instant (TIMESTAMP) vs a wall-clock (DATETIME) must be contracted (TM-SC-03).
 TZ_SENSITIVE_TYPES = frozenset({"TIMESTAMP", "DATETIME"})
+# Numeric types (measure/range candidates).
+NUMERIC_TYPES = frozenset({"INT64", "INTEGER", "FLOAT64", "FLOAT", "NUMERIC", "BIGNUMERIC", "DECIMAL"})
+# Substrings that mark a column as monetary (a measure that should travel with a currency — MS-03).
+_MONETARY_HINTS = ("amount", "price", "cost", "revenue", "spend", "cents", "subtotal", "total", "tax", "fee", "balance")
 
 
 @dataclass(frozen=True)
@@ -75,6 +79,28 @@ class NodeFacts:
     def tz_sensitive_columns(self) -> list[str]:
         """Resolved TIMESTAMP/DATETIME columns — the ones whose tz semantics must be contracted."""
         return [c for c, t in self.resolved_columns.items() if t.upper() in TZ_SENSITIVE_TYPES]
+
+    # ── inferred structural properties (deterministic; surfaced for review, not gated) ──
+
+    def numeric_columns(self) -> list[str]:
+        """Resolved numeric columns (measure / range candidates)."""
+        return [c for c, t in self.resolved_columns.items() if t.upper() in NUMERIC_TYPES]
+
+    def boolean_columns(self) -> list[str]:
+        """Resolved BOOL columns (mutual-exclusivity / flag candidates)."""
+        return [c for c, t in self.resolved_columns.items() if t.upper() in ("BOOL", "BOOLEAN")]
+
+    def monetary_columns(self) -> list[str]:
+        """Numeric columns whose name marks them as money (MS-03 currency-pairing candidates)."""
+        return [c for c in self.numeric_columns() if any(h in c.lower() for h in _MONETARY_HINTS)]
+
+    def categorical_candidates(self) -> list[str]:
+        """Non-key STRING columns (accepted-values / dimension candidates)."""
+        ids = {c.lower() for c in self.id_columns()}
+        return [c for c, t in self.resolved_columns.items() if t.upper() == "STRING" and c.lower() not in ids]
+
+    def has_currency_column(self) -> bool:
+        return any("currency" in c.lower() or c.lower() in ("ccy", "iso_currency") for c in self.effective_columns())
 
     def test_names(self) -> set[str]:
         return {t.name for t in self.tests}
@@ -278,6 +304,24 @@ def _detect_tmsc03(n: NodeFacts) -> tuple[str, str] | None:
     )
 
 
+def _detect_ms03(n: NodeFacts) -> tuple[str, str] | None:
+    """MS-03 currency-pairing (hybrid): a monetary column should travel with a currency column.
+
+    Applicability = the model has a numeric column whose name marks it as money (needs the catalog
+    for types). Passes iff the model also exposes a currency column (``*currency*`` / ``ccy``)."""
+    if n.resource_type != "model":
+        return None
+    money = n.monetary_columns()
+    if not money:
+        return None  # no monetary column resolved → rule role doesn't apply
+    if n.has_currency_column():
+        return PRESENT, f"monetary column(s) {', '.join(money)} have a currency companion"
+    return MISSING, (
+        f"monetary column(s) {', '.join(money)} have no currency column — pair amounts with a "
+        "currency_code so values can't silently mix currencies"
+    )
+
+
 # Registry: rule_code -> detector. Severity is derived from the catalogue's `detection`
 # (deterministic -> blocker, hybrid -> warning) by the command layer.
 DETECTORS: dict[str, Callable[[NodeFacts], tuple[str, str] | None]] = {
@@ -287,6 +331,7 @@ DETECTORS: dict[str, Callable[[NodeFacts], tuple[str, str] | None]] = {
     "EN-01": _detect_en01,
     "EN-03": _detect_en03,
     "TM-SC-03": _detect_tmsc03,
+    "MS-03": _detect_ms03,
 }
 
 

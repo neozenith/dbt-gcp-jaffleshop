@@ -67,6 +67,20 @@ def _facts_block(n: NodeFacts) -> list[str]:
         tz = n.tz_sensitive_columns()
         if tz:
             lines.append(f"- TZ-sensitive (TIMESTAMP/DATETIME) columns: {', '.join(f'`{c}`' for c in tz)}")
+        # Inferred structural properties (deterministic facts that scope the rules — not verdicts).
+        inferred = [
+            (label, cols)
+            for label, cols in (
+                ("temporal", n.temporal_columns()),
+                ("monetary", n.monetary_columns()),
+                ("numeric", n.numeric_columns()),
+                ("boolean", n.boolean_columns()),
+                ("categorical-candidate", n.categorical_candidates()),
+            )
+            if cols
+        ]
+        if inferred:
+            lines.append("- Inferred column roles: " + " · ".join(f"{lbl} ({len(cols)})" for lbl, cols in inferred))
         if not n.resolved_columns and not n.columns:
             lines.append("- ⚠️ **No columns known** (no YAML and no catalog) — key/time rules below report _n/a_.")
     else:

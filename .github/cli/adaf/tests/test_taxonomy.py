@@ -155,3 +155,39 @@ def test_report_blocker_fails_warning_does_not() -> None:
     assert tax_cmd.TaxonomyReport("s", [blocker]).ok is False
     assert tax_cmd.TaxonomyReport("s", [warning]).ok is True
     assert tax_cmd.TaxonomyReport("s", [warning], strict=True).ok is False
+
+
+# ─── MS-03 currency-pairing detector + inferred properties ────────────────────
+
+from adaf.taxonomy import _detect_ms03  # noqa: E402
+
+
+def _resolved(name, cols):  # cols: {name: type}
+    return NodeFacts(f"model.p.{name}", name, "model", f"models/marts/{name}.sql", "marts",
+                     list(cols), False, False, tests=[], resolved_columns=cols)
+
+
+def test_ms03_flags_monetary_without_currency():
+    n = _resolved("orders", {"order_id": "STRING", "subtotal_cents": "INT64"})
+    status, detail = _detect_ms03(n)
+    assert status == MISSING and "subtotal_cents" in detail
+
+
+def test_ms03_satisfied_with_currency_column():
+    n = _resolved("orders", {"amount": "NUMERIC", "currency_code": "STRING"})
+    assert _detect_ms03(n)[0] == PRESENT
+
+
+def test_ms03_not_applicable_without_monetary_columns():
+    n = _resolved("customers", {"customer_id": "STRING", "name": "STRING"})
+    assert _detect_ms03(n) is None
+
+
+def test_inferred_properties_classify_columns_by_type_and_name():
+    n = _resolved("orders", {"order_id": "STRING", "amount": "NUMERIC", "is_paid": "BOOL",
+                             "ordered_at": "TIMESTAMP", "status": "STRING", "qty": "INT64"})
+    assert n.monetary_columns() == ["amount"]
+    assert set(n.numeric_columns()) == {"amount", "qty"}
+    assert n.boolean_columns() == ["is_paid"]
+    assert n.temporal_columns() == ["ordered_at"]
+    assert "status" in n.categorical_candidates() and "order_id" not in n.categorical_candidates()
