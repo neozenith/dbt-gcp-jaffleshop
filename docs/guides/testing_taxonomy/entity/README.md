@@ -1,8 +1,19 @@
 # Role: entity
 
-> **Synonyms:** Identity (informal) · Surrogate/natural key (Kimball) · `entity` (MetricFlow) · Hub/Link key (Data Vault) · Anchor/Tie (Anchor Modeling)
+| informal | Kimball | MetricFlow | Data Vault | Anchor Modeling |
+| --- | --- | --- | --- | --- |
+| Identity | Surrogate/natural key | `entity` | Hub/Link key | Anchor/Tie |
 
 An **entity column** is a column that appears in a `JOIN ... ON` clause anywhere in the DAG. Primary keys, foreign keys, surrogate keys, natural business keys, composite-key components — all entity. The defining test is "would a duplicate or mismatch here fan out a downstream join?".
+
+## Vignette index
+
+1. **EN-01** · [`EN-01-unique-key.md`](./EN-01-unique-key.md) — single-column `unique` + `not_null`
+2. **EN-02** · [`EN-02-compound-grain.md`](./EN-02-compound-grain.md) — `dbt_utils.unique_combination_of_columns`
+3. **EN-03** · [`EN-03-foreign-key-integrity.md`](./EN-03-foreign-key-integrity.md) — `relationships`
+4. **EN-04** · [`EN-04-soft-delete-scoped-fk.md`](./EN-04-soft-delete-scoped-fk.md) — `relationships_where`
+5. **EN-06** · [`EN-06-type-stable-join.md`](./EN-06-type-stable-join.md) — contract `data_type` matches across joined relations
+6. **EN-05** · [`EN-05-surrogate-collision-guard.md`](./EN-05-surrogate-collision-guard.md) — natural-key uniqueness alongside surrogate uniqueness
 
 ## What can go wrong
 
@@ -31,12 +42,3 @@ Every dbt model has exactly one `dbt_utils.unique_combination_of_columns` test t
 ## Cross-role intersections
 
 Entity columns frequently double as dimensions (`order_id` is an entity in `dim_orders` but a `GROUP BY` axis in `mart_orders_by_customer`). When an entity also plays a dimensional role, the test suite is the **union** of both roles' suites. See the [Role Multiplication Heuristic](../README.md#2-the-role-multiplication-heuristic).
-
-## Vignette index
-
-1. **EN-01** · [`EN-01-unique-key.md`](./EN-01-unique-key.md) — single-column `unique` + `not_null`
-2. **EN-02** · [`EN-02-compound-grain.md`](./EN-02-compound-grain.md) — `dbt_utils.unique_combination_of_columns`
-3. **EN-03** · [`EN-03-foreign-key-integrity.md`](./EN-03-foreign-key-integrity.md) — `relationships`
-4. **EN-04** · [`EN-04-soft-delete-scoped-fk.md`](./EN-04-soft-delete-scoped-fk.md) — `relationships_where`
-5. **EN-06** · [`EN-06-type-stable-join.md`](./EN-06-type-stable-join.md) — contract `data_type` matches across joined relations
-6. **EN-05** · [`EN-05-surrogate-collision-guard.md`](./EN-05-surrogate-collision-guard.md) — natural-key uniqueness alongside surrogate uniqueness

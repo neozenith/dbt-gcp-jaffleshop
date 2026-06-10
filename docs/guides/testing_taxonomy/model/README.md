@@ -1,8 +1,23 @@
 # Role: model-level
 
-> **Synonyms:** Cross-column / whole-table tests · "structural" tests · "governance" tests
+| Synonyms |
+| --- |
+| Cross-column / whole-table tests · "structural" tests · "governance" tests |
 
 Tests in this folder do not belong to a single column — they assert properties of the model **as a whole**. They are the governance and structural layer of the taxonomy: the grain test that every model needs, contracts that lock the schema shape, versioning that lets the schema evolve safely, parity checks for refactors, and anomaly detectors that watch the model's volume and freshness.
+
+## Vignette index
+
+1. **MD-01** · [`MD-01-grain-test.md`](./MD-01-grain-test.md) — the one test every model must have
+2. **MD-02** · [`MD-02-contracts.md`](./MD-02-contracts.md) — `contract.enforced: true` (shape, not content)
+3. **MD-03** · [`MD-03-versioning-cutover.md`](./MD-03-versioning-cutover.md) — ship `v=N+1` without breaking consumers
+4. **MD-04** · [`MD-04-refactor-parity.md`](./MD-04-refactor-parity.md) — `audit_helper.compare_and_classify_relation_rows`
+5. **MD-05** · [`MD-05-unit-tests.md`](./MD-05-unit-tests.md) — dbt 1.8 unit tests for branching SQL logic
+6. **MD-06** · [`MD-06-row-count-band.md`](./MD-06-row-count-band.md) — `expect_table_row_count_to_be_between`
+7. **MD-07** · [`MD-07-volume-anomaly.md`](./MD-07-volume-anomaly.md) — Elementary volume anomaly detection
+8. **MD-08** · [`MD-08-schema-changes.md`](./MD-08-schema-changes.md) — Elementary schema-change / baseline-drift detection on sources you don't own
+9. **MD-09** · [`MD-09-column-anomalies.md`](./MD-09-column-anomalies.md) — Elementary automated column monitors (null %, min/max/avg, zero-count)
+10. **MD-10** · [`MD-10-json-schema.md`](./MD-10-json-schema.md) — Elementary JSON-shape validation on semi-structured columns
 
 ## What can go wrong
 
@@ -42,16 +57,3 @@ For internal / staging / intermediate models — just refactor. dbt explicitly r
 ## Refactor parity
 
 The hardest-to-prove claim during a refactor is "this model returns the same rows as before". `audit_helper`'s `compare_and_classify_relation_rows` (and its query-form sibling) is the canonical tool — it distinguishes `identical` / `modified` / `added` / `removed` / `nonunique_pk` row classifications, which earlier comparators (`compare_relations`, `compare_queries`) could not. See [`MD-04-refactor-parity.md`](./MD-04-refactor-parity.md).
-
-## Vignette index
-
-1. **MD-01** · [`MD-01-grain-test.md`](./MD-01-grain-test.md) — the one test every model must have
-2. **MD-02** · [`MD-02-contracts.md`](./MD-02-contracts.md) — `contract.enforced: true` (shape, not content)
-3. **MD-03** · [`MD-03-versioning-cutover.md`](./MD-03-versioning-cutover.md) — ship `v=N+1` without breaking consumers
-4. **MD-04** · [`MD-04-refactor-parity.md`](./MD-04-refactor-parity.md) — `audit_helper.compare_and_classify_relation_rows`
-5. **MD-05** · [`MD-05-unit-tests.md`](./MD-05-unit-tests.md) — dbt 1.8 unit tests for branching SQL logic
-6. **MD-06** · [`MD-06-row-count-band.md`](./MD-06-row-count-band.md) — `expect_table_row_count_to_be_between`
-7. **MD-07** · [`MD-07-volume-anomaly.md`](./MD-07-volume-anomaly.md) — Elementary volume anomaly detection
-8. **MD-08** · [`MD-08-schema-changes.md`](./MD-08-schema-changes.md) — Elementary schema-change / baseline-drift detection on sources you don't own
-9. **MD-09** · [`MD-09-column-anomalies.md`](./MD-09-column-anomalies.md) — Elementary automated column monitors (null %, min/max/avg, zero-count)
-10. **MD-10** · [`MD-10-json-schema.md`](./MD-10-json-schema.md) — Elementary JSON-shape validation on semi-structured columns

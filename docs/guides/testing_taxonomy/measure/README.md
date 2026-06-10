@@ -1,6 +1,8 @@
 # Role: measure
 
-> **Synonyms:** Measure (informal) · Fact (Kimball: additive / semi-additive / non-additive) · `measure` (MetricFlow) · Transactional satellite attribute (Data Vault)
+| informal | Kimball | MetricFlow | Data Vault |
+| --- | --- | --- | --- |
+| Measure | Fact (additive / semi-additive / non-additive) | `measure` | Transactional satellite attribute |
 
 A **measure column** is a numeric column that appears inside an aggregate function — `SUM`, `COUNT`, `AVG`, `MIN`, `MAX` — somewhere in the DAG. Measures are the columns that *become* metrics. Their failure modes are the most subtle in the catalogue, because aggregation hides almost all data quality problems.
 
@@ -15,6 +17,14 @@ Every measure is one of three types. The testing strategy differs by type — th
 | **Non-additive** | `unit_price`, `gross_margin_pct`, `conversion_rate` | **nothing** — must recompute from additive components | (never safe to sum) |
 
 If a measure is semi-additive or non-additive and gets SUMmed at the wrong grain, the metric is silently catastrophically wrong (F.8 — Semi-Additive Inventory Sum). The test side alone can't fix this — see [`MS-02-additivity-tag.md`](./MS-02-additivity-tag.md).
+
+## Vignette index
+
+1. **MS-01** · [`MS-01-numeric-range.md`](./MS-01-numeric-range.md) — `accepted_range`, `expect_column_values_to_be_between`
+2. **MS-02** · [`MS-02-additivity-tag.md`](./MS-02-additivity-tag.md) — additive / semi-additive / non-additive classification + semantic-layer enforcement
+3. **MS-03** · [`MS-03-currency-pairing.md`](./MS-03-currency-pairing.md) — amount columns always travel with `currency_code`
+4. **MS-05** · [`MS-05-distribution-anomaly.md`](./MS-05-distribution-anomaly.md) — mean/stdev anomaly detection
+5. **MS-04** · [`MS-04-nan-inf-guard.md`](./MS-04-nan-inf-guard.md) — divide-by-zero, Inf, NaN traps
 
 ## What can go wrong
 
@@ -45,11 +55,3 @@ A `non-negative quantity` test might be valid only when `transaction_type = 'sal
     config:
       where: "transaction_type = 'sale'"
 ```
-
-## Vignette index
-
-1. **MS-01** · [`MS-01-numeric-range.md`](./MS-01-numeric-range.md) — `accepted_range`, `expect_column_values_to_be_between`
-2. **MS-02** · [`MS-02-additivity-tag.md`](./MS-02-additivity-tag.md) — additive / semi-additive / non-additive classification + semantic-layer enforcement
-3. **MS-03** · [`MS-03-currency-pairing.md`](./MS-03-currency-pairing.md) — amount columns always travel with `currency_code`
-4. **MS-05** · [`MS-05-distribution-anomaly.md`](./MS-05-distribution-anomaly.md) — mean/stdev anomaly detection
-5. **MS-04** · [`MS-04-nan-inf-guard.md`](./MS-04-nan-inf-guard.md) — divide-by-zero, Inf, NaN traps

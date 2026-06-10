@@ -1,8 +1,18 @@
 # Role: dimension
 
-> **Synonyms:** Dimensional (informal) · Dimension attribute / junk dim (Kimball) · `dimension (categorical)` (MetricFlow) · Satellite attribute (Data Vault) · Attribute / Knot (Anchor)
+| informal | Kimball | MetricFlow | Data Vault | Anchor |
+| --- | --- | --- | --- | --- |
+| Dimensional | Dimension attribute / junk dim | `dimension (categorical)` | Satellite attribute | Attribute / Knot |
 
 A **dimension column** is a column that appears in a `GROUP BY` clause anywhere in the DAG. Status fields, categories, regions, boolean flags, low-cardinality codes. The defining test is "if a new value silently appears here, does any downstream `CASE` statement, dashboard bucket, or segmentation rule miss it?".
+
+## Vignette index
+
+1. **DM-01** · [`DM-01-accepted-values.md`](./DM-01-accepted-values.md) — enum contract on a categorical
+2. **DM-02** · [`DM-02-cardinality-guard.md`](./DM-02-cardinality-guard.md) — `expect_column_unique_value_count_to_be_between`
+3. **DM-04** · [`DM-04-mutual-exclusivity.md`](./DM-04-mutual-exclusivity.md) — sibling boolean flags do not co-fire
+4. **DM-03** · [`DM-03-conformed-dimension.md`](./DM-03-conformed-dimension.md) — shared seed governs values across models
+5. **DM-05** · [`DM-05-dimension-anomalies.md`](./DM-05-dimension-anomalies.md) — Elementary per-dimension count anomalies
 
 ## What can go wrong
 
@@ -27,11 +37,3 @@ The earlier you place `accepted_values`, the faster the failure surfaces. Apply 
 ## Cardinality is a dimension's identity
 
 A column with 10 distinct values is a dimension. A column with 10 million distinct values is an entity. The line between the two roles is cardinality; when cardinality drifts, the column has changed role. The `cardinality-guard` test alerts when a dimension is sliding into entity territory. See [`DM-02-cardinality-guard.md`](./DM-02-cardinality-guard.md).
-
-## Vignette index
-
-1. **DM-01** · [`DM-01-accepted-values.md`](./DM-01-accepted-values.md) — enum contract on a categorical
-2. **DM-02** · [`DM-02-cardinality-guard.md`](./DM-02-cardinality-guard.md) — `expect_column_unique_value_count_to_be_between`
-3. **DM-04** · [`DM-04-mutual-exclusivity.md`](./DM-04-mutual-exclusivity.md) — sibling boolean flags do not co-fire
-4. **DM-03** · [`DM-03-conformed-dimension.md`](./DM-03-conformed-dimension.md) — shared seed governs values across models
-5. **DM-05** · [`DM-05-dimension-anomalies.md`](./DM-05-dimension-anomalies.md) — Elementary per-dimension count anomalies
