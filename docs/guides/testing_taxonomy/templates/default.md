@@ -75,7 +75,7 @@ Use `where:` config to scope to a partition; use `severity: warn` while ramping;
 
 A single Mermaid diagram that shows **what the test prevents** — the bad-data shape and the good-data shape, side-by-side, with the test as the gate.
 
-Use the role's canonical hue family (see `../README.md` → "Color palette"):
+Use the role's canonical hue family:
 
 | Role | Primary fill | Stroke | Subgraph fill |
 |------|--------------|--------|---------------|

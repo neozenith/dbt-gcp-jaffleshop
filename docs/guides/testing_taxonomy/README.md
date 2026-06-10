@@ -2,7 +2,7 @@
 
 A pattern catalogue for testing dbt models. Organised the way Martin Fowler organised *Refactoring* — every entry is a vignette with a **Symptom**, a named **Pattern**, and the **Mechanics** to apply it.
 
-The vocabulary is borrowed from dbt's semantic layer (MetricFlow). Tests are chosen by **what a column does** in queries — joins, group-bys, aggregates, or time arithmetic — not by what its type is in the warehouse.
+The vocabulary is borrowed from dbt's semantic layer (MetricFlow). Tests are chosen by semantically **what a column does** in queries — joins, group-bys, aggregates, or time arithmetic — not by what its type is in the warehouse.
 
 ## Why this exists
 
@@ -239,50 +239,6 @@ attributions and the vignette headers are derived from it:
 
 > Inspect any rule's full dual attribution with `adaf rules show <CODE>` (or `adaf rules list --dama Validity`).
 
-## Color palette
-
-Every Mermaid diagram in this taxonomy uses these `classDef` blocks. The palette passes **WCAG 2.1 AA for text contrast** on both light and dark GitHub themes (white text on shade-600/700 fills, dark text on shade-100 fills). See [Validation status](#validation-status) below for the full picture.
-
-```text
-%% entity role — Blue
-classDef entityPrimary   fill:#2563eb,stroke:#1e293b,color:#fff,stroke-width:2px
-classDef entitySecondary fill:#93c5fd,stroke:#3b82f6,color:#1e293b,stroke-width:1px
-classDef sgEntity        fill:#dbeafe,stroke:#3b82f6,color:#1e293b
-
-%% dimension role — Violet
-classDef dimPrimary      fill:#7c3aed,stroke:#1e293b,color:#fff,stroke-width:2px
-classDef dimSecondary    fill:#c4b5fd,stroke:#8b5cf6,color:#1e293b,stroke-width:1px
-classDef sgDim           fill:#ede9fe,stroke:#8b5cf6,color:#1e293b
-
-%% measure role — Emerald
-classDef measurePrimary  fill:#047857,stroke:#1e293b,color:#fff,stroke-width:2px
-classDef measureSecondary fill:#6ee7b7,stroke:#10b981,color:#1e293b,stroke-width:1px
-classDef sgMeasure       fill:#d1fae5,stroke:#10b981,color:#1e293b
-
-%% time role — Orange
-classDef timePrimary     fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
-classDef timeSecondary   fill:#fdba74,stroke:#f97316,color:#1e293b,stroke-width:1px
-classDef sgTime          fill:#fff7ed,stroke:#f97316,color:#1e293b
-
-%% model-level — Slate
-classDef modelPrimary    fill:#475569,stroke:#1e293b,color:#fff,stroke-width:2px
-classDef modelSecondary  fill:#cbd5e1,stroke:#64748b,color:#1e293b,stroke-width:1px
-classDef sgModel         fill:#f1f5f9,stroke:#94a3b8,color:#334155
-
-%% Accent: error / fail
-classDef fail            fill:#dc2626,stroke:#1e293b,color:#fff,stroke-width:2px
-
-%% Accent: pass / ok
-classDef ok              fill:#047857,stroke:#1e293b,color:#fff,stroke-width:2px
-
-%% Accent: decision gate / test (used in every diagram)
-classDef gate            fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
-```
-
-### Validation status
-
-Every diagram palette meets **WCAG 2.1 AA for text contrast** (white text on shade-600/700 fills, dark text on shade-100/300 fills). Border-vs-fill contrast is treated as advisory: Mermaid's dark-fill / white-text idiom can't reach the 3:1 rule, and text readability is the load-bearing axis.
-
 ## Conventions
 
 - **Folder naming uses singular nouns** (`entity/`, not `entities/`). A folder name is the role; the file inside is the pattern.
@@ -294,6 +250,55 @@ Every diagram palette meets **WCAG 2.1 AA for text contrast** (white text on sha
 ## Reading order
 
 If reading the catalogue front-to-back, this is the recommended order:
+
+```mermaid
+flowchart TD
+    s(["Read front-to-back"]):::startNode --> g1
+
+    g1["①&nbsp; MD-01 · grain-test<br/><i>the one test every model needs</i>"]:::model
+
+    subgraph EN ["②&nbsp; entity — keys &amp; joins"]
+        direction LR
+        en1["EN-01<br/>unique-key"]:::entity --> en2["EN-02<br/>compound-grain"]:::entity --> en3["EN-03<br/>foreign-key-integrity"]:::entity
+    end
+
+    subgraph DM ["③&nbsp; dimension — GROUP BY axes"]
+        direction LR
+        dm1["DM-01<br/>accepted-values"]:::dim --> dm2["DM-02<br/>cardinality-guard"]:::dim
+    end
+
+    subgraph MS ["④&nbsp; measure — aggregated facts"]
+        direction LR
+        ms1["MS-01<br/>numeric-range"]:::meas --> ms2["MS-02<br/>additivity-tag"]:::meas
+    end
+
+    subgraph TM ["⑤&nbsp; time — event-time scalars"]
+        direction LR
+        tm1["TM-SC-01<br/>event-time-bounds"]:::time --> tm2["TM-SC-02<br/>monotonic-pair"]:::time
+    end
+
+    subgraph MD ["⑥&nbsp; model — evolve safely"]
+        direction LR
+        md2["MD-02<br/>contracts"]:::model --> md3["MD-03<br/>versioning-cutover"]:::model --> md4["MD-04<br/>refactor-parity"]:::model
+    end
+
+    fin["⑦&nbsp; Elementary anomaly vignettes<br/><i>when the project graduates to drift detection</i>"]:::neutral
+
+    g1 --> en1
+    en3 --> dm1
+    dm2 --> ms1
+    ms2 --> tm1
+    tm2 --> md2
+    md4 --> fin
+
+    classDef startNode fill:#1e293b,stroke:#0f172a,color:#fff,stroke-width:2px
+    classDef entity  fill:#2563eb,stroke:#1e293b,color:#fff,stroke-width:2px
+    classDef dim     fill:#7c3aed,stroke:#1e293b,color:#fff,stroke-width:2px
+    classDef meas    fill:#047857,stroke:#1e293b,color:#fff,stroke-width:2px
+    classDef time    fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
+    classDef model   fill:#475569,stroke:#1e293b,color:#fff,stroke-width:2px
+    classDef neutral fill:#f1f5f9,stroke:#94a3b8,color:#334155,stroke-width:1px
+```
 
 1. [`model/MD-01-grain-test.md`](./model/MD-01-grain-test.md) — the most important test in the entire project
 2. [`entity/EN-01-unique-key.md`](./entity/EN-01-unique-key.md) → [`entity/EN-02-compound-grain.md`](./entity/EN-02-compound-grain.md) → [`entity/EN-03-foreign-key-integrity.md`](./entity/EN-03-foreign-key-integrity.md)
