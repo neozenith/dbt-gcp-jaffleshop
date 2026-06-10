@@ -1,0 +1,11 @@
+[project]
+name = "guides-site"
+version = "0.1.0"
+description = "MkDocs Material static site for the dbt testing-taxonomy guide, published under /guides/ on GitHub Pages."
+requires-python = ">=3.12"
+dependencies = [
+    # mkdocs-material pulls in mkdocs, pymdown-extensions and pygments. Mermaid is
+    # rendered via Material's native superfences integration (see mkdocs.yml) — no
+    # separate mermaid plugin is required.
+    "mkdocs-material>=9.6.0",
+]

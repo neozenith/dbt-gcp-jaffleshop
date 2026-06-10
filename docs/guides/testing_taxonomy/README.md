@@ -226,7 +226,7 @@ attributions and the vignette headers are derived from it:
 - **Wang–Strong (secondary)** — the genuine Wang & Strong (1996) consumer-perception dimensions,
   derived via a documented crosswalk in the catalogue. (Historically this section was mislabeled
   "Wang–Strong" while listing the DAMA-UK6 values;
-  [ADR-0005](../../arch/adr-0005-adaf-automated-data-assurance-framework.md) corrected it.)
+  [ADR-0005](https://github.com/neozenith/dbt-gcp-jaffleshop/blob/main/docs/arch/adr-0005-adaf-automated-data-assurance-framework.md) corrected it.)
 
 | DAMA-UK6 dimension | What it asserts | Wang–Strong (crosswalk) | Typical vignettes |
 |-----------|-----------------|-------------------------|-------------------|
@@ -243,7 +243,7 @@ attributions and the vignette headers are derived from it:
 
 - **Folder naming uses singular nouns** (`entity/`, not `entities/`). A folder name is the role; the file inside is the pattern.
 - **File naming uses imperative verbs / nouns of the pattern** (`EN-01-unique-key.md`, `MD-04-refactor-parity.md`).
-- **Mermaid diagrams render natively on GitHub** — see [`templates/default.md`](./templates/default.md) for the standard layout.
+- **Mermaid diagrams render natively on GitHub** — see [`templates/default.md`](https://github.com/neozenith/dbt-gcp-jaffleshop/blob/main/docs/guides/testing_taxonomy/templates/default.md) for the standard layout.
 - **SQL examples target BigQuery** (the project's adapter). Where dialect matters (TIMESTAMP vs DATETIME, `regexp_instr` flags, partition pruning), the vignette calls it out.
 - **YAML examples assume dbt 1.8+** — they use the `data_tests:` key (not `tests:`) and the `data-tests/` directory (not `tests/`).
 
@@ -310,4 +310,4 @@ flowchart TD
 
 ## Template
 
-See [`templates/default.md`](./templates/default.md) for the structure every vignette follows.
+See [`templates/default.md`](https://github.com/neozenith/dbt-gcp-jaffleshop/blob/main/docs/guides/testing_taxonomy/templates/default.md) for the structure every vignette follows.
