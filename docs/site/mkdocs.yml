@@ -30,6 +30,12 @@ site_dir: ../../tmp/guides-site
 # Catches link rot at build time instead of shipping a 404 to Pages.
 strict: true
 
+# Promote unresolved #anchor fragments to warnings too (default is INFO, which strict
+# ignores). Under strict: true this fails the build on a link to a heading/anchor that
+# doesn't exist — e.g. a stale #the-old-heading after a section is renamed.
+validation:
+  anchors: warn
+
 # NOTE: docs/guides/testing_taxonomy/templates/default.md is intentionally NOT
 # published. MkDocs reserves /templates/ by default (theme Jinja partials), and the
 # file is a contributor scaffold full of `{{ placeholder }}` tokens and example
@@ -96,6 +102,18 @@ markdown_extensions:
 
 nav:
   - Home: README.md
+  - Model — cross-column concerns:
+      - model/README.md
+      - MD-01 · Grain test: model/MD-01-grain-test.md
+      - MD-02 · Contracts: model/MD-02-contracts.md
+      - MD-03 · Versioning cutover: model/MD-03-versioning-cutover.md
+      - MD-04 · Refactor parity: model/MD-04-refactor-parity.md
+      - MD-05 · Unit tests: model/MD-05-unit-tests.md
+      - MD-06 · Row-count band: model/MD-06-row-count-band.md
+      - MD-07 · Volume anomaly: model/MD-07-volume-anomaly.md
+      - MD-08 · Schema changes: model/MD-08-schema-changes.md
+      - MD-09 · Column anomalies: model/MD-09-column-anomalies.md
+      - MD-10 · JSON schema: model/MD-10-json-schema.md
   - Entity — keys & joins:
       - entity/README.md
       - EN-01 · Unique key: entity/EN-01-unique-key.md
@@ -127,15 +145,4 @@ nav:
       - TM-AU-01 · Freshness (source & model): time/TM-AU-01-freshness-source-and-model.md
       - TM-AU-02 · SCD2 quartet: time/TM-AU-02-scd2-quartet.md
       - TM-AU-03 · Freshness anomalies: time/TM-AU-03-freshness-anomalies.md
-  - Model — cross-column concerns:
-      - model/README.md
-      - MD-01 · Grain test: model/MD-01-grain-test.md
-      - MD-02 · Contracts: model/MD-02-contracts.md
-      - MD-03 · Versioning cutover: model/MD-03-versioning-cutover.md
-      - MD-04 · Refactor parity: model/MD-04-refactor-parity.md
-      - MD-05 · Unit tests: model/MD-05-unit-tests.md
-      - MD-06 · Row-count band: model/MD-06-row-count-band.md
-      - MD-07 · Volume anomaly: model/MD-07-volume-anomaly.md
-      - MD-08 · Schema changes: model/MD-08-schema-changes.md
-      - MD-09 · Column anomalies: model/MD-09-column-anomalies.md
-      - MD-10 · JSON schema: model/MD-10-json-schema.md
+

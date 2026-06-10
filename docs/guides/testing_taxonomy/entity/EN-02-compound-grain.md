@@ -99,11 +99,11 @@ flowchart LR
     mart --> fanout1["mart_revenue<br/>SUM(amount)"]:::entityPrimary
     mart --> fanout2["mart_units_sold<br/>SUM(quantity)"]:::entityPrimary
 
-    classDef source          fill:#fef3c7,stroke:#f59e0b,color:#1e293b,stroke-width:1px
-    classDef entityPrimary   fill:#2563eb,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef entitySecondary fill:#93c5fd,stroke:#3b82f6,color:#1e293b,stroke-width:1px
-    classDef gate            fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef fail            fill:#dc2626,stroke:#1e293b,color:#fff,stroke-width:2px
+    classDef source fill:#b453092e,stroke:#f59e0b,stroke-width:1px
+    classDef entityPrimary fill:#1d4ed836,stroke:#3b82f6,stroke-width:2px
+    classDef entitySecondary fill:#1d4ed836,stroke:#3b82f6,stroke-width:1px
+    classDef gate fill:#c2410c30,stroke:#f97316,stroke-width:2px
+    classDef fail fill:#dc262636,stroke:#ef4444,stroke-width:2px
 ```
 
 ## Framework choice

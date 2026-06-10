@@ -123,9 +123,9 @@ flowchart LR
     sources --> mart["dim_customer<br/>(unioned, conformed)"]:::dimPrimary
 
     class sources sgDim
-    classDef dimPrimary   fill:#7c3aed,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef dimSecondary fill:#c4b5fd,stroke:#8b5cf6,color:#1e293b,stroke-width:1px
-    classDef sgDim        fill:#ede9fe,stroke:#8b5cf6,color:#1e293b
+    classDef dimPrimary fill:#7c3aed33,stroke:#8b5cf6,stroke-width:2px
+    classDef dimSecondary fill:#7c3aed33,stroke:#8b5cf6,stroke-width:1px
+    classDef sgDim fill:#7c3aed14,stroke:#8b5cf6,stroke-width:1px
 ```
 
 ## Framework choice

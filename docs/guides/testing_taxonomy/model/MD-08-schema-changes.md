@@ -83,13 +83,13 @@ flowchart LR
     diff -- "amount: numeric → string<br/>(retype)" --> fail["alert / block:<br/>downstream cast breaks"]:::fail
     diff -- "+ new PII column" --> warn["warn:<br/>human review"]:::warn
 
-    classDef source         fill:#fef3c7,stroke:#f59e0b,color:#1e293b,stroke-width:1px
-    classDef modelPrimary   fill:#475569,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef modelSecondary fill:#cbd5e1,stroke:#64748b,color:#1e293b,stroke-width:1px
-    classDef gate           fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef ok             fill:#047857,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef fail           fill:#dc2626,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef warn           fill:#b45309,stroke:#1e293b,color:#fff,stroke-width:2px
+    classDef source fill:#b453092e,stroke:#f59e0b,stroke-width:1px
+    classDef modelPrimary fill:#47556936,stroke:#64748b,stroke-width:2px
+    classDef modelSecondary fill:#47556936,stroke:#64748b,stroke-width:1px
+    classDef gate fill:#c2410c30,stroke:#f97316,stroke-width:2px
+    classDef ok fill:#0478572e,stroke:#10b981,stroke-width:2px
+    classDef fail fill:#dc262636,stroke:#ef4444,stroke-width:2px
+    classDef warn fill:#b453092e,stroke:#f59e0b,stroke-width:2px
 ```
 
 ## Framework choice
