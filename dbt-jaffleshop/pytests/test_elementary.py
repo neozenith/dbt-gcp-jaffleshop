@@ -3,6 +3,13 @@
 Parses offline (fake project IDs) and inspects the manifest — proving `dbt deps` installed
 Elementary and the dbt_project.yml config (+database / +schema) lets its models compile under
 this project's custom generate_database_name/schema_name macros.
+
+Parsed against the `prod` target on purpose: Elementary is gated PROD-only in dbt_project.yml
+(`+enabled: "{{ env_var('DBT_ENV_TYPE', target.name) | upper == 'PROD' }}"`). Under any non-prod
+target dbt parks those nodes in `manifest["disabled"]`, so a `--target dev` parse would resolve
+zero elementary models even though the package is correctly installed. `data_environment()`
+defaults DBT_ENV_TYPE to target.name, so `--target prod` enables them without extra env wiring
+and skips the non-prod slice requirement.
 """
 
 # Standard Library
@@ -16,11 +23,12 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dbt
 
 def test_elementary_models_resolve_into_the_graph(cleaned_environment, tmp_path):
     env = cleaned_environment
-    env["DBT_GIT_BRANCH"] = "elementary-test"  # slice required in non-prod
     env["DBT_PROFILES_DIR"] = PROJECT_DIR  # force — an inherited stray value breaks profile lookup
 
+    # --target prod so DBT_ENV_TYPE resolves to PROD and Elementary's PROD-only models are enabled
+    # (see module docstring). Prod naming needs no slice, so DBT_GIT_BRANCH is intentionally unset.
     result = subprocess.run(
-        shlex.split(f"uv run dbt parse --target dev --target-path {tmp_path}"),
+        shlex.split(f"uv run dbt parse --target prod --target-path {tmp_path}"),
         capture_output=True,
         text=True,
         env=env,

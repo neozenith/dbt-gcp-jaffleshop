@@ -1,9 +1,9 @@
 name: dbt testing-taxonomy review
 description: >-
-  Review a PR's changed dbt models (and all project models) against the testing
-  taxonomy via GitHub Models (keyless, GITHUB_TOKEN), then upsert sticky PR comments
-  (coverage matrix + failures, for changed and all models) including token usage and
-  estimated cost. No vendor API key or plugin.
+  Thin wrapper over `adaf review` (the Automated Data Assurance Framework CLI): review a PR's dbt
+  models against the testing-taxonomy catalogue via GitHub Models (keyless, GITHUB_TOKEN) and upsert
+  the changed + all coverage-matrix PR comments with token usage and estimated cost. The engine,
+  rule catalogue, and prompt all live in `.github/cli/adaf` — this action just invokes it.
 
 inputs:
   github-token:
@@ -13,11 +13,12 @@ inputs:
     description: Pull request number to comment on.
     required: true
   base-sha:
-    description: Base commit SHA for the changed-models diff.
+    description: Base commit SHA — the changed-models diff is merge-base(base-sha, HEAD).
     required: true
-  head-sha:
-    description: Head commit SHA for the changed-models diff.
-    required: true
+  project-dir:
+    description: Path (relative to the workspace) to the dbt project holding dbt_project.yml + models/.
+    required: false
+    default: dbt-jaffleshop
   model:
     description: GitHub Models catalogue id (must support response_format json_schema).
     required: false
@@ -26,10 +27,6 @@ inputs:
     description: GitHub Models inference endpoint.
     required: false
     default: https://models.github.ai/inference
-  models-glob:
-    description: Path prefix that holds the dbt models.
-    required: false
-    default: dbt-jaffleshop/models
   cost-per-1m-input:
     description: USD per 1M input tokens, for the estimated-cost line (model list price).
     required: false
@@ -44,17 +41,20 @@ runs:
   steps:
     - uses: astral-sh/setup-uv@v8.1.0
 
-    - name: Run testing-taxonomy review
+    - name: Run testing-taxonomy review (adaf review --post)
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        # GITHUB_REPOSITORY + PR context the engine reads for --post:
         PR_NUMBER: ${{ inputs.pr-number }}
-        BASE_SHA: ${{ inputs.base-sha }}
-        HEAD_SHA: ${{ inputs.head-sha }}
-        MODEL: ${{ inputs.model }}
-        MODELS_ENDPOINT: ${{ inputs.models-endpoint }}
-        MODELS_GLOB: ${{ inputs.models-glob }}
-        COST_PER_1M_INPUT: ${{ inputs.cost-per-1m-input }}
-        COST_PER_1M_OUTPUT: ${{ inputs.cost-per-1m-output }}
-        # GITHUB_REPOSITORY is provided by the Actions runtime.
-      run: uv run --no-project "${{ github.action_path }}/review.py"
+      # adaf runs in its OWN venv (it needs no dbt toolchain for `review`): --directory points uv at
+      # the adaf project; --project-dir points adaf at the dbt project for model discovery + adaf.yml.
+      run: >-
+        uv run --directory "${{ github.action_path }}/../../cli/adaf" adaf review
+        --all --post
+        --project-dir "${{ github.workspace }}/${{ inputs.project-dir }}"
+        --base-ref "${{ inputs.base-sha }}"
+        --model "${{ inputs.model }}"
+        --endpoint "${{ inputs.models-endpoint }}"
+        --cost-per-1m-input "${{ inputs.cost-per-1m-input }}"
+        --cost-per-1m-output "${{ inputs.cost-per-1m-output }}"

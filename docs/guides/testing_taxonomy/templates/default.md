@@ -1,9 +1,8 @@
-# {{ Vignette Title — imperative, present tense }}
+# {{ rule code }} · {{ Vignette Title — imperative, present tense }}
 
-> **Rule:** {{ rule code from rules.json — e.g. EN-01 }}  &nbsp;·&nbsp;
-> **Role:** {{ entity | dimension | measure | time | model }}  &nbsp;·&nbsp;
-> **Wang–Strong dimension:** {{ Uniqueness | Completeness | Validity | Consistency | Accuracy | Timeliness }}  &nbsp;·&nbsp;
-> **Cost class:** {{ free | cheap | scan-bound | history-bound }}
+| Rule | Role | DAMA-UK6 | Wang–Strong | Cost class |
+| --- | --- | --- | --- | --- |
+| {{ rule code from rules.json — e.g. EN-01 }} | {{ entity \| dimension \| measure \| time \| model }} | {{ Completeness \| Uniqueness \| Timeliness \| Validity \| Accuracy \| Consistency }} | {{ Believability \| Concise representation \| Representational consistency \| Interpretability \| Accuracy \| Timeliness \| Completeness }} | {{ free \| cheap \| scan-bound \| history-bound }} |
 
 One-paragraph headline. State the failure mode in business terms, then the test that prevents it. Avoid jargon in this paragraph — it should be readable to a data PM. Keep to ≤4 sentences.
 
@@ -76,7 +75,7 @@ Use `where:` config to scope to a partition; use `severity: warn` while ramping;
 
 A single Mermaid diagram that shows **what the test prevents** — the bad-data shape and the good-data shape, side-by-side, with the test as the gate.
 
-Use the role's canonical hue family (see `../README.md` → "Color palette"):
+Use the role's canonical hue family:
 
 | Role | Primary fill | Stroke | Subgraph fill |
 |------|--------------|--------|---------------|

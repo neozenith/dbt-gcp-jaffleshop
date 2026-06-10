@@ -1,0 +1,14 @@
+{
+  "name": "dbt-gcp-jaffleshop",
+  "owner": {
+    "name": "Josh Peak"
+  },
+  "description": "ADAF — Automated Data Assurance Framework: agent skills over the dbt testing-taxonomy catalogue for data-quality gap detection and remediation.",
+  "plugins": [
+    {
+      "name": "adaf",
+      "source": "./plugins/adaf",
+      "description": "Detect, explain, and git-reversibly close dbt testing-taxonomy gaps using the ADAF CLI and the DAMA-UK6 rule catalogue."
+    }
+  ]
+}

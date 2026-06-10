@@ -1,7 +1,8 @@
 name: dbt jaffle-shop CI - checks
 
 # =============================================================================
-# Runs the cicd_cli check suite (deprecations, lint, format, docs, doc-columns, tests)
+# Runs `adaf check all` (deprecations, lint, format, docs, doc-columns, tests, taxonomy,
+# system-boundaries — adaf is the Automated Data Assurance Framework CLI, a path dev-dep of the project)
 # over the PR and posts a single, self-updating comment summarising the result —
 # with a link to THIS run's logs, where the full per-file / per-violation detail
 # lives. The comment is the at-a-glance digest; the logs are the source of truth.
@@ -23,6 +24,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'dbt-jaffleshop/**'
+      - '.github/cli/adaf/**'
       - '.github/workflows/dbt-cicd-checks.yml'
 
 permissions:
@@ -40,7 +42,7 @@ defaults:
 
 jobs:
   checks:
-    name: cicd_cli check all
+    name: adaf check all
     runs-on: ubuntu-latest
     environment: test         # binds vars.WIF_PROVIDER + env protection rules
     env:
@@ -88,9 +90,9 @@ jobs:
 
       # Every gate over all models. --md writes the comment table; full detail stays in the logs.
       # continue-on-error so the comment is always posted; the final step sets the real status.
-      - name: cicd_cli check all
+      - name: adaf check all
         id: checks
-        run: uv run -m cicd_cli check all --all --color never --md "${SUMMARY}"
+        run: uv run adaf check all --all --color never --md "${SUMMARY}"
         continue-on-error: true
 
       - name: Compose comment body
@@ -99,11 +101,11 @@ jobs:
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           {
-            echo "<!-- cicd_cli-checks -->"
+            echo "<!-- adaf-checks -->"
             if [ -s "${SUMMARY}" ]; then
               cat "${SUMMARY}"
             else
-              echo "### cicd_cli checks — ❌ failed before a summary could be produced"
+              echo "### adaf checks — ❌ failed before a summary could be produced"
             fi
             echo ""
             echo "**[View full check logs →](${RUN_URL})**  ·  _updated $(date -u +%Y-%m-%dT%H:%M:%SZ)_"
@@ -120,7 +122,7 @@ jobs:
         run: |
           body="$(cat "${COMMENT}")"
           existing="$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate \
-            --jq '.[] | select(.body | startswith("<!-- cicd_cli-checks -->")) | .id' | head -n1)"
+            --jq '.[] | select(.body | startswith("<!-- adaf-checks -->")) | .id' | head -n1)"
           if [ -n "${existing}" ]; then
             gh api -X PATCH "repos/${REPO}/issues/comments/${existing}" -f body="${body}" >/dev/null
             echo "Updated comment ${existing}"
@@ -132,5 +134,5 @@ jobs:
       - name: Reflect check status
         if: always() && steps.checks.outcome == 'failure'
         run: |
-          echo "::error::cicd_cli checks failed — see the PR comment and the logs above." >&2
+          echo "::error::adaf checks failed — see the PR comment and the logs above." >&2
           # exit 1
