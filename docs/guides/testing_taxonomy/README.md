@@ -15,7 +15,7 @@ This taxonomy answers those questions once, with the trade-offs visible.
 1. **You are adding tests to a new model.** Start at [§ Decision tree](#decision-tree). For each column, walk the tree and follow the role link to the matching vignettes.
 2. **You are reviewing a PR.** Use the [§ Framework matrix](#framework-matrix) to sanity-check whether the chosen package is the right one for the job.
 3. **You hit a data-quality incident.** Search the [§ Vignette index](#vignette-index) by symptom — every vignette's `Symptoms` section is phrased as a production-visible failure.
-4. **You are shipping a breaking change.** Read [`model/contracts.md`](./model/contracts.md), [`model/versioning-cutover.md`](./model/versioning-cutover.md), and [`model/refactor-parity.md`](./model/refactor-parity.md) in order.
+4. **You are shipping a breaking change.** Read [`model/MD-02-contracts.md`](./model/MD-02-contracts.md), [`model/MD-03-versioning-cutover.md`](./model/MD-03-versioning-cutover.md), and [`model/MD-04-refactor-parity.md`](./model/MD-04-refactor-parity.md) in order.
 
 ## The two heuristics
 
@@ -34,7 +34,7 @@ The grain is the answer to "what does one row mean?". The grain is almost always
 | `fct_daily_active_users` | `user_id, date_day` |
 | `fct_inventory_snapshot` | `warehouse_id, product_id, snapshot_date` |
 
-**Rule:** every dbt model has exactly one `dbt_utils.unique_combination_of_columns` test naming its grain. If you cannot name the grain, the model isn't done. See [`model/grain-test.md`](./model/grain-test.md).
+**Rule:** every dbt model has exactly one `dbt_utils.unique_combination_of_columns` test naming its grain. If you cannot name the grain, the model isn't done. See [`model/MD-01-grain-test.md`](./model/MD-01-grain-test.md).
 
 ### 2. The Role Multiplication Heuristic
 
@@ -66,9 +66,9 @@ flowchart TD
     q4b{"GROUP BY<br/>DATE_TRUNC?"}:::q
     q4c{"loaded_at /<br/>audit timestamp?"}:::q
 
-    tscalar["event-time scalar<br/><a href='./time/event-time-bounds.md'>see time/</a>"]:::time
-    tdim["time-grain dimension<br/><a href='./time/calendar-spine.md'>see time/</a>"]:::time
-    taudit["system-time / audit<br/><a href='./time/freshness-source-and-model.md'>see time/</a>"]:::time
+    tscalar["event-time scalar<br/><a href='./time/TM-SC-01-event-time-bounds.md'>see time/</a>"]:::time
+    tdim["time-grain dimension<br/><a href='./time/TM-GR-01-calendar-spine.md'>see time/</a>"]:::time
+    taudit["system-time / audit<br/><a href='./time/TM-AU-01-freshness-source-and-model.md'>see time/</a>"]:::time
 
     payload["payload column<br/>minimal tests"]:::neutral
     model["see also <a href='./model/README.md'>model/</a><br/>(grain, contract, freshness)"]:::neutral
@@ -130,51 +130,51 @@ The roles below are MetricFlow's names. Informal names plus the Kimball, MetricF
 
 ### entity/
 
-- **EN-01** · [`unique-key.md`](./entity/unique-key.md) — single-column unique + not_null
-- **EN-02** · [`compound-grain.md`](./entity/compound-grain.md) — `unique_combination_of_columns`
-- **EN-03** · [`foreign-key-integrity.md`](./entity/foreign-key-integrity.md) — `relationships`
-- **EN-04** · [`soft-delete-scoped-fk.md`](./entity/soft-delete-scoped-fk.md) — `relationships_where`
-- **EN-06** · [`type-stable-join.md`](./entity/type-stable-join.md) — contract `data_type` matches across joined relations
-- **EN-05** · [`surrogate-collision-guard.md`](./entity/surrogate-collision-guard.md) — natural-key uniqueness alongside surrogate uniqueness
+- **EN-01** · [`EN-01-unique-key.md`](./entity/EN-01-unique-key.md) — single-column unique + not_null
+- **EN-02** · [`EN-02-compound-grain.md`](./entity/EN-02-compound-grain.md) — `unique_combination_of_columns`
+- **EN-03** · [`EN-03-foreign-key-integrity.md`](./entity/EN-03-foreign-key-integrity.md) — `relationships`
+- **EN-04** · [`EN-04-soft-delete-scoped-fk.md`](./entity/EN-04-soft-delete-scoped-fk.md) — `relationships_where`
+- **EN-06** · [`EN-06-type-stable-join.md`](./entity/EN-06-type-stable-join.md) — contract `data_type` matches across joined relations
+- **EN-05** · [`EN-05-surrogate-collision-guard.md`](./entity/EN-05-surrogate-collision-guard.md) — natural-key uniqueness alongside surrogate uniqueness
 
 ### dimension/
 
-- **DM-01** · [`accepted-values.md`](./dimension/accepted-values.md) — enum contract on a categorical
-- **DM-02** · [`cardinality-guard.md`](./dimension/cardinality-guard.md) — `expect_column_unique_value_count_to_be_between`
-- **DM-04** · [`mutual-exclusivity.md`](./dimension/mutual-exclusivity.md) — sibling boolean flags do not co-fire
-- **DM-03** · [`conformed-dimension.md`](./dimension/conformed-dimension.md) — shared seed governs values across models
-- **DM-05** · [`dimension-anomalies.md`](./dimension/dimension-anomalies.md) — Elementary per-dimension count anomalies
+- **DM-01** · [`DM-01-accepted-values.md`](./dimension/DM-01-accepted-values.md) — enum contract on a categorical
+- **DM-02** · [`DM-02-cardinality-guard.md`](./dimension/DM-02-cardinality-guard.md) — `expect_column_unique_value_count_to_be_between`
+- **DM-04** · [`DM-04-mutual-exclusivity.md`](./dimension/DM-04-mutual-exclusivity.md) — sibling boolean flags do not co-fire
+- **DM-03** · [`DM-03-conformed-dimension.md`](./dimension/DM-03-conformed-dimension.md) — shared seed governs values across models
+- **DM-05** · [`DM-05-dimension-anomalies.md`](./dimension/DM-05-dimension-anomalies.md) — Elementary per-dimension count anomalies
 
 ### measure/
 
-- **MS-01** · [`numeric-range.md`](./measure/numeric-range.md) — `accepted_range` / `expect_column_values_to_be_between`
-- **MS-02** · [`additivity-tag.md`](./measure/additivity-tag.md) — additive vs semi-additive vs non-additive (semantic-layer contract)
-- **MS-03** · [`currency-pairing.md`](./measure/currency-pairing.md) — amount columns always travel with `currency_code`
-- **MS-05** · [`distribution-anomaly.md`](./measure/distribution-anomaly.md) — mean/stdev anomaly detection
-- **MS-04** · [`nan-inf-guard.md`](./measure/nan-inf-guard.md) — divide-by-zero / Inf / NaN traps
+- **MS-01** · [`MS-01-numeric-range.md`](./measure/MS-01-numeric-range.md) — `accepted_range` / `expect_column_values_to_be_between`
+- **MS-02** · [`MS-02-additivity-tag.md`](./measure/MS-02-additivity-tag.md) — additive vs semi-additive vs non-additive (semantic-layer contract)
+- **MS-03** · [`MS-03-currency-pairing.md`](./measure/MS-03-currency-pairing.md) — amount columns always travel with `currency_code`
+- **MS-05** · [`MS-05-distribution-anomaly.md`](./measure/MS-05-distribution-anomaly.md) — mean/stdev anomaly detection
+- **MS-04** · [`MS-04-nan-inf-guard.md`](./measure/MS-04-nan-inf-guard.md) — divide-by-zero / Inf / NaN traps
 
 ### time/
 
-- **TM-SC-01** · [`event-time-bounds.md`](./time/event-time-bounds.md) — no future, no `1900-01-01` / `9999-12-31` sentinels
-- **TM-SC-02** · [`monotonic-pair.md`](./time/monotonic-pair.md) — `shipped_at >= ordered_at`, `updated_at >= created_at`
-- **TM-AU-01** · [`freshness-source-and-model.md`](./time/freshness-source-and-model.md) — source freshness + model recency
-- **TM-GR-01** · [`calendar-spine.md`](./time/calendar-spine.md) — `sequential_values` on `date_day`
-- **TM-AU-02** · [`scd2-quartet.md`](./time/scd2-quartet.md) — the four tests every Type-2 dim needs together
-- **TM-AU-03** · [`freshness-anomalies.md`](./time/freshness-anomalies.md) — Elementary learned-band freshness / event-freshness anomalies
-- **TM-SC-03** · [`timezone-contract.md`](./time/timezone-contract.md) — TIMESTAMP vs DATETIME contract on BigQuery
+- **TM-SC-01** · [`TM-SC-01-event-time-bounds.md`](./time/TM-SC-01-event-time-bounds.md) — no future, no `1900-01-01` / `9999-12-31` sentinels
+- **TM-SC-02** · [`TM-SC-02-monotonic-pair.md`](./time/TM-SC-02-monotonic-pair.md) — `shipped_at >= ordered_at`, `updated_at >= created_at`
+- **TM-AU-01** · [`TM-AU-01-freshness-source-and-model.md`](./time/TM-AU-01-freshness-source-and-model.md) — source freshness + model recency
+- **TM-GR-01** · [`TM-GR-01-calendar-spine.md`](./time/TM-GR-01-calendar-spine.md) — `sequential_values` on `date_day`
+- **TM-AU-02** · [`TM-AU-02-scd2-quartet.md`](./time/TM-AU-02-scd2-quartet.md) — the four tests every Type-2 dim needs together
+- **TM-AU-03** · [`TM-AU-03-freshness-anomalies.md`](./time/TM-AU-03-freshness-anomalies.md) — Elementary learned-band freshness / event-freshness anomalies
+- **TM-SC-03** · [`TM-SC-03-timezone-contract.md`](./time/TM-SC-03-timezone-contract.md) — TIMESTAMP vs DATETIME contract on BigQuery
 
 ### model/
 
-- **MD-01** · [`grain-test.md`](./model/grain-test.md) — the one test every model must have
-- **MD-02** · [`contracts.md`](./model/contracts.md) — `contract.enforced: true` (shape, not content)
-- **MD-03** · [`versioning-cutover.md`](./model/versioning-cutover.md) — ship `v=N+1` without breaking consumers
-- **MD-04** · [`refactor-parity.md`](./model/refactor-parity.md) — `audit_helper.compare_and_classify_relation_rows`
-- **MD-05** · [`unit-tests.md`](./model/unit-tests.md) — dbt 1.8 unit tests for branching SQL logic
-- **MD-06** · [`row-count-band.md`](./model/row-count-band.md) — `expect_table_row_count_to_be_between`
-- **MD-07** · [`volume-anomaly.md`](./model/volume-anomaly.md) — Elementary volume anomaly detection
-- **MD-08** · [`schema-changes.md`](./model/schema-changes.md) — Elementary schema-change / baseline-drift detection on sources you don't own
-- **MD-09** · [`column-anomalies.md`](./model/column-anomalies.md) — Elementary automated column monitors (null %, min/max/avg, zero-count)
-- **MD-10** · [`json-schema.md`](./model/json-schema.md) — Elementary JSON-shape validation on semi-structured columns
+- **MD-01** · [`MD-01-grain-test.md`](./model/MD-01-grain-test.md) — the one test every model must have
+- **MD-02** · [`MD-02-contracts.md`](./model/MD-02-contracts.md) — `contract.enforced: true` (shape, not content)
+- **MD-03** · [`MD-03-versioning-cutover.md`](./model/MD-03-versioning-cutover.md) — ship `v=N+1` without breaking consumers
+- **MD-04** · [`MD-04-refactor-parity.md`](./model/MD-04-refactor-parity.md) — `audit_helper.compare_and_classify_relation_rows`
+- **MD-05** · [`MD-05-unit-tests.md`](./model/MD-05-unit-tests.md) — dbt 1.8 unit tests for branching SQL logic
+- **MD-06** · [`MD-06-row-count-band.md`](./model/MD-06-row-count-band.md) — `expect_table_row_count_to_be_between`
+- **MD-07** · [`MD-07-volume-anomaly.md`](./model/MD-07-volume-anomaly.md) — Elementary volume anomaly detection
+- **MD-08** · [`MD-08-schema-changes.md`](./model/MD-08-schema-changes.md) — Elementary schema-change / baseline-drift detection on sources you don't own
+- **MD-09** · [`MD-09-column-anomalies.md`](./model/MD-09-column-anomalies.md) — Elementary automated column monitors (null %, min/max/avg, zero-count)
+- **MD-10** · [`MD-10-json-schema.md`](./model/MD-10-json-schema.md) — Elementary JSON-shape validation on semi-structured columns
 
 ## Framework matrix
 
@@ -286,7 +286,7 @@ Every diagram palette meets **WCAG 2.1 AA for text contrast** (white text on sha
 ## Conventions
 
 - **Folder naming uses singular nouns** (`entity/`, not `entities/`). A folder name is the role; the file inside is the pattern.
-- **File naming uses imperative verbs / nouns of the pattern** (`unique-key.md`, `refactor-parity.md`).
+- **File naming uses imperative verbs / nouns of the pattern** (`EN-01-unique-key.md`, `MD-04-refactor-parity.md`).
 - **Mermaid diagrams render natively on GitHub** — see [`templates/default.md`](./templates/default.md) for the standard layout.
 - **SQL examples target BigQuery** (the project's adapter). Where dialect matters (TIMESTAMP vs DATETIME, `regexp_instr` flags, partition pruning), the vignette calls it out.
 - **YAML examples assume dbt 1.8+** — they use the `data_tests:` key (not `tests:`) and the `data-tests/` directory (not `tests/`).
@@ -295,12 +295,12 @@ Every diagram palette meets **WCAG 2.1 AA for text contrast** (white text on sha
 
 If reading the catalogue front-to-back, this is the recommended order:
 
-1. [`model/grain-test.md`](./model/grain-test.md) — the most important test in the entire project
-2. [`entity/unique-key.md`](./entity/unique-key.md) → [`entity/compound-grain.md`](./entity/compound-grain.md) → [`entity/foreign-key-integrity.md`](./entity/foreign-key-integrity.md)
-3. [`dimension/accepted-values.md`](./dimension/accepted-values.md) → [`dimension/cardinality-guard.md`](./dimension/cardinality-guard.md)
-4. [`measure/numeric-range.md`](./measure/numeric-range.md) → [`measure/additivity-tag.md`](./measure/additivity-tag.md)
-5. [`time/event-time-bounds.md`](./time/event-time-bounds.md) → [`time/monotonic-pair.md`](./time/monotonic-pair.md)
-6. [`model/contracts.md`](./model/contracts.md) → [`model/versioning-cutover.md`](./model/versioning-cutover.md) → [`model/refactor-parity.md`](./model/refactor-parity.md)
+1. [`model/MD-01-grain-test.md`](./model/MD-01-grain-test.md) — the most important test in the entire project
+2. [`entity/EN-01-unique-key.md`](./entity/EN-01-unique-key.md) → [`entity/EN-02-compound-grain.md`](./entity/EN-02-compound-grain.md) → [`entity/EN-03-foreign-key-integrity.md`](./entity/EN-03-foreign-key-integrity.md)
+3. [`dimension/DM-01-accepted-values.md`](./dimension/DM-01-accepted-values.md) → [`dimension/DM-02-cardinality-guard.md`](./dimension/DM-02-cardinality-guard.md)
+4. [`measure/MS-01-numeric-range.md`](./measure/MS-01-numeric-range.md) → [`measure/MS-02-additivity-tag.md`](./measure/MS-02-additivity-tag.md)
+5. [`time/TM-SC-01-event-time-bounds.md`](./time/TM-SC-01-event-time-bounds.md) → [`time/TM-SC-02-monotonic-pair.md`](./time/TM-SC-02-monotonic-pair.md)
+6. [`model/MD-02-contracts.md`](./model/MD-02-contracts.md) → [`model/MD-03-versioning-cutover.md`](./model/MD-03-versioning-cutover.md) → [`model/MD-04-refactor-parity.md`](./model/MD-04-refactor-parity.md)
 7. Anomaly-detection vignettes when the project graduates to needing Elementary
 
 ## Template

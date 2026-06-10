@@ -36,8 +36,10 @@ def test_wang_strong_values_are_declared_dimensions() -> None:
 
 
 def test_slug_matches_vignette_filename() -> None:
+    # Vignette filenames are prefixed with the rule code: <code>-<slug>.md
+    # (so the file sorts/identifies by rule code). The doc path must end with exactly that.
     for rule in all_rules():
-        assert rule["doc"].endswith(f"/{rule['slug']}.md"), rule["code"]
+        assert rule["doc"].endswith(f"/{rule['code']}-{rule['slug']}.md"), rule["code"]
 
 
 def test_time_rules_have_subrole_others_do_not() -> None:
