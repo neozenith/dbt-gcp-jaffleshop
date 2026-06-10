@@ -220,6 +220,9 @@ __marimo__/
 
 .claude/
 
+# playwright-cli skill scratch (snapshots, console/network logs) — not a repo artifact
+.playwright-cli/
+
 # .agents/ is the local agent-skill toolkit and stays ignored by default (personal
 # skills like 5ys, ais, coach, vite-*, playwright-* are not repo artifacts). EXCEPTION:
 # the vendored dbt-labs/dbt-agent-skills set IS committed so agents can review/manage the

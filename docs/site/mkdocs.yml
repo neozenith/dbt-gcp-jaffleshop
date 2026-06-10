@@ -1,0 +1,141 @@
+# MkDocs config for the dbt testing-taxonomy guide.
+#
+# The content lives at docs/guides/testing_taxonomy/ and is authored to render
+# natively on GitHub. This config wraps that same tree as a Material site that is
+# published as a SIBLING artefact under <pages-url>/guides/ (see .github/workflows/
+# dbt-docs.yml, which stages the build into _site/guides/).
+#
+# Paths below are resolved relative to THIS file (docs/site/). docs_dir therefore
+# points up-and-over into the guide content; the config itself stays outside
+# docs_dir (MkDocs forbids mkdocs.yml inside docs_dir).
+#
+# Local build:  uv run --directory docs/site mkdocs build   (-> tmp/guides-site/)
+# Local serve:  uv run --directory docs/site mkdocs serve
+site_name: dbt Testing Taxonomy
+site_description: >-
+  A pattern catalogue for testing dbt models — 33 rule vignettes organised by the
+  semantic role each column plays (entity, dimension, measure, time, model), with
+  DAMA-UK6 + Wang–Strong data-quality attribution.
+site_url: https://joshpeak.net/dbt-gcp-jaffleshop/guides/
+site_author: Josh Peak
+
+repo_url: https://github.com/neozenith/dbt-gcp-jaffleshop
+repo_name: neozenith/dbt-gcp-jaffleshop
+edit_uri: edit/main/docs/guides/testing_taxonomy/
+
+docs_dir: ../guides/testing_taxonomy
+site_dir: ../../tmp/guides-site
+
+# Fail the build on a broken internal link or a nav entry that points nowhere.
+# Catches link rot at build time instead of shipping a 404 to Pages.
+strict: true
+
+# NOTE: docs/guides/testing_taxonomy/templates/default.md is intentionally NOT
+# published. MkDocs reserves /templates/ by default (theme Jinja partials), and the
+# file is a contributor scaffold full of `{{ placeholder }}` tokens and example
+# `<role>/<sibling>.md` links — not reader-facing content. References to it point at
+# the GitHub source instead.
+
+hooks:
+  - hooks.py
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.indexes      # a section's README becomes its landing page
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+plugins:
+  - search
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        # Hand mermaid fences to Material, which loads mermaid.js client-side.
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: README.md
+  - Entity — keys & joins:
+      - entity/README.md
+      - EN-01 · Unique key: entity/EN-01-unique-key.md
+      - EN-02 · Compound grain: entity/EN-02-compound-grain.md
+      - EN-03 · Foreign-key integrity: entity/EN-03-foreign-key-integrity.md
+      - EN-04 · Soft-delete scoped FK: entity/EN-04-soft-delete-scoped-fk.md
+      - EN-05 · Surrogate collision guard: entity/EN-05-surrogate-collision-guard.md
+      - EN-06 · Type-stable join: entity/EN-06-type-stable-join.md
+  - Dimension — GROUP BY axes:
+      - dimension/README.md
+      - DM-01 · Accepted values: dimension/DM-01-accepted-values.md
+      - DM-02 · Cardinality guard: dimension/DM-02-cardinality-guard.md
+      - DM-03 · Conformed dimension: dimension/DM-03-conformed-dimension.md
+      - DM-04 · Mutual exclusivity: dimension/DM-04-mutual-exclusivity.md
+      - DM-05 · Dimension anomalies: dimension/DM-05-dimension-anomalies.md
+  - Measure — aggregated facts:
+      - measure/README.md
+      - MS-01 · Numeric range: measure/MS-01-numeric-range.md
+      - MS-02 · Additivity tag: measure/MS-02-additivity-tag.md
+      - MS-03 · Currency pairing: measure/MS-03-currency-pairing.md
+      - MS-04 · NaN / Inf guard: measure/MS-04-nan-inf-guard.md
+      - MS-05 · Distribution anomaly: measure/MS-05-distribution-anomaly.md
+  - Time — temporal columns:
+      - time/README.md
+      - TM-SC-01 · Event-time bounds: time/TM-SC-01-event-time-bounds.md
+      - TM-SC-02 · Monotonic pair: time/TM-SC-02-monotonic-pair.md
+      - TM-SC-03 · Timezone contract: time/TM-SC-03-timezone-contract.md
+      - TM-GR-01 · Calendar spine: time/TM-GR-01-calendar-spine.md
+      - TM-AU-01 · Freshness (source & model): time/TM-AU-01-freshness-source-and-model.md
+      - TM-AU-02 · SCD2 quartet: time/TM-AU-02-scd2-quartet.md
+      - TM-AU-03 · Freshness anomalies: time/TM-AU-03-freshness-anomalies.md
+  - Model — cross-column concerns:
+      - model/README.md
+      - MD-01 · Grain test: model/MD-01-grain-test.md
+      - MD-02 · Contracts: model/MD-02-contracts.md
+      - MD-03 · Versioning cutover: model/MD-03-versioning-cutover.md
+      - MD-04 · Refactor parity: model/MD-04-refactor-parity.md
+      - MD-05 · Unit tests: model/MD-05-unit-tests.md
+      - MD-06 · Row-count band: model/MD-06-row-count-band.md
+      - MD-07 · Volume anomaly: model/MD-07-volume-anomaly.md
+      - MD-08 · Schema changes: model/MD-08-schema-changes.md
+      - MD-09 · Column anomalies: model/MD-09-column-anomalies.md
+      - MD-10 · JSON schema: model/MD-10-json-schema.md

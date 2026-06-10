@@ -10,7 +10,7 @@
 | Guide | Purpose |
 |---|---|
 | [`guides/adaf.md`](./guides/adaf.md) | **ADAF — Automated Data Assurance Framework**: the dbt testing-taxonomy catalogue + the `adaf` CLI, CI, and agent-skill that find and close data-quality test gaps |
-| [`guides/testing_taxonomy/`](./guides/testing_taxonomy/) | The 33 rule vignettes (one per taxonomy rule), with DAMA-UK6 + Wang–Strong attribution |
+| [`guides/testing_taxonomy/`](./guides/testing_taxonomy/) | The 33 rule vignettes (one per taxonomy rule), with DAMA-UK6 + Wang–Strong attribution. Also published as a browsable MkDocs site at https://joshpeak.net/dbt-gcp-jaffleshop/guides/ (built from `docs/site/`, deployed alongside the dbt docs — see `.github/workflows/dbt-docs.yml`) |
 
 ## What goes where
 

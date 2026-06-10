@@ -42,6 +42,14 @@ name: dbt docs
 # its own project. (The LOCAL `make elementary-report` path instead impersonates a dedicated,
 # narrowly-scoped dbt-dev-elementary SA — see dbt-jaffleshop/Makefile and infra/stacks/dbt_platform/dbt.tf.)
 #
+# Finally we publish the MkDocs "guides" site as a FOURTH SIBLING, reachable at <pages-url>/guides/.
+# It renders docs/guides/testing_taxonomy/ (the dbt testing-taxonomy catalogue) as a Material static
+# site. Unlike the three siblings above, this build needs NO warehouse query and NO GCP auth — it is a
+# pure markdown→HTML build from an isolated mkdocs-material env under docs/site/. It is folded into this
+# job (rather than its own workflow) for one structural reason: GitHub Pages serves a SINGLE artifact,
+# so every published surface must be staged into the one _site/ tree this job uploads. A parallel
+# workflow would race this one and clobber the deployment. Config + env live in docs/site/.
+#
 # PREREQUISITE: repo Settings → Pages → Source must be set to "GitHub Actions"
 # (one-time, manual). The deploy-pages action fails clearly if it isn't.
 # =============================================================================
@@ -146,6 +154,20 @@ jobs:
             --profile-target prod \
             --target-path "${{ github.workspace }}/edr_target" \
             --file-path "${{ github.workspace }}/_site/elementary_report.html"
+
+      # MkDocs guides site → <pages-url>/guides/. Renders docs/guides/testing_taxonomy/
+      # as a Material static site (config + isolated mkdocs-material env live in docs/site/).
+      # This is a PURE static build — no warehouse query, no GCP auth — so unlike the steps
+      # above it doesn't depend on the prod SA; it's gated into this job only so the guides
+      # republish on the same "prod" cadence and land in the SAME single Pages artifact.
+      # `--directory docs/site` runs mkdocs in its own uv env (kept out of the dbt env synced
+      # above); `--frozen` enforces docs/site/uv.lock. site_dir is overridden to _site/guides
+      # so the output nests as a sibling of index.html without touching it (mkdocs cleans only
+      # its own site_dir). Fail-loud: mkdocs.yml sets `strict: true`, so a broken internal
+      # link or stale nav entry fails the publish instead of shipping a 404.
+      - name: Build guides site (sibling of index.html, under /guides/)
+        working-directory: ${{ github.workspace }}
+        run: uv run --directory docs/site --frozen mkdocs build --site-dir "${{ github.workspace }}/_site/guides"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
