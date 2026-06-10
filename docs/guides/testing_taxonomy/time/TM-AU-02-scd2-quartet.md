@@ -131,10 +131,10 @@ flowchart TD
     t3 -- "overlap" --> fail
     t4 -- "empty window" --> fail
 
-    classDef timePrimary fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef gate        fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef ok          fill:#047857,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef fail        fill:#dc2626,stroke:#1e293b,color:#fff,stroke-width:2px
+    classDef timePrimary fill:#c2410c30,stroke:#f97316,stroke-width:2px
+    classDef gate fill:#c2410c30,stroke:#f97316,stroke-width:2px
+    classDef ok fill:#0478572e,stroke:#10b981,stroke-width:2px
+    classDef fail fill:#dc262636,stroke:#ef4444,stroke-width:2px
 ```
 
 ## Framework choice

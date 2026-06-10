@@ -110,11 +110,11 @@ flowchart LR
     preflight -- "fct_payments<br/>declared STRING" --> stop["Compilation Error<br/>before any DDL"]:::fail
 
     class beforeBuild sgEntity
-    classDef entitySecondary fill:#93c5fd,stroke:#3b82f6,color:#1e293b,stroke-width:1px
-    classDef sgEntity       fill:#dbeafe,stroke:#3b82f6,color:#1e293b
-    classDef gate           fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef ok             fill:#047857,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef fail           fill:#dc2626,stroke:#1e293b,color:#fff,stroke-width:2px
+    classDef entitySecondary fill:#1d4ed836,stroke:#3b82f6,stroke-width:1px
+    classDef sgEntity fill:#1d4ed814,stroke:#3b82f6,stroke-width:1px
+    classDef gate fill:#c2410c30,stroke:#f97316,stroke-width:2px
+    classDef ok fill:#0478572e,stroke:#10b981,stroke-width:2px
+    classDef fail fill:#dc262636,stroke:#ef4444,stroke-width:2px
 ```
 
 The check is **free** — no warehouse scan, no rows read. The cost is paid only in YAML maintenance.

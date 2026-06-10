@@ -135,11 +135,11 @@ flowchart TD
     semi --> sl
     non --> mm["MetricFlow<br/>derived metric"]:::measurePrimary
 
-    classDef measurePrimary fill:#047857,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef gate           fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef ok             fill:#047857,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef semiok         fill:#fdba74,stroke:#f97316,color:#1e293b,stroke-width:2px
-    classDef fail           fill:#dc2626,stroke:#1e293b,color:#fff,stroke-width:2px
+    classDef measurePrimary fill:#0478572e,stroke:#10b981,stroke-width:2px
+    classDef gate fill:#c2410c30,stroke:#f97316,stroke-width:2px
+    classDef ok fill:#0478572e,stroke:#10b981,stroke-width:2px
+    classDef semiok fill:#c2410c30,stroke:#f97316,stroke-width:1px
+    classDef fail fill:#dc262636,stroke:#ef4444,stroke-width:2px
 ```
 
 ## Framework choice

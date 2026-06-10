@@ -29,7 +29,7 @@ An **entity column** is a column that appears in a `JOIN ... ON` clause anywhere
 
 ## Anti-pattern: Identity columns without `unique` + `not_null`
 
-Pair `unique` and `not_null` on **every** entity column unless there's an explicit business reason not to. The cost of these tests is near-zero (single index-friendly aggregations on most warehouses); the cost of missing a duplicate is a CFO-visible incident. See [F.1](../README.md#the-two-heuristics) (Silent FK Fanout) for the cautionary tale.
+Pair `unique` and `not_null` on **every** entity column unless there's an explicit business reason not to. The cost of these tests is near-zero (single index-friendly aggregations on most warehouses); the cost of missing a duplicate is a CFO-visible incident (silent FK fanout). See [the grain](../README.md#the-grain) for why this is the cornerstone test.
 
 ## Anti-pattern: Conflating "the column has a unique constraint" with "the column is unique in this model"
 
@@ -41,4 +41,4 @@ Every dbt model has exactly one `dbt_utils.unique_combination_of_columns` test t
 
 ## Cross-role intersections
 
-Entity columns frequently double as dimensions (`order_id` is an entity in `dim_orders` but a `GROUP BY` axis in `mart_orders_by_customer`). When an entity also plays a dimensional role, the test suite is the **union** of both roles' suites. See the [Role Multiplication Heuristic](../README.md#2-the-role-multiplication-heuristic).
+Entity columns frequently double as dimensions (`order_id` is an entity in `dim_orders` but a `GROUP BY` axis in `mart_orders_by_customer`). When an entity also plays a dimensional role, the test suite is the **union** of both roles' suites. See [role multiplication](../README.md#role-multiplication).

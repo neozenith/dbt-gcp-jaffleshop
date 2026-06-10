@@ -93,10 +93,10 @@ flowchart LR
     test -- pass --> ok["Downstream<br/>(safe data)"]:::ok
     test -- fail --> stop["Build fails /<br/>PR blocked"]:::fail
 
-    classDef source fill:#dbeafe,stroke:#3b82f6,color:#1e293b,stroke-width:1px
-    classDef gate   fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef ok     fill:#047857,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef fail   fill:#dc2626,stroke:#1e293b,color:#fff,stroke-width:2px
+    classDef source fill:#1d4ed836,stroke:#3b82f6,stroke-width:1px
+    classDef gate fill:#c2410c30,stroke:#f97316,stroke-width:2px
+    classDef ok fill:#0478572e,stroke:#10b981,stroke-width:2px
+    classDef fail fill:#dc262636,stroke:#ef4444,stroke-width:2px
 ```
 
 ## Framework choice

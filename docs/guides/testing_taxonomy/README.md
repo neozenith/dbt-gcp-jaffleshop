@@ -1,106 +1,120 @@
 # Testing Taxonomy
 
-A pattern catalogue for testing dbt models. Organised the way Martin Fowler organised *Refactoring* — every entry is a vignette with a **Symptom**, a named **Pattern**, and the **Mechanics** to apply it.
+Inspired by Martin Fowler's book [Refactoring](https://refactoring.com/), this guide breaks down the complex and expansive space of **data testing** into a catalog of *Vignette*'s.
+Each with the same format:
 
-The vocabulary is borrowed from dbt's semantic layer (MetricFlow). Tests are chosen by semantically **what a column does** in queries — joins, group-bys, aggregates, or time arithmetic — not by what its type is in the warehouse.
+- Symptoms
+- Pattern
+- Mechanics
 
-## Why this exists
+Importantly the `Mechanics` sections are grounded in implementation specifics about:
 
-dbt projects accumulate tests one model at a time. Without a vocabulary, every engineer reinvents the same decisions: should `country` get `accepted_values`? Does `order_id` need both `unique` and `not_null` if there's already a `primary_key` constraint? Should refactor parity live in a singular test or an analysis?
-
-This taxonomy answers those questions once, with the trade-offs visible.
-
-## How to use it
-
-1. **You are adding tests to a new model.** Start at [§ Decision tree](#decision-tree). For each column, walk the tree and follow the role link to the matching vignettes.
-2. **You are reviewing a PR.** Use the [§ Framework matrix](#framework-matrix) to sanity-check whether the chosen package is the right one for the job.
-3. **You hit a data-quality incident.** Search the [§ Vignette index](#vignette-index) by symptom — every vignette's `Symptoms` section is phrased as a production-visible failure.
-4. **You are shipping a breaking change.** Read [`model/MD-02-contracts.md`](./model/MD-02-contracts.md), [`model/MD-03-versioning-cutover.md`](./model/MD-03-versioning-cutover.md), and [`model/MD-04-refactor-parity.md`](./model/MD-04-refactor-parity.md) in order.
-
-## The two heuristics
-
-Two ideas underpin everything below. Internalise these and the rest of the catalogue becomes mechanical.
-
-### 1. The Grain Heuristic
-
-> Every dbt model is defined by its **grain** — the tuple of columns whose combination uniquely identifies a row.
-
-The grain is the answer to "what does one row mean?". The grain is almost always `Entity × {Entity | Dimension} × Time`. Examples:
-
-| Model | Grain |
-|-------|-------|
-| `fct_orders` | `order_id` |
-| `fct_order_items` | `order_id, line_number` |
-| `fct_daily_active_users` | `user_id, date_day` |
-| `fct_inventory_snapshot` | `warehouse_id, product_id, snapshot_date` |
-
-**Rule:** every dbt model has exactly one `dbt_utils.unique_combination_of_columns` test naming its grain. If you cannot name the grain, the model isn't done. See [`model/MD-01-grain-test.md`](./model/MD-01-grain-test.md).
-
-### 2. The Role Multiplication Heuristic
-
-> Most columns play **more than one role** across the DAG.
-
-`order_id` is an entity in `dim_orders`, a foreign key in `fct_order_items`, and a `GROUP BY` axis in `mart_orders_by_customer`. The test budget for a column is the **union** of the role-specific suites for every role it plays anywhere downstream.
-
-The taxonomy is a vocabulary for discovering that union, not a way to assign exactly one role per column.
+- dbt native testing features:
+    - [data tests](https://docs.getdbt.com/docs/build/data-tests)
+    - [singular tests](https://docs.getdbt.com/docs/build/data-tests#singular-data-tests)
+    - [generic tests](https://docs.getdbt.com/docs/build/data-tests#generic-data-tests)
+    - [data unit tests](https://docs.getdbt.com/docs/build/unit-tests)
+    - [model versioning](https://docs.getdbt.com/docs/collaborate/govern/model-versions)
+    - [data contracts](https://docs.getdbt.com/docs/collaborate/govern/model-contracts)
+- [`dbt-utils`](https://github.com/dbt-labs/dbt-utils)
+- [`dbt-expectations`](https://github.com/metaplane/dbt-expectations)
+- [`audit_helper`](https://github.com/dbt-labs/dbt-audit-helper)
+- [`elementary`](https://docs.elementary-data.com/)
 
 ## Decision tree
 
-Walk this tree for each column in a new model.
+Walk this tree for each thing you test. Ask heuristic 1 first — **whole model or one column?** — then, for a column, name its **semantic category** (heuristic 2).
 
 ```mermaid
 flowchart TD
-    start(["Pick a column"]):::start
+    start(["What are you testing?"]):::start
 
-    q1{"Used in<br/>JOIN ON?"}:::q
-    q2{"Used in<br/>GROUP BY?"}:::q
-    q3{"Inside an aggregate<br/>SUM/COUNT/AVG?"}:::q
-    q4{"date/datetime/<br/>timestamp?"}:::q
-    qFree{"Used at all<br/>downstream?"}:::q
+    q1{"A single column,<br/>or the whole model?"}:::q
+    q2{"What is the column's<br/>semantic category?"}:::q
 
-    entity["entity role<br/><a href='./entity/README.md'>see entity/</a>"]:::entity
-    dim["dimension role<br/><a href='./dimension/README.md'>see dimension/</a>"]:::dim
-    meas["measure role<br/><a href='./measure/README.md'>see measure/</a>"]:::meas
+    model["model-level tests<br/><a href='./model/README.md'>see model/</a><br/><i>grain · contract · versioning ·<br/>refactor-parity · row-count · volume · freshness</i>"]:::model
 
-    q4a{"WHERE / arithmetic /<br/>window function?"}:::q
-    q4b{"GROUP BY<br/>DATE_TRUNC?"}:::q
-    q4c{"loaded_at /<br/>audit timestamp?"}:::q
+    entity["entity<br/>identity / join key<br/><a href='./entity/README.md'>see entity/</a>"]:::entity
+    dim["dimension<br/>GROUP BY / filter axis<br/><a href='./dimension/README.md'>see dimension/</a>"]:::dim
+    meas["measure<br/>aggregated number<br/><a href='./measure/README.md'>see measure/</a>"]:::meas
+    time["time<br/>date / datetime / timestamp<br/><a href='./time/README.md'>see time/</a>"]:::time
 
-    tscalar["event-time scalar<br/><a href='./time/TM-SC-01-event-time-bounds.md'>see time/</a>"]:::time
-    tdim["time-grain dimension<br/><a href='./time/TM-GR-01-calendar-spine.md'>see time/</a>"]:::time
-    taudit["system-time / audit<br/><a href='./time/TM-AU-01-freshness-source-and-model.md'>see time/</a>"]:::time
-
-    payload["payload column<br/>minimal tests"]:::neutral
-    model["see also <a href='./model/README.md'>model/</a><br/>(grain, contract, freshness)"]:::neutral
+    tscalar["event-time scalar<br/><a href='./time/TM-SC-01-event-time-bounds.md'>TM-SC-*</a>"]:::time
+    tdim["time-grain dimension<br/><a href='./time/TM-GR-01-calendar-spine.md'>TM-GR-*</a>"]:::time
+    taudit["system-time / audit<br/><a href='./time/TM-AU-01-freshness-source-and-model.md'>TM-AU-*</a>"]:::time
 
     start --> q1
-    q1 -- yes --> entity --> q2
-    q1 -- no --> q2
-    q2 -- yes --> dim --> q3
-    q2 -- no --> q3
-    q3 -- yes --> meas --> q4
-    q3 -- no --> q4
-    q4 -- yes --> q4a
-    q4 -- no --> qFree
-    q4a -- yes --> tscalar
-    q4a -- no --> q4b
-    q4b -- yes --> tdim
-    q4b -- no --> q4c
-    q4c -- yes --> taudit
-    q4c -- no --> tscalar
-    qFree -- no --> payload
-    qFree -- yes --> model
+    q1 -- "whole model" --> model
+    q1 -- "single column" --> q2
+    q2 -- "JOIN key" --> entity
+    q2 -- "GROUP BY / WHERE" --> dim
+    q2 -- "SUM / COUNT / AVG" --> meas
+    q2 -- "date / time" --> time
+    time -.-> tscalar
+    time -.-> tdim
+    time -.-> taudit
 
-    classDef start   fill:#475569,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef q       fill:#cbd5e1,stroke:#64748b,color:#1e293b,stroke-width:1px
-    classDef entity  fill:#2563eb,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef dim     fill:#7c3aed,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef meas    fill:#047857,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef time    fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef neutral fill:#f1f5f9,stroke:#94a3b8,color:#334155,stroke-width:1px
+    %% Colour strategy (WCAG AAA in BOTH MkDocs themes):
+    %% MkDocs-Material forces the mermaid LABEL text colour per theme (dark #36464e in
+    %% light, light grey in dark) and overrides any classDef `color:`. So we DON'T set
+    %% `color:` — we anchor to Material's text and instead make the FILL translucent
+    %% (8-digit-hex alpha ≈0.20) so the page background bleeds through: each box is a
+    %% pale tint on white and a dark tint on the slate-dark bg, keeping the forced text
+    %% at ≥7:1 in both themes. The opaque vivid stroke carries the category hue.
+    %% Alphas solved + verified (colorjs.io) — see the change that introduced this.
+    classDef start   fill:#52525b36,stroke:#71717a,stroke-width:2px
+    classDef q       fill:#52525b36,stroke:#71717a,stroke-width:2px
+    classDef entity  fill:#1d4ed836,stroke:#3b82f6,stroke-width:2px
+    classDef dim     fill:#7c3aed33,stroke:#8b5cf6,stroke-width:2px
+    classDef meas    fill:#0478572e,stroke:#10b981,stroke-width:2px
+    classDef time    fill:#c2410c30,stroke:#f97316,stroke-width:2px
+    classDef model   fill:#47556936,stroke:#64748b,stroke-width:2px
 ```
 
-A column may answer **yes** to more than one question — that's the Role Multiplication Heuristic. Take the union of the recommended suites.
+A column can answer heuristic 2 **more than once** — `order_id` is both an entity (join key) and a `GROUP BY` axis — so take the **union** of the matching suites (see [§ Role multiplication](#role-multiplication)). The dotted branches under **time** are its three sub-roles: most time columns are event-time scalars; calendar/spine columns are time-grain dimensions; `loaded_at`-style columns are system-time / audit.
+
+## Reading order
+
+Read top-down in three tiers — orient before you dive in:
+
+```mermaid
+flowchart TD
+    root(["①&nbsp; This overview<br/><i>(you are here)</i>"]):::startNode
+
+    subgraph T2 ["②&nbsp; Category READMEs — model-level first"]
+        direction LR
+        cModel["<a href='./model/README.md'>model/</a><br/><i>start here</i>"]:::model --> cEntity["<a href='./entity/README.md'>entity/</a>"]:::entity --> cDim["<a href='./dimension/README.md'>dimension/</a>"]:::dim --> cMeas["<a href='./measure/README.md'>measure/</a>"]:::meas --> cTime["<a href='./time/README.md'>time/</a>"]:::time
+    end
+
+    subgraph T3 ["③&nbsp; Key vignettes in each category"]
+        direction LR
+        kModel["MD-01 grain-test<br/>MD-02 contracts<br/>MD-04 refactor-parity"]:::model --> kEntity["EN-01 unique-key<br/>EN-02 compound-grain<br/>EN-03 foreign-key"]:::entity --> kDim["DM-01 accepted-values<br/>DM-02 cardinality-guard"]:::dim --> kMeas["MS-01 numeric-range<br/>MS-02 additivity-tag"]:::meas --> kTime["TM-SC-01 event-time-bounds<br/>TM-SC-02 monotonic-pair"]:::time
+    end
+
+    root --> cModel
+    cTime --> kModel
+
+    %% Same dual-theme AAA strategy as the decision tree above: translucent fills
+    %% (page bg bleeds through) + vivid hue stroke, no `color:` (Material owns the text).
+    classDef startNode fill:#52525b36,stroke:#71717a,stroke-width:2px
+    classDef entity  fill:#1d4ed836,stroke:#3b82f6,stroke-width:2px
+    classDef dim     fill:#7c3aed33,stroke:#8b5cf6,stroke-width:2px
+    classDef meas    fill:#0478572e,stroke:#10b981,stroke-width:2px
+    classDef time    fill:#c2410c30,stroke:#f97316,stroke-width:2px
+    classDef model   fill:#47556936,stroke:#64748b,stroke-width:2px
+```
+
+1. **This overview** (the root README) — you're reading it: the [two heuristics](#the-two-categorisation-heuristics), the [decision tree](#decision-tree), the [framework matrix](#framework-matrix).
+2. **Each category's README, model-level first** — [`model/`](./model/README.md) → [`entity/`](./entity/README.md) → [`dimension/`](./dimension/README.md) → [`measure/`](./measure/README.md) → [`time/`](./time/README.md). Each frames the role before you read its rules.
+3. **The key vignettes in each category** (model first):
+    - **model** — [`MD-01-grain-test`](./model/MD-01-grain-test.md), [`MD-02-contracts`](./model/MD-02-contracts.md), [`MD-04-refactor-parity`](./model/MD-04-refactor-parity.md)
+    - **entity** — [`EN-01-unique-key`](./entity/EN-01-unique-key.md) → [`EN-02-compound-grain`](./entity/EN-02-compound-grain.md) → [`EN-03-foreign-key-integrity`](./entity/EN-03-foreign-key-integrity.md)
+    - **dimension** — [`DM-01-accepted-values`](./dimension/DM-01-accepted-values.md) → [`DM-02-cardinality-guard`](./dimension/DM-02-cardinality-guard.md)
+    - **measure** — [`MS-01-numeric-range`](./measure/MS-01-numeric-range.md) → [`MS-02-additivity-tag`](./measure/MS-02-additivity-tag.md)
+    - **time** — [`TM-SC-01-event-time-bounds`](./time/TM-SC-01-event-time-bounds.md) → [`TM-SC-02-monotonic-pair`](./time/TM-SC-02-monotonic-pair.md)
+
+Once a project graduates to drift detection, the Elementary-backed anomaly vignettes (`DM-05`, `MS-05`, `TM-AU-03`, `MD-07`–`MD-10`) are the advanced follow-on.
+
 
 ## Vocabulary / glossary
 
@@ -176,6 +190,61 @@ The roles below are MetricFlow's names. Informal names plus the Kimball, MetricF
 - **MD-09** · [`MD-09-column-anomalies.md`](./model/MD-09-column-anomalies.md) — Elementary automated column monitors (null %, min/max/avg, zero-count)
 - **MD-10** · [`MD-10-json-schema.md`](./model/MD-10-json-schema.md) — Elementary JSON-shape validation on semi-structured columns
 
+
+## The two categorisation heuristics
+
+Two questions decide which tests a thing needs. Answer them in order and the rest of the catalogue is a lookup.
+
+### 1. Column-level or model-level?
+
+> Is what you're testing a property of **one column**, or of the **whole model**?
+
+- **Model-level** properties are about the table as a whole — its grain, its row count, its schema contract, its freshness, whether a refactor preserved every row. These live in [`model/`](./model/README.md).
+- **Column-level** properties are about the values inside one column. These live in the four *role* folders, picked by the column's semantic category — heuristic 2.
+
+A quick test: ask *"would this still make sense if the table had exactly one column?"* If yes — grain, row-count band, freshness — it's model-level. If it's about what's *in* a particular column, it's column-level.
+
+### 2. What is the column's semantic category?
+
+> For a column, name the role it plays in queries: **entity, dimension, measure, or time**.
+
+The category is chosen by **what the column does in SQL**, not by its warehouse type — a `STRING` can be an entity (a join key) or a dimension (a `GROUP BY` axis), and they want different tests.
+
+| Category | The column is… | …spotted in SQL by | Folder |
+|----------|----------------|--------------------|--------|
+| **entity** | an identity / join key | appears in `JOIN … ON` | [`entity/`](./entity/README.md) |
+| **dimension** | a grouping / filtering axis | appears in `GROUP BY` / `WHERE` | [`dimension/`](./dimension/README.md) |
+| **measure** | an aggregated number | wrapped in `SUM` / `COUNT` / `AVG` | [`measure/`](./measure/README.md) |
+| **time** | a date / datetime / timestamp | date arithmetic, `DATE_TRUNC`, freshness | [`time/`](./time/README.md) |
+
+The same column can answer **more than one** of these — take the **union** of the suites for every category it plays anywhere downstream (see [§ Role multiplication](#role-multiplication)).
+
+Two supporting ideas make the heuristics above mechanical: the **grain** anchors heuristic 1, and **role multiplication** explains why heuristic 2 can have several answers for one column.
+
+### The grain
+
+The cornerstone model-level test.
+
+> Every dbt model is defined by its **grain** — the tuple of columns whose combination uniquely identifies a row.
+
+The grain is the answer to "what does one row mean?". It is almost always `Entity × {Entity | Dimension} × Time`. Examples:
+
+| Model | Grain |
+|-------|-------|
+| `fct_orders` | `order_id` |
+| `fct_order_items` | `order_id, line_number` |
+| `fct_daily_active_users` | `user_id, date_day` |
+| `fct_inventory_snapshot` | `warehouse_id, product_id, snapshot_date` |
+
+**Rule:** every dbt model has exactly one `dbt_utils.unique_combination_of_columns` test naming its grain. If you cannot name the grain, the model isn't done. See [`model/MD-01-grain-test.md`](./model/MD-01-grain-test.md).
+
+### Role multiplication
+
+> Most columns play **more than one role** across the DAG.
+
+`order_id` is an entity in `dim_orders`, a foreign key in `fct_order_items`, and a `GROUP BY` axis in `mart_orders_by_customer`. The test budget for a column is the **union** of the role-specific suites for every role it plays anywhere downstream. The taxonomy is a vocabulary for discovering that union, not a way to assign exactly one role per column.
+
+
 ## Framework matrix
 
 When multiple packages can express the same intent, this matrix picks the canonical answer for this project. The order of preference is: **dbt core → dbt-utils → dbt_expectations → elementary → audit_helper**, climbing only when each lower tier cannot express what's needed.
@@ -247,66 +316,6 @@ attributions and the vignette headers are derived from it:
 - **SQL examples target BigQuery** (the project's adapter). Where dialect matters (TIMESTAMP vs DATETIME, `regexp_instr` flags, partition pruning), the vignette calls it out.
 - **YAML examples assume dbt 1.8+** — they use the `data_tests:` key (not `tests:`) and the `data-tests/` directory (not `tests/`).
 
-## Reading order
-
-If reading the catalogue front-to-back, this is the recommended order:
-
-```mermaid
-flowchart TD
-    s(["Read front-to-back"]):::startNode --> g1
-
-    g1["①&nbsp; MD-01 · grain-test<br/><i>the one test every model needs</i>"]:::model
-
-    subgraph EN ["②&nbsp; entity — keys &amp; joins"]
-        direction LR
-        en1["EN-01<br/>unique-key"]:::entity --> en2["EN-02<br/>compound-grain"]:::entity --> en3["EN-03<br/>foreign-key-integrity"]:::entity
-    end
-
-    subgraph DM ["③&nbsp; dimension — GROUP BY axes"]
-        direction LR
-        dm1["DM-01<br/>accepted-values"]:::dim --> dm2["DM-02<br/>cardinality-guard"]:::dim
-    end
-
-    subgraph MS ["④&nbsp; measure — aggregated facts"]
-        direction LR
-        ms1["MS-01<br/>numeric-range"]:::meas --> ms2["MS-02<br/>additivity-tag"]:::meas
-    end
-
-    subgraph TM ["⑤&nbsp; time — event-time scalars"]
-        direction LR
-        tm1["TM-SC-01<br/>event-time-bounds"]:::time --> tm2["TM-SC-02<br/>monotonic-pair"]:::time
-    end
-
-    subgraph MD ["⑥&nbsp; model — evolve safely"]
-        direction LR
-        md2["MD-02<br/>contracts"]:::model --> md3["MD-03<br/>versioning-cutover"]:::model --> md4["MD-04<br/>refactor-parity"]:::model
-    end
-
-    fin["⑦&nbsp; Elementary anomaly vignettes<br/><i>when the project graduates to drift detection</i>"]:::neutral
-
-    g1 --> en1
-    en3 --> dm1
-    dm2 --> ms1
-    ms2 --> tm1
-    tm2 --> md2
-    md4 --> fin
-
-    classDef startNode fill:#1e293b,stroke:#0f172a,color:#fff,stroke-width:2px
-    classDef entity  fill:#2563eb,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef dim     fill:#7c3aed,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef meas    fill:#047857,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef time    fill:#c2410c,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef model   fill:#475569,stroke:#1e293b,color:#fff,stroke-width:2px
-    classDef neutral fill:#f1f5f9,stroke:#94a3b8,color:#334155,stroke-width:1px
-```
-
-1. [`model/MD-01-grain-test.md`](./model/MD-01-grain-test.md) — the most important test in the entire project
-2. [`entity/EN-01-unique-key.md`](./entity/EN-01-unique-key.md) → [`entity/EN-02-compound-grain.md`](./entity/EN-02-compound-grain.md) → [`entity/EN-03-foreign-key-integrity.md`](./entity/EN-03-foreign-key-integrity.md)
-3. [`dimension/DM-01-accepted-values.md`](./dimension/DM-01-accepted-values.md) → [`dimension/DM-02-cardinality-guard.md`](./dimension/DM-02-cardinality-guard.md)
-4. [`measure/MS-01-numeric-range.md`](./measure/MS-01-numeric-range.md) → [`measure/MS-02-additivity-tag.md`](./measure/MS-02-additivity-tag.md)
-5. [`time/TM-SC-01-event-time-bounds.md`](./time/TM-SC-01-event-time-bounds.md) → [`time/TM-SC-02-monotonic-pair.md`](./time/TM-SC-02-monotonic-pair.md)
-6. [`model/MD-02-contracts.md`](./model/MD-02-contracts.md) → [`model/MD-03-versioning-cutover.md`](./model/MD-03-versioning-cutover.md) → [`model/MD-04-refactor-parity.md`](./model/MD-04-refactor-parity.md)
-7. Anomaly-detection vignettes when the project graduates to needing Elementary
 
 ## Template
 
