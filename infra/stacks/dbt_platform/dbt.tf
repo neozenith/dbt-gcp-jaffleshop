@@ -130,6 +130,31 @@ resource "google_storage_bucket_iam_member" "dbt_artefacts_admin" {
 }
 
 # -----------------------------------------------------------------------------
+# Cross-env + developer READ on this env's artefacts bucket.
+#
+# The cross-env BigQuery grants above let a foreign dbt SA read this env's DATA;
+# these grants let it read this env's STATE FILES (manifest.json) — the metadata
+# half that `--defer` / `--state` / `dbt clone` consume. Same inbound direction
+# and same principal lists, so they stay in lock-step with the BQ grants:
+#   prod apply → dbt-dev + dbt-test SAs (cross_env_reader_emails) can fetch prod's
+#                latest/manifest.json as their defer baseline.
+#   every apply → developer_members can `make state-pull` this env's manifest.
+# objectViewer is read-only: only the owning dbt SA (objectAdmin, above) writes.
+resource "google_storage_bucket_iam_member" "dbt_artefacts_cross_env_viewer" {
+  for_each = toset(local.cross_env_reader_emails)
+  bucket   = google_storage_bucket.dbt_artefacts.name
+  role     = "roles/storage.objectViewer"
+  member   = "serviceAccount:${each.key}"
+}
+
+resource "google_storage_bucket_iam_member" "dbt_artefacts_developer_viewer" {
+  for_each = toset(local.developer_members)
+  bucket   = google_storage_bucket.dbt_artefacts.name
+  role     = "roles/storage.objectViewer"
+  member   = each.key
+}
+
+# -----------------------------------------------------------------------------
 # Human developer access — sourced from dbt-developers.yml (local.developer_members).
 #
 # 1. dbt-dev SA impersonation (DEV apply only). test/prod SAs are GH-OIDC-only
