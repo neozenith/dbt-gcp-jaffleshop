@@ -85,8 +85,9 @@ jobs:
   # ---------------------------------------------------------------------------
   # Deploy to PROD via dbt-prod SA (WIF on tag-push or workflow_dispatch only).
   #
-  # latest/manifest.json is overwritten on every successful run so the next
-  # PR's deploy-test can gcloud storage cp it as the slim-CI defer state.
+  # latest/manifest.json is overwritten on every successful run. It is the defer
+  # baseline that dbt-deploy-test.yml's slim build pulls (state:modified+ --defer)
+  # and that `make build-defer` / `make clone` consume locally.
   # ---------------------------------------------------------------------------
   deploy-prod:
     name: deploy / prod

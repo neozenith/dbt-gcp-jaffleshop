@@ -14,8 +14,14 @@ name: dbt deploy / test
 # clean_slice, so setting it would shadow DBT_PR_ID/DBT_RUN_ID and make them
 # dead config. Omitting it lets the PR<n>_RUN<sha>__ dataset prefix take effect.
 #
+# Build strategy: SLIM. The deploy seeds the slice's RAW, then builds only
+# state:modified+ vs the PROD baseline (latest/manifest.json), deferring unchanged
+# upstream refs to live prod relations. See the build step for why the seed stays.
+#
 # Auth: Workload Identity Federation only; no keyfiles. auth@v3 writes ADC to
-# disk and dbt-bigquery's `method: oauth` reads it transparently.
+# disk and dbt-bigquery's `method: oauth` reads it transparently. The dbt-test SA
+# reads prod BQ (cross_env_readers) + the prod artefacts bucket (cross-env GCS
+# objectViewer) — both in infra/stacks/dbt_platform/dbt.tf.
 # =============================================================================
 
 on:
@@ -139,13 +145,34 @@ jobs:
       - name: Install dbt packages
         run: uv run dbt deps
 
-      # Elementary is PROD-only — disabled in dev/test via dbt_project.yml (its models are gated
-      # off and its on-run-end upload hooks are muted with disable_* vars). So no Elementary
-      # bootstrap is needed here; `dbt build` runs only the project's own models/tests in the slice.
-      - name: run dbt build
+      # Pull the known-good PROD manifest as the defer/state baseline. dbt-deploy-prod.yml
+      # refreshes latest/manifest.json on every successful release; the dbt-test SA now has
+      # storage.objectViewer on the prod bucket (dbt_artefacts_cross_env_viewer in
+      # infra/stacks/dbt_platform/dbt.tf). Fails loud if absent — a slim build has no baseline
+      # to compare against, and silently falling back to a full build would hide that.
+      - name: Pull PROD state baseline
+        run: |
+          mkdir -p prod-state
+          gcloud storage cp \
+            gs://dbt-prod-jaffleshop-dbt-artefacts/latest/manifest.json \
+            prod-state/manifest.json
+
+      # Slim build: seed THEN build only what changed vs prod (and children), deferring every
+      # unchanged upstream ref to the live PROD relation. Two things make this correct:
+      #   • The seed is KEPT, not dropped: --defer redirects ref() only, never source(). Sources
+      #     here are slice-prefixed (models/staging/__sources.yml → <SLICE>__RAW), so any rebuilt
+      #     staging model reads the slice's RAW, which must be seeded to exist. Defer saves the
+      #     unchanged staging+marts rebuilds (the expensive part), not the seed.
+      #   • state:modified is accurate cross-env only because dbt_project.yml sets
+      #     state_modified_compare_more_unrendered_values: true (else the prod↔slice schema
+      #     difference flags every node). --favor-state prefers the prod relation for deferred
+      #     refs over any stale same-named relation in the slice.
+      # Elementary is PROD-only (disabled in dev/test via dbt_project.yml), so no bootstrap here.
+      - name: run dbt build (slim, defer to prod)
         run: |
           uv run dbt seed --target test --vars '{"load_source_data": true}'
-          uv run dbt build --target test
+          uv run dbt build --target test \
+            --select state:modified+ --defer --favor-state --state prod-state
 
       # if: always() ensures artefacts upload even when the build fails — the
       # failed run_results.json is exactly what we want for post-mortem.

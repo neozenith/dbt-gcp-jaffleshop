@@ -34,6 +34,15 @@ DBT_BQ_TIMEOUT_SECS := $(or $(DBT_BQ_TIMEOUT_SECS),300)
 DBT_BQ_PROJECT_DEV := $(or $(DBT_BQ_PROJECT_DEV),dbt-dev-jaffleshop)
 DBT_GIT_BRANCH := $(or $(DBT_GIT_BRANCH),$(shell git rev-parse --abbrev-ref HEAD 2>/dev/null))
 
+# --- dbt state: defer-against-prod + shallow-clone -----------------------------
+# Local directory the PROD state manifest is pulled into (gitignored). dbt's --state
+# flag points here; both --defer and `dbt clone` read manifest.json from it.
+DBT_STATE_DIR := $(or $(DBT_STATE_DIR),prod-state)
+# Known-good PROD baseline: dbt-deploy-prod.yml refreshes latest/manifest.json on every
+# successful release. `make state-pull` copies it down (your gcloud identity needs
+# storage.objectViewer on this bucket — granted to developers in infra/stacks/dbt_platform/dbt.tf).
+PROD_ARTEFACTS_BUCKET := $(or $(PROD_ARTEFACTS_BUCKET),gs://dbt-prod-jaffleshop-dbt-artefacts)
+
 # Git ref the adaf check targets diff against for their default --changed-only scope.
 # Defaults to main for local dev; override in CI to the PR base, e.g. `make ci BASE_REF=origin/main`.
 # NOTE: CI must have BASE_REF reachable locally — use actions/checkout with fetch-depth: 0
@@ -46,7 +55,7 @@ export
 
 export DBT_PROFILES_DIR := $(CURDIR)
 
-.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage doc-columns-coverage tests-coverage checks boundaries system-boundaries-check sdag sdag-serve pytest deploy-dev elementary-report gha-docs
+.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage doc-columns-coverage tests-coverage checks boundaries system-boundaries-check sdag sdag-serve pytest deploy-dev elementary-report gha-docs state-pull build-defer state-build clone
 
 help:
 	@echo "Targets:"
@@ -83,6 +92,13 @@ help:
 	@echo "  deploy-dev Build dbt against dev + upload artefacts to dev GCS bucket"
 	@echo "             (mirrors what CI does for test/prod). Requires gcloud ADC"
 	@echo "             set up to impersonate dbt-dev@dbt-dev-jaffleshop.iam.gserviceaccount.com"
+	@echo "  --- state: defer-against-prod + shallow-clone (DBT_STATE_DIR=$(DBT_STATE_DIR)) ---"
+	@echo "  state-pull  Download PROD latest/manifest.json into $(DBT_STATE_DIR)/ (needs gcloud auth)"
+	@echo "  build-defer Build only state:modified+ vs prod, deferring unchanged refs to PROD"
+	@echo "              (fast inner loop; reads $(DBT_STATE_DIR)/ — run state-pull first)"
+	@echo "  state-build state-pull then build-defer in one step"
+	@echo "  clone       Shallow-clone PROD relations into your dev slice (zero-copy BQ CLONE)"
+	@echo "              scope with DBT_CLONE_SELECT, e.g. make clone DBT_CLONE_SELECT=marts"
 	@echo "  clean     Remove dbt artifacts (target/, dbt_packages/, logs/)"
 	@echo ""
 	@echo "Environment:"
@@ -267,6 +283,46 @@ deploy-dev: deps
 	    gcloud storage cp "target/$$f" "$$BUCKET/$$RUN_PREFIX/$$f"; \
 	  fi; \
 	done
+
+# --- dbt state: defer-against-prod + shallow-clone ----------------------------
+# Persisted prod state already exists in GCS: dbt-deploy-prod.yml uploads
+# manifest/run_results/catalog to runs/<id>/ AND refreshes latest/manifest.json on
+# every successful release. These targets are the CONSUMER side — pull that baseline
+# down and use it for --defer / --state selection and `dbt clone`.
+#
+# Auth: all three run against the DEV target. The data-plane access they need is
+# ALREADY granted — dbt-dev SA holds dataViewer+jobUser on prod (cross_env_readers in
+# infra/stacks/dbt_platform/dbt.tf) and dataEditor on dev. `state-pull` additionally
+# needs storage.objectViewer on the prod artefacts bucket (granted to developer_members
+# in that same dbt.tf). Run `make login` once to set up gcloud + ADC.
+
+# Download the latest known-good PROD manifest into $(DBT_STATE_DIR)/.
+state-pull:
+	mkdir -p $(DBT_STATE_DIR)
+	gcloud storage cp $(PROD_ARTEFACTS_BUCKET)/latest/manifest.json $(DBT_STATE_DIR)/manifest.json
+	@echo "Pulled prod state → $(DBT_STATE_DIR)/manifest.json"
+
+# Build ONLY the models that changed vs the prod baseline (and their children), deferring
+# every unselected upstream ref to the live PROD relation instead of rebuilding it. Turns a
+# one-line change into a 2-model build, not a 200-model build. --favor-state makes dbt prefer
+# the prod relation for deferred refs even when a stale same-named relation exists in your slice.
+# Override the selector with DBT_DEFER_SELECT (e.g. state:modified+,tag:nightly).
+DBT_DEFER_SELECT ?= state:modified+
+build-defer:
+	uv run dbt build --select $(DBT_DEFER_SELECT) --defer --favor-state --state $(DBT_STATE_DIR)
+
+# Pull fresh prod state, then defer-build — the one-command inner loop.
+state-build: state-pull build-defer
+
+# Shallow-clone PROD relations into your branch-sliced DEV datasets. BigQuery does a zero-copy
+# CREATE TABLE … CLONE for tables (no data scanned/billed) and recreates views. Gives you a full,
+# queryable copy of real prod data in dev WITHOUT rebuilding from source. Sources come from the
+# prod state manifest (dbt-prod-jaffleshop.MARTS.*); targets resolve to dbt-dev-jaffleshop.<branch>__*
+# via the naming macros. Scope with DBT_CLONE_SELECT (default: every node in the manifest):
+#   make clone DBT_CLONE_SELECT=marts
+DBT_CLONE_SELECT ?=
+clone:
+	uv run dbt clone --state $(DBT_STATE_DIR) $(if $(DBT_CLONE_SELECT),--select $(DBT_CLONE_SELECT),)
 
 clean:
 	rm -rf target dbt_packages logs jaffle-data
