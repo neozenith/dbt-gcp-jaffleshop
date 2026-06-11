@@ -7,6 +7,15 @@ require-dbt-version: ">=1.10.0"
 
 profile: jaffle_shop
 
+# `state:modified` compares the live parse against a saved manifest. By default dbt compares
+# RENDERED database/schema, so deferring a sliced env (test PR slice / dev branch) against the
+# unsliced PROD manifest flags EVERY node modified (dbt-test-…PR1_RUN2__marts ≠ dbt-prod-…MARTS),
+# defeating slim selection. This flag switches the comparison to the env-independent UNRENDERED
+# values (jaffleshop / marts), so only genuinely-changed nodes are selected. Required for the
+# defer-against-prod flow (make build-defer, dbt-deploy-test.yml slim build, dbt clone).
+flags:
+  state_modified_compare_more_unrendered_values: true
+
 model-paths: ["models"]
 analysis-paths: ["analyses"]
 test-paths: ["data-tests"]

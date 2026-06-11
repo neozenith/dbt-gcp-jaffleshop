@@ -8,6 +8,9 @@ dbt_packages/
 logs/
 # Elementary CLI (`edr report`) output dir — generated dashboard + edr logs.
 edr_target/
+# Pulled PROD state baseline for --defer / --state / `dbt clone` (`make state-pull`).
+# A copy of prod's manifest.json — large, fetched on demand, never committed.
+prod-state/
 # profiles.yml is intentionally committed — values are env_var()-templated, no secrets.
 
 .DS_Store
