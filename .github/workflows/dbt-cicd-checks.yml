@@ -50,6 +50,11 @@ jobs:
       DBT_TARGET: test
       DBT_ENV_TYPE: TEST
       DBT_BQ_PROJECT_TEST: dbt-test-jaffleshop
+      # sqlfluff's dbt templater renders the FULL profiles.yml (every output), so the dev/prod
+      # project vars must resolve even though we only build the test target. They have no default
+      # in profiles.yml (wrong-project writes must fail loud), so fake values satisfy env_var() here.
+      DBT_BQ_PROJECT_DEV: fake-gcp-project-dev
+      DBT_BQ_PROJECT_PROD: fake-gcp-project-prod
       # A slice is mandatory in non-PROD (generate_schema_name errors otherwise).
       DBT_GIT_BRANCH: ${{ github.head_ref || github.ref_name }}
       SUMMARY: ${{ github.workspace }}/checks-summary.md
@@ -76,17 +81,18 @@ jobs:
       - name: Install Python deps
         run: uv sync
 
-      - name: run dbt build + docs generate
+      # Build the slice so doc-columns has a REAL catalog (resolved warehouse columns). Without a
+      # build the catalog is empty and doc-columns reports "not in catalog" for every model. seed
+      # loads RAW; build materialises models + runs tests (incl. enforced contracts).
+      - name: dbt deps + seed + build
         run: |
           uv run dbt deps
+          uv run dbt seed --target test --vars '{"load_source_data": true}'
+          uv run dbt build --target test
 
-      # Produces manifest.json (docs/tests) + catalog.json (doc-columns). `|| true`: without a build
-      # the sliced datasets don't exist, so the catalog query errors per-dataset ("Not found:
-      # Dataset …") and dbt exits non-zero — but it still writes manifest + a (partial) catalog.
-      # We tolerate that so `check all` runs; `doc-columns` then reports "not in catalog" for
-      # unbuilt models, and a genuine compile failure still surfaces (no manifest → check all fails).
+      # Now the sliced datasets exist, so catalog.json resolves every model's columns (doc-columns).
       - name: dbt docs generate (manifest + catalog)
-        run: uv run dbt docs generate --target test || true
+        run: uv run dbt docs generate --target test
 
       # Every gate over all models. --md writes the comment table; full detail stays in the logs.
       # continue-on-error so the comment is always posted; the final step sets the real status.
