@@ -7,6 +7,12 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: location_name
+        description: "Display name of the store location."
+      - name: tax_rate
+        description: "Sales tax rate applied at this location (fraction, e.g. 0.0825)."
+      - name: opened_date
+        description: "The date the location opened (derived from the raw opened_at timestamp)."
 
 unit_tests:
   - name: test_does_location_opened_at_trunc_to_date

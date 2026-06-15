@@ -3,10 +3,29 @@ models:
     description: Order data with basic cleaning and transformation applied, one row per order.
     data_tests:
       - dbt_utils.expression_is_true:
-          expression: "order_total - tax_paid = subtotal"
+          arguments:
+            expression: "order_total - tax_paid = subtotal"
     columns:
       - name: order_id
         description: The unique key for each order.
         data_tests:
           - not_null
           - unique
+      - name: location_id
+        description: "The store location where the order was placed."
+      - name: customer_id
+        description: "The customer who placed the order."
+      - name: subtotal_cents
+        description: "Order subtotal in integer cents, pre-tax."
+      - name: tax_paid_cents
+        description: "Tax paid in integer cents."
+      - name: order_total_cents
+        description: "Order total in integer cents, including tax."
+      - name: subtotal
+        description: "Order subtotal in dollars, pre-tax."
+      - name: tax_paid
+        description: "Tax paid in dollars."
+      - name: order_total
+        description: "Order total in dollars, including tax."
+      - name: ordered_at
+        description: "Timestamp the order was placed."

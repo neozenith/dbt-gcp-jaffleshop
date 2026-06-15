@@ -6,9 +6,10 @@
 # in a model's .sql (per-file). Suppressed findings never fail the gate but stay auditable
 # (counted in the summary; listed with `--show-passes`).
 #
-# NOTE: this file demonstrates suppressing GENUINE false positives only. The intentionally-broken
-# demo gaps (products/supplies/locations missing tests; sources missing freshness) are deliberately
-# NOT suppressed — they exist to exercise the checks and agent skills.
+# NOTE: the formerly-intentional demo gaps (products/supplies/locations missing tests; sources
+# missing freshness) have been REMEDIATED — the dbt project now passes `adaf check all`. The only
+# remaining suppression is the genuine false positive below. The deepeval harness under
+# `.github/cli/adaf/evals/` (which exercised the broken fixture) is a separate follow-up.
 disable:
   - rules: [MD-01, MD-02]
     paths: ["models/marts/metricflow_time_spine.sql"]

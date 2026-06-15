@@ -7,3 +7,15 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: product_name
+        description: "Display name of the product."
+      - name: product_type
+        description: "Product category — 'jaffle' (food) or 'beverage' (drink)."
+      - name: product_description
+        description: "Free-text description of the product."
+      - name: product_price
+        description: "Menu price of the product, in dollars."
+      - name: is_food_item
+        description: "True when the product is a food item."
+      - name: is_drink_item
+        description: "True when the product is a drink item."

@@ -10,3 +10,13 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: supply_id
+        description: "Natural identifier of the supply (repeats across cost changes)."
+      - name: product_id
+        description: "The product (SKU) this supply is an ingredient of."
+      - name: supply_name
+        description: "Display name of the supply."
+      - name: supply_cost
+        description: "Cost of the supply, in dollars."
+      - name: is_perishable_supply
+        description: "True when the supply is perishable."

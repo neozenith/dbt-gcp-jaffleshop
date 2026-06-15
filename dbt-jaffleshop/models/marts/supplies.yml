@@ -1,3 +1,40 @@
+models:
+  - name: supplies
+    description: >
+      Supplies dimension mart — one row per supply-and-product combination (supply_uuid). A
+      supply's cost can change over time; each cost receives a new surrogate key. The published
+      supply-side cost catalogue; an enforced contract pins its shape for downstream consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: supply_uuid
+        description: Surrogate primary key — one row per supply cost (hash of id + sku).
+        data_type: string
+        data_tests:
+          - not_null
+          - unique
+      - name: supply_id
+        description: Natural identifier of the supply (repeats across cost changes — not unique).
+        data_type: string
+      - name: product_id
+        description: The product (SKU) this supply is an ingredient of.
+        data_type: string
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('products')
+                field: product_id
+      - name: supply_name
+        description: Display name of the supply.
+        data_type: string
+      - name: supply_cost
+        description: Cost of the supply, in dollars.
+        data_type: numeric
+      - name: is_perishable_supply
+        description: True when the supply is perishable.
+        data_type: bool
+
 semantic_models:
   #The name of the semantic model.
   - name: supplies

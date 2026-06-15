@@ -1,3 +1,42 @@
+models:
+  - name: products
+    description: >
+      Product dimension mart — one row per product (the food and drink items that can be
+      ordered). The published supply-side catalogue the order_items fact joins to for product
+      attributes; an enforced contract pins its shape for downstream consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: product_id
+        description: Surrogate primary key — one row per product (the menu SKU).
+        data_type: string
+        data_tests:
+          - not_null
+          - unique
+      - name: product_name
+        description: Display name of the product.
+        data_type: string
+      - name: product_type
+        description: Product category — 'jaffle' (food) or 'beverage' (drink).
+        data_type: string
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["jaffle", "beverage"]
+      - name: product_description
+        description: Free-text description of the product.
+        data_type: string
+      - name: product_price
+        description: Menu price of the product, in dollars.
+        data_type: numeric
+      - name: is_food_item
+        description: True when the product is a food item (product_type = 'jaffle').
+        data_type: bool
+      - name: is_drink_item
+        description: True when the product is a drink item (product_type = 'beverage').
+        data_type: bool
+
 semantic_models:
   #The name of the semantic model.
   - name: products
