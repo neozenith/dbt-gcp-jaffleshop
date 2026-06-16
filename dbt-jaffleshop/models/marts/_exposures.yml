@@ -1,0 +1,36 @@
+version: 2
+
+# Exposures name the downstream consumers of the published marts. The ADAF system-boundary
+# gate (`adaf check system-boundaries`) requires every OUTBOUND data-product node to be named
+# by an exposure — proof that a published interface has a known consumer. Each outbound mart
+# (customers, products, supplies) appears in a depends_on below.
+exposures:
+  - name: jaffle_shop_exec_dashboard
+    label: Jaffle Shop Executive Dashboard
+    type: dashboard
+    maturity: high
+    url: https://bi.example.com/dashboards/jaffle-exec
+    description: >
+      Executive KPI dashboard — customer lifetime value, order volume, and revenue trends.
+      Consumes the customers mart (demand-side published interface).
+    depends_on:
+      - ref('customers')
+    owner:
+      name: Analytics Engineering
+      email: analytics@jaffleshop.example.com
+
+  - name: supply_chain_planning
+    label: Supply Chain Planning
+    type: application
+    maturity: medium
+    url: https://ops.example.com/supply-planning
+    description: >
+      Supply-side planning application — reconciles product menu pricing against supply costs
+      to flag margin risk. Consumes the products and supplies marts (supply-side published
+      interfaces).
+    depends_on:
+      - ref('products')
+      - ref('supplies')
+    owner:
+      name: Data Platform
+      email: data-platform@jaffleshop.example.com

@@ -23,8 +23,8 @@ truth — `adaf rules` is authoritative; never invent rule codes or dimensions.
    the YAML/SQL lines needed; never reformat unrelated content. Tell the user the exact undo command
    (`git checkout -- <files>` or `git stash`).
 3. **Never silently fix a deliberate fixture.** Some projects keep models intentionally incomplete to
-   exercise CI / agent tooling (this plugin's own demo repo does). If a model looks like a fixture, do
-   not repair it unless the user names that model, and warn that doing so removes a test fixture.
+   exercise CI / agent tooling. If a model looks like a fixture, do not repair it unless the user names
+   that model, and warn that doing so removes a test fixture.
 4. **A finding may be a false positive.** The `hybrid` rules are heuristics. For every gap, state that
    it might not apply and show how to suppress it (see *Explain*).
 

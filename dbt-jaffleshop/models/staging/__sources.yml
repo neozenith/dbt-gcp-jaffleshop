@@ -17,6 +17,13 @@ version: 2
 
 sources:
   - name: ecom
+    config:
+      # Freshness SLA (TM-AU-01). dbt only evaluates this on `dbt source freshness`
+      # (never run in this repo's build/CI) — it documents the contract with upstream.
+      # Generous windows because the demo seeds carry historical jafgen dates.
+      freshness:
+        warn_after: {count: 90, period: day}
+        error_after: {count: 365, period: day}
     schema: >-
       {{
         'RAW'
@@ -36,16 +43,69 @@ sources:
       }}
     description: E-commerce data for the Jaffle Shop
     tables:
+      # Static reference seeds carry no per-row load timestamp, so they use current_timestamp()
+      # as loaded_at_field ("always-current" reference data). Event tables use their real event time.
       - name: raw_customers
         description: One record per person who has purchased one or more items
+        config:
+          loaded_at_field: current_timestamp()
+        columns:
+          - name: id
+            description: Primary key — one row per customer.
+            data_tests:
+              - not_null
+              - unique
       - name: raw_orders
         description: One record per order (consisting of one or more order items)
-        loaded_at_field: ordered_at
+        config:
+          loaded_at_field: ordered_at
+        columns:
+          - name: id
+            description: Primary key — one row per order.
+            data_tests:
+              - not_null
+              - unique
       - name: raw_items
         description: Items included in an order
+        config:
+          loaded_at_field: current_timestamp()
+        columns:
+          - name: id
+            description: Primary key — one row per order item.
+            data_tests:
+              - not_null
+              - unique
       - name: raw_stores
-        loaded_at_field: opened_at
+        description: One record per physical store location
+        config:
+          loaded_at_field: opened_at
+        columns:
+          - name: id
+            description: Primary key — one row per store location.
+            data_tests:
+              - not_null
+              - unique
       - name: raw_products
         description: One record per SKU for items sold in stores
+        config:
+          loaded_at_field: current_timestamp()
+        columns:
+          - name: sku
+            description: Primary key — the product SKU.
+            data_tests:
+              - not_null
+              - unique
       - name: raw_supplies
         description: One record per supply per SKU of items sold in stores
+        config:
+          loaded_at_field: current_timestamp()
+        columns:
+          # (id, sku) is the natural grain — neither column is unique on its own.
+          - name: id
+            description: Supply identifier (repeats across the SKUs a supply is used in).
+            data_tests:
+              - not_null
+          - name: sku
+            description: The product SKU this supply is an ingredient of.
+            data_tests:
+              - not_null

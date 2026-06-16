@@ -1,0 +1,16 @@
+models:
+  - name: metricflow_time_spine
+    description: >
+      MetricFlow time spine — a synthetic daily date dimension (10 years of days) used by the
+      semantic layer to resolve metric_time and to densify cumulative/derived metrics. One row
+      per calendar day. MD-01 (grain) and MD-02 (contract) are suppressed in adaf.yml: a
+      generated spine has no natural business key to test and no consumer contract to enforce.
+    time_spine:
+      standard_granularity_column: date_day
+    columns:
+      - name: date_day
+        description: One calendar day (the spine's grain), at day granularity.
+        granularity: day
+        data_tests:
+          - not_null
+          - unique

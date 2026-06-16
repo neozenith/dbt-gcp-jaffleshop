@@ -1,44 +1,69 @@
 models:
   - name: order_items
+    description: >
+      Order-items fact — one row per item within an order, enriched with the item's product
+      attributes (name, price, food/drink flags), the order timestamp, and the per-product
+      supply cost. The grain is one row per order_item_id.
     columns:
       - name: order_item_id
+        description: Primary key — one row per order item.
         data_tests:
           - not_null
           - unique
       - name: order_id
+        description: The order this item belongs to.
         data_tests:
           - relationships:
-              to: ref('orders')
-              field: order_id
-
+              arguments:
+                to: ref('orders')
+                field: order_id
+      - name: product_id
+        description: The product (SKU) ordered.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('products')
+                field: product_id
+      - name: ordered_at
+        description: Timestamp the parent order was placed.
+      - name: product_name
+        description: Display name of the product ordered.
+      - name: product_price
+        description: Menu price of the product ordered, in dollars.
+      - name: is_food_item
+        description: True when the ordered product is a food item.
+      - name: is_drink_item
+        description: True when the ordered product is a drink item.
+      - name: supply_cost
+        description: Total supply cost of the product ordered, in dollars.
 unit_tests:
   - name: test_supply_costs_sum_correctly
     description: "Test that the counts of drinks and food orders convert to booleans properly."
     model: order_items
     given:
-      - input: ref('stg_supplies')
+      - input: ref('supplies')
         rows:
-          - { product_id: 1, supply_cost: 4.50 }
-          - { product_id: 2, supply_cost: 3.50 }
-          - { product_id: 2, supply_cost: 5.00 }
-      - input: ref('stg_products')
+          - {product_id: 1, supply_cost: 4.50}
+          - {product_id: 2, supply_cost: 3.50}
+          - {product_id: 2, supply_cost: 5.00}
+      - input: ref('products')
         rows:
-          - { product_id: 1 }
-          - { product_id: 2 }
+          - {product_id: 1}
+          - {product_id: 2}
       - input: ref('stg_order_items')
         rows:
-          - { order_id: 1, product_id: 1 }
-          - { order_id: 2, product_id: 2 }
-          - { order_id: 2, product_id: 2 }
+          - {order_id: 1, product_id: 1}
+          - {order_id: 2, product_id: 2}
+          - {order_id: 2, product_id: 2}
       - input: ref('stg_orders')
         rows:
-          - { order_id: 1 }
-          - { order_id: 2 }
+          - {order_id: 1}
+          - {order_id: 2}
     expect:
       rows:
-        - { order_id: 1, product_id: 1, supply_cost: 4.50 }
-        - { order_id: 2, product_id: 2, supply_cost: 8.50 }
-        - { order_id: 2, product_id: 2, supply_cost: 8.50 }
+        - {order_id: 1, product_id: 1, supply_cost: 4.50}
+        - {order_id: 2, product_id: 2, supply_cost: 8.50}
+        - {order_id: 2, product_id: 2, supply_cost: 8.50}
 
 semantic_models:
   - name: order_item

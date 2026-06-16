@@ -15,13 +15,17 @@ orders as (
 
 products as (
 
-    select * from {{ ref('stg_products') }}
+    -- Consume the published `products` mart (not stg_products) so the
+    -- supply-side staging stays internal to the supply data product
+    -- (boundary hygiene). Columns are identical (the mart is a
+    -- passthrough), so order_items output is unchanged.
+    select * from {{ ref('products') }}
 
 ),
 
 supplies as (
 
-    select * from {{ ref('stg_supplies') }}
+    select * from {{ ref('supplies') }}
 
 ),
 

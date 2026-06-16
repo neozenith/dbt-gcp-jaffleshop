@@ -1,0 +1,5 @@
+# Suppress the one genuine false positive so the eval can assert suppression works end-to-end.
+disable:
+  - rules: [MD-01, MD-02]
+    paths: ["models/marts/metricflow_time_spine.sql"]
+    reason: "Generated MetricFlow time spine — no natural grain key to test, no consumer contract to enforce."

@@ -1,0 +1,11 @@
+# Self-contained profile (no env_var) — dbt parse never connects, so the fake project is fine.
+broken_taxonomy_fixture:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: fake-fixture-project
+      dataset: fake_fixture
+      location: US
+      threads: 1
