@@ -38,6 +38,92 @@ let currentFilter = "__all__";  // "__all__" | <selector name from the dropdown>
 const cache = { full: null, super: null };
 
 // ─────────────────────────────────────────────────────────────────────────
+// URL state sync — deep-linkable view + filter with Back/Forward support.
+//
+// The viewer's two pieces of user-facing state (which view is active, and
+// which selector is filtered to) are mirrored into the query string so a URL
+// can be copied/shared to land someone on the exact same view, AND so the
+// browser Back/Forward buttons walk through prior view+filter combinations.
+//
+//   ?view=full|super     which view is showing
+//   ?selector=<name>     active full-graph filter (omitted when "(show all)")
+//
+// History semantics:
+//   • User-driven changes use pushState — each toggle is its own Back step.
+//   • The initial landing URL is normalised with replaceState (boot), so it
+//     doesn't leave a duplicate first entry to click Back through.
+//   • A no-op guard skips writes when the canonical URL already matches (e.g.
+//     clicking the already-active view), so history never fills with dupes.
+//   • Applying state in response to a popstate event sets `suppressUrlSync`
+//     so re-rendering the restored state can't push a fresh entry (which would
+//     fight the Back button it's reacting to).
+// ─────────────────────────────────────────────────────────────────────────
+const URL_PARAM_VIEW = "view";
+const URL_PARAM_SELECTOR = "selector";
+
+// Set while we're applying state pulled FROM the URL (popstate) so the
+// downstream showView()/applyFilter() renders don't write the URL back.
+let suppressUrlSync = false;
+
+function readUrlState() {
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get(URL_PARAM_VIEW);
+  const selector = params.get(URL_PARAM_SELECTOR);
+  return {
+    // Validate `view` here so a junk value in a shared link can't put the
+    // viewer in an undefined state — callers fall back to their default.
+    view: view === "full" || view === "super" ? view : null,
+    selector: selector || null,  // validated against the dropdown before use
+  };
+}
+
+// Build the query string that REPRESENTS the current in-memory state. Keeping
+// this separate from the write lets both the no-op guard and the boot
+// normalisation compare against it without duplicating the param logic.
+function canonicalUrl() {
+  const params = new URLSearchParams(window.location.search);
+  params.set(URL_PARAM_VIEW, currentView);
+  if (currentFilter && currentFilter !== "__all__") {
+    params.set(URL_PARAM_SELECTOR, currentFilter);
+  } else {
+    // Keep the URL clean: "(show all)" is the absence of a filter, so drop
+    // the param entirely rather than encoding the sentinel "__all__".
+    params.delete(URL_PARAM_SELECTOR);
+  }
+  const qs = params.toString();
+  return `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`;
+}
+
+function currentUrl() {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function syncUrl() {
+  if (suppressUrlSync) return;          // applying state from Back/Forward
+  const next = canonicalUrl();
+  if (next === currentUrl()) return;    // no-op: don't spam the history stack
+  window.history.pushState(null, "", next);
+}
+
+// Resolve the URL's view+filter into live state: validate the selector against
+// the populated dropdown (a stale/unknown selector in a shared link degrades
+// to "(show all)"), sync the dropdown + legend, and return the view to show.
+// Shared by boot and the popstate handler so both restore state identically.
+function applyStateFromUrl() {
+  const urlState = readUrlState();
+  const select = document.getElementById("filter-selector");
+  const valid =
+    urlState.selector &&
+    Array.from(select.options).some((o) => o.value === urlState.selector);
+  currentFilter = valid ? urlState.selector : "__all__";
+  select.value = currentFilter;
+  setFilterLegendVisible(currentFilter !== "__all__");
+  // Explicit ?view wins. With no ?view, default to the full graph when a
+  // filter is active (so the filter is visible) — otherwise the super summary.
+  return urlState.view || (currentFilter !== "__all__" ? "full" : "super");
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Cytoscape stylesheet (shared across both views; class-driven)
 // ─────────────────────────────────────────────────────────────────────────
 const STYLE = [
@@ -360,6 +446,9 @@ async function showView(name) {
   cy.on("tap", (evt) => { if (evt.target === cy) clearDetail(); });
 
   renderMetadata(data.metadata, name);
+  // Single choke-point for view changes: every path that lands here (button
+  // click, filter auto-switch, boot) keeps the URL in lock-step with state.
+  syncUrl();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -801,18 +890,43 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Auto-switch to full view when filtering — the filter is a no-op in
     // super view, and the user almost certainly wants to see the lineage.
     if (currentFilter !== "__all__" && currentView !== "full") {
-      showView("full");  // showView calls applyFilter() at the right point
+      showView("full");  // showView calls applyFilter() + syncUrl()
       return;
     }
     rerunWithFilter();
+    syncUrl();  // rerunWithFilter() doesn't go through showView(), so sync here
+  });
+
+  // Back/Forward: re-apply the view+filter encoded in the URL the browser
+  // just navigated to. suppressUrlSync stops the resulting re-render from
+  // pushing a fresh entry (which would undo the navigation we're reacting to).
+  window.addEventListener("popstate", async () => {
+    suppressUrlSync = true;
+    try {
+      const view = applyStateFromUrl();
+      await showView(view);
+    } finally {
+      suppressUrlSync = false;
+    }
   });
 
   // Pre-fetch the full graph so the dropdown is populated up front, then
-  // start the user on the super view (which is the readable summary).
+  // restore view + filter from the URL (deep link) before the first render.
   try {
     await fetchView("full");
     populateFilterDropdown(cache.full);
-    await showView("super");
+
+    // Restore state from the query string (validated against the dropdown),
+    // then normalise the landing URL with replaceState so the first history
+    // entry is canonical — no duplicate to click Back through. showView()'s
+    // own syncUrl() is then a no-op (the URL already matches).
+    const initialView = applyStateFromUrl();
+    currentView = initialView;
+    const normalised = canonicalUrl();
+    if (normalised !== currentUrl()) {
+      window.history.replaceState(null, "", normalised);
+    }
+    await showView(initialView);
   } catch (e) {
     document.getElementById("status").textContent = `error: ${e.message}`;
     console.error(e);
