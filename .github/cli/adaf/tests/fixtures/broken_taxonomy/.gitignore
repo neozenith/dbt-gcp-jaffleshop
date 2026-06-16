@@ -1,0 +1,5 @@
+# dbt build artifacts — the manifest is regenerated from the models by the eval (single source of truth).
+target/
+logs/
+dbt_packages/
+.user.yml

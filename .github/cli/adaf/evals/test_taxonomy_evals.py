@@ -1,5 +1,4 @@
-"""DeepEval harness — evaluate ADAF's deterministic detectors against the intentionally-broken
-dbt fixture (`dbt-jaffleshop`).
+"""DeepEval harness — evaluate ADAF's deterministic detectors against a dedicated broken fixture.
 
 This is the agent-skill evaluation layer the goal calls for. Rather than an LLM judge (which would be
 non-deterministic and need a key), the metrics here are **custom deterministic** DeepEval metrics:
@@ -8,8 +7,12 @@ right severity AND the right DAMA-UK6 attribution, that suppressions silence the
 that the review output contract injects the full rule enum. The fixture is the ground truth — these
 goldens encode "what a correct review of these models looks like".
 
+The fixture is `tests/fixtures/broken_taxonomy/` — a tiny, SELF-CONTAINED broken dbt project owned by
+this harness. It used to point at the production `dbt-jaffleshop` project, but that project was
+remediated (it now passes `adaf check all`), so the broken ground-truth was moved here. Regenerate
+the fixture's manifest after editing its models with the command in its `dbt_project.yml`.
+
 Run:  uv run --group eval pytest evals/ -p no:cacheprovider
-The dbt fixture must stay broken for these to pass (that is the point); they make no changes.
 """
 
 import json
@@ -25,14 +28,30 @@ from deepeval.test_case import LLMTestCase
 from adaf.rules import get_rule, review_response_format
 
 REPO = Path(__file__).resolve().parents[4]
-PROJECT = REPO / "dbt-jaffleshop"
+ADAF_DIR = REPO / ".github" / "cli" / "adaf"
+# Dedicated broken fixture (a tiny real dbt project), decoupled from the now-clean production project.
+FIXTURE = ADAF_DIR / "tests" / "fixtures" / "broken_taxonomy"
+FIXTURE_MANIFEST = FIXTURE / "target" / "manifest.json"
 
 
 @lru_cache(maxsize=1)
 def taxonomy_output() -> str:
-    """Run `adaf check taxonomy --all --json` over the fixture once; return raw JSON (the 'actual output')."""
+    """Run `adaf check taxonomy --all --json` over the fixture once; return raw JSON (the 'actual output').
+
+    The fixture's models are the single source of truth — regenerate its manifest from them via an
+    offline `dbt parse` (gitignored build artifact, not committed). `dbt` lives in the production
+    project's env, so shell out through it for the parse only; the `adaf check` itself needs no dbt.
+    """
+    parse = subprocess.run(
+        ["uv", "run", "--directory", "dbt-jaffleshop", "dbt", "parse",
+         "--project-dir", str(FIXTURE), "--profiles-dir", str(FIXTURE)],
+        capture_output=True, text=True, cwd=REPO,
+    )
+    if not FIXTURE_MANIFEST.exists():
+        raise RuntimeError(f"fixture `dbt parse` failed:\n{parse.stderr or parse.stdout}")
     proc = subprocess.run(
-        ["uv", "run", "--directory", str(PROJECT), "adaf", "check", "taxonomy", "--all", "--json"],
+        ["uv", "run", "--directory", str(ADAF_DIR), "adaf", "--project-dir", str(FIXTURE),
+         "check", "taxonomy", "--all", "--json", "--manifest", str(FIXTURE_MANIFEST)],
         capture_output=True, text=True, cwd=REPO,
     )
     if not proc.stdout.strip():
