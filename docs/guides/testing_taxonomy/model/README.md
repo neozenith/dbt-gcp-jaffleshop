@@ -18,6 +18,8 @@ Tests in this folder do not belong to a single column — they assert properties
 8. **MD-08** · [`MD-08-schema-changes.md`](./MD-08-schema-changes.md) — Elementary schema-change / baseline-drift detection on sources you don't own
 9. **MD-09** · [`MD-09-column-anomalies.md`](./MD-09-column-anomalies.md) — Elementary automated column monitors (null %, min/max/avg, zero-count)
 10. **MD-10** · [`MD-10-json-schema.md`](./MD-10-json-schema.md) — Elementary JSON-shape validation on semi-structured columns
+11. **MD-11** · [`MD-11-exposure.md`](./MD-11-exposure.md) — register downstream consumers (dashboards/ML/apps) via an `exposures:` block
+12. **MD-12** · [`MD-12-semantic-model.md`](./MD-12-semantic-model.md) — define metrics once via a `semantic_models:` block (MetricFlow entities/dimensions/measures)
 
 ## What can go wrong
 
@@ -32,6 +34,8 @@ Tests in this folder do not belong to a single column — they assert properties
 | An upstream source you don't own added/dropped/retyped a column and your contract never saw it | [`MD-08-schema-changes.md`](./MD-08-schema-changes.md) |
 | A column's null rate / average / zero-count drifted, but no per-column rule was watching it | [`MD-09-column-anomalies.md`](./MD-09-column-anomalies.md) |
 | A JSON / semi-structured column lost a key or changed a nested type; the parse-time contract can't see inside it | [`MD-10-json-schema.md`](./MD-10-json-schema.md) |
+| A mart's column was refactored; CI was green because no dbt model `ref()`s it — but a dashboard/ML pipeline bound to it broke silently | [`MD-11-exposure.md`](./MD-11-exposure.md) |
+| The same metric ("revenue") is hand-rolled per dashboard and the definitions drift, so consumers get different numbers | [`MD-12-semantic-model.md`](./MD-12-semantic-model.md) |
 
 ## Defence in depth: shape AND content
 

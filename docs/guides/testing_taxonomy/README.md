@@ -138,7 +138,7 @@ The roles below are MetricFlow's names. Informal names plus the Kimball, MetricF
 | [`dimension/`](./dimension/README.md) | dimension | Violet | GROUP BY axes: accepted values, cardinality bounds, mutual exclusivity, conformed dimensions, per-dim anomalies |
 | [`measure/`](./measure/README.md) | measure | Emerald | Aggregated facts: numeric range, additivity tagging, currency pairing, distribution anomalies, NaN/Inf guards |
 | [`time/`](./time/README.md) | time | Orange | Date/datetime columns: event-time bounds, monotonic pairs, freshness (fixed + learned-band anomalies), calendar spines, SCD2 quartet, timezone contracts |
-| [`model/`](./model/README.md) | model-level | Slate | Cross-column concerns: grain test, contracts, versioning, refactor parity, unit tests, row-count band, volume anomaly, schema-change detection, automated column monitors, JSON-shape guards |
+| [`model/`](./model/README.md) | model-level | Slate | Cross-column concerns: grain test, contracts, versioning, refactor parity, unit tests, row-count band, volume anomaly, schema-change detection, automated column monitors, JSON-shape guards, exposure registration, semantic-model declaration |
 
 ## Vignette index
 
@@ -189,6 +189,8 @@ The roles below are MetricFlow's names. Informal names plus the Kimball, MetricF
 - **MD-08** · [`MD-08-schema-changes.md`](./model/MD-08-schema-changes.md) — Elementary schema-change / baseline-drift detection on sources you don't own
 - **MD-09** · [`MD-09-column-anomalies.md`](./model/MD-09-column-anomalies.md) — Elementary automated column monitors (null %, min/max/avg, zero-count)
 - **MD-10** · [`MD-10-json-schema.md`](./model/MD-10-json-schema.md) — Elementary JSON-shape validation on semi-structured columns
+- **MD-11** · [`MD-11-exposure.md`](./model/MD-11-exposure.md) — register downstream consumers (dashboards/ML/apps) via an `exposures:` block
+- **MD-12** · [`MD-12-semantic-model.md`](./model/MD-12-semantic-model.md) — define metrics once via a `semantic_models:` block (MetricFlow entities/dimensions/measures)
 
 
 ## The two categorisation heuristics
