@@ -114,6 +114,8 @@ nav:
       - MD-08 · Schema changes: model/MD-08-schema-changes.md
       - MD-09 · Column anomalies: model/MD-09-column-anomalies.md
       - MD-10 · JSON schema: model/MD-10-json-schema.md
+      - MD-11 · Exposure registration: model/MD-11-exposure.md
+      - MD-12 · Semantic model: model/MD-12-semantic-model.md
   - Entity — keys & joins:
       - entity/README.md
       - EN-01 · Unique key: entity/EN-01-unique-key.md
