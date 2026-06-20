@@ -189,11 +189,14 @@ gha-docs: deps
 	DBT_TARGET=prod-impersonate DBT_ENV_TYPE=PROD DBT_BQ_PROJECT_PROD=$(ELEMENTARY_PROD_PROJECT) \
 	  uv run adaf products generate -o "$(GHA_SITE)"
 	$(MAKE) elementary-report ELEMENTARY_REPORT_PATH="$(GHA_SITE)/elementary_report.html"
+	DBT_BQ_PROJECT_PROD=$(ELEMENTARY_PROD_PROJECT) \
+	  uv run obs generate -o "$(GHA_SITE)/obs"
 	@echo ""
 	@echo "Simulated GitHub Pages site assembled in $(GHA_SITE):"
 	@echo "  http://localhost:8089/index.html              (dbt docs)"
 	@echo "  http://localhost:8089/sdag.html               (data-product lineage)"
 	@echo "  http://localhost:8089/elementary_report.html  (Elementary observability)"
+	@echo "  http://localhost:8089/obs/gantt.html          (obs run Gantt — 30 days)"
 	@echo "Ctrl-C to stop."
 	uv run python -m http.server 8089 --directory "$(GHA_SITE)"
 

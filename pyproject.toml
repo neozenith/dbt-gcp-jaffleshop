@@ -6,4 +6,12 @@ dependencies = [
     "dbt-bigquery>=1.11.1",
     "dbt-core>=1.11.10",
     "sqlfluff>=4.2.1",
+    "obs",
 ]
+
+# obs (the observability CLI) is installed editable from its in-repo path, so
+# `uv run obs ...` works from the repo root and edits to .github/cli/obs/src take
+# effect without re-sync. (adaf is intentionally NOT wired here — it's consumed via
+# `uv run --directory .github/cli/adaf` alongside the dbt toolchain it shells out to.)
+[tool.uv.sources]
+obs = { path = ".github/cli/obs", editable = true }

@@ -1,0 +1,65 @@
+{
+  "_about": "Single source of truth for obs viewer branding. Curate colours/fonts here; gantt.js reads this at runtime and projects each theme onto CSS custom properties (--obs-*). No rebuild needed — edit, re-serve, refresh.",
+  "brand": {
+    "name": "obs",
+    "tagline": "dbt run telemetry"
+  },
+  "fonts": {
+    "mono": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    "sans": "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+  },
+  "defaultTheme": "system",
+  "resourceColours": {
+    "_note": "Theme-independent — chosen to read on both light and dark lanes (Okabe-Ito, colour-blind-safe).",
+    "model": "#0072B2",
+    "test": "#E69F00",
+    "unit_test": "#CC79A7",
+    "seed": "#009E73",
+    "snapshot": "#D55E00",
+    "source": "#56B4E9",
+    "exposure": "#F0E442",
+    "saved_query": "#8C66CC",
+    "operation": "#999999",
+    "_fallback": "#94A3B8"
+  },
+  "statusColours": {
+    "success": "#10B981",
+    "pass": "#10B981",
+    "error": "#EF4444",
+    "fail": "#EF4444",
+    "failed": "#EF4444",
+    "warn": "#F59E0B",
+    "skipped": "#64748B",
+    "_fallback": "#94A3B8"
+  },
+  "themes": {
+    "dark": {
+      "bg": "#0F172A",
+      "surface": "#020617",
+      "surfaceAlt": "#1E293B",
+      "text": "#F1F5F9",
+      "textMuted": "#94A3B8",
+      "textFaint": "#64748B",
+      "border": "#334155",
+      "accent": "#38BDF8",
+      "grid": "#1E293B",
+      "laneBandA": "#0F172A",
+      "laneBandB": "#0B1220",
+      "barStroke": "rgba(0,0,0,0.35)"
+    },
+    "light": {
+      "bg": "#FFFFFF",
+      "surface": "#F8FAFC",
+      "surfaceAlt": "#E2E8F0",
+      "text": "#0F172A",
+      "textMuted": "#475569",
+      "textFaint": "#94A3B8",
+      "border": "#CBD5E1",
+      "accent": "#0284C7",
+      "grid": "#E2E8F0",
+      "laneBandA": "#FFFFFF",
+      "laneBandB": "#F1F5F9",
+      "barStroke": "rgba(15,23,42,0.18)"
+    }
+  }
+}

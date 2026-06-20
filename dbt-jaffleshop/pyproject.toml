@@ -16,6 +16,11 @@ dev = [
     # INSIDE this project's venv where dbt / sqlfluff / dbt-autofix are on PATH (the shell-out checks
     # need them). Developed + tested standalone at .github/cli/adaf. See ADR-0005.
     "adaf",
+    # obs — the observability CLI (Elementary run telemetry → Gantt viewer), consumed as an
+    # editable path dep so `uv run obs` runs inside this project's venv. The dbt-docs Pages job
+    # builds the viewer here (authed as dbt-prod via WIF → obs uses --no-impersonate). Developed
+    # + tested standalone at .github/cli/obs.
+    "obs",
     "dbt-autofix>=0.20.5",
     "elementary-data[bigquery]==0.24.0",
     "pre-commit>=3.7.0",
@@ -29,6 +34,7 @@ dev = [
 
 [tool.uv.sources]
 adaf = { path = "../.github/cli/adaf", editable = true }
+obs = { path = "../.github/cli/obs", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["pytests"]

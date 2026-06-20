@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<title>obs — dbt run Gantt</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<style>
+  /* All themed colours come from design-tokens.json, projected by gantt.js onto these
+     CSS custom properties (set on :root). Layout/structure is plain CSS — no framework. */
+  :root {
+    --obs-bg: #0f172a; --obs-surface: #020617; --obs-surface-alt: #1e293b;
+    --obs-text: #f1f5f9; --obs-text-muted: #94a3b8; --obs-text-faint: #64748b;
+    --obs-border: #334155; --obs-accent: #38bdf8; --obs-grid: #1e293b;
+    --obs-lane-a: #0f172a; --obs-lane-b: #0b1220; --obs-bar-stroke: rgba(0,0,0,0.35);
+    --obs-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --obs-font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --sidebar-w: 19rem;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; padding: 0; }
+  body {
+    font-family: var(--obs-font-sans); color: var(--obs-text);
+    background: var(--obs-bg); transition: background 0.2s, color 0.2s;
+  }
+  #app { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+
+  /* ── Sidebar ─────────────────────────────────────────────────────────── */
+  #sidebar {
+    width: var(--sidebar-w); flex-shrink: 0; overflow-y: auto;
+    background: var(--obs-surface); border-right: 1px solid var(--obs-border);
+    padding: 1rem; transition: width 0.18s ease, padding 0.18s ease;
+  }
+  #app.collapsed #sidebar { width: 0; padding: 0; overflow: hidden; border-right: 0; }
+  .sidebar-inner { min-width: calc(var(--sidebar-w) - 2rem); }
+
+  .brand-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem; }
+  .brand h1 { font-size: 1.125rem; font-weight: 600; margin: 0; }
+  .brand p { font-size: 0.7rem; color: var(--obs-text-muted); margin: 0.1rem 0 0; }
+  .build-banner { font-size: 0.62rem; color: var(--obs-text-faint); font-family: var(--obs-font-mono);
+                  margin: 0.5rem 0 1rem; line-height: 1.3; white-space: pre-wrap; word-break: break-all; }
+
+  .field { margin-bottom: 1rem; }
+  .field > label { display: block; font-size: 0.65rem; text-transform: uppercase;
+                   letter-spacing: 0.06em; color: var(--obs-text-muted); margin-bottom: 0.35rem; }
+
+  select, .btn, .seg button {
+    font-family: var(--obs-font-mono); font-size: 0.72rem; color: var(--obs-text);
+    background: var(--obs-surface-alt); border: 1px solid var(--obs-border);
+    border-radius: 0.375rem; padding: 0.3rem 0.5rem; cursor: pointer;
+  }
+  select { width: 100%; }
+  .btn { width: 100%; text-align: center; }
+  .btn:hover, .seg button:hover { border-color: var(--obs-accent); }
+  .seg { display: flex; border: 1px solid var(--obs-border); border-radius: 0.375rem; overflow: hidden; }
+  .seg button { flex: 1; border: 0; border-radius: 0; }
+  .seg button.active { background: var(--obs-accent); color: var(--obs-surface); font-weight: 600; }
+
+  .row { display: flex; align-items: center; gap: 0.5rem; }
+  .check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.72rem;
+           color: var(--obs-text-muted); padding-top: 0.4rem; cursor: pointer; }
+
+  .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.72rem; color: var(--obs-text-muted); }
+  .swatch { width: 0.75rem; height: 0.75rem; border-radius: 0.2rem; display: inline-block; flex-shrink: 0; }
+  .mono-block { font-family: var(--obs-font-mono); font-size: 0.68rem; line-height: 1.5;
+                white-space: pre; color: var(--obs-text); }
+
+  /* ── Collapse / expand rail ──────────────────────────────────────────── */
+  #rail { width: 0; flex-shrink: 0; position: relative; }
+  .rail-btn {
+    position: absolute; top: 0.6rem; left: 0.4rem; z-index: 20;
+    width: 1.9rem; height: 1.9rem; display: flex; align-items: center; justify-content: center;
+    font-family: var(--obs-font-mono); font-size: 0.9rem;
+    background: var(--obs-surface-alt); color: var(--obs-text);
+    border: 1px solid var(--obs-border); border-radius: 0.375rem; cursor: pointer;
+  }
+  .rail-btn:hover { border-color: var(--obs-accent); }
+  #app:not(.collapsed) #rail-expand { display: none; }
+
+  /* ── Main canvas ─────────────────────────────────────────────────────── */
+  main { flex: 1; position: relative; overflow: auto; background: var(--obs-bg); }
+  #chart svg { display: block; font-family: var(--obs-font-mono); }
+  .bar { cursor: pointer; }
+  .bar:hover { filter: brightness(1.2); }
+  #status { position: absolute; top: 0.5rem; right: 0.5rem; font-size: 0.7rem; font-family: var(--obs-font-mono);
+            color: var(--obs-text-muted); background: var(--obs-surface-alt); border: 1px solid var(--obs-border);
+            padding: 0.2rem 0.5rem; border-radius: 0.375rem; }
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 50; display: none;
+    background: var(--obs-surface); color: var(--obs-text); border: 1px solid var(--obs-border);
+    font-family: var(--obs-font-mono); font-size: 0.68rem; line-height: 1.4;
+    padding: 0.4rem 0.55rem; border-radius: 0.375rem; max-width: 26rem; white-space: pre;
+  }
+  .fail-dot { color: #ef4444; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ── Sidebar ───────────────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div class="sidebar-inner">
+      <div class="brand-row">
+        <div class="brand">
+          <h1 id="brand-name">obs · Gantt</h1>
+          <p id="brand-tagline">dbt run telemetry, by thread</p>
+        </div>
+        <button id="btn-collapse" class="rail-btn" title="Collapse sidebar" style="position:static">‹</button>
+      </div>
+      <p id="build-banner" class="build-banner"></p>
+
+      <div class="field">
+        <label for="run-picker">Run</label>
+        <select id="run-picker"></select>
+        <p id="run-meta" class="mono-block" style="margin-top:0.4rem; color:var(--obs-text-muted)"></p>
+      </div>
+
+      <div class="field">
+        <label>Theme</label>
+        <div class="seg" id="theme-seg">
+          <button data-theme="light">light</button>
+          <button data-theme="dark">dark</button>
+          <button data-theme="system">system</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Zoom (px / second)</label>
+        <div class="row">
+          <button id="btn-zoom-out" class="btn" style="width:auto">−</button>
+          <input id="zoom" type="range" min="2" max="60" step="1" value="14" style="flex:1" />
+          <button id="btn-zoom-in" class="btn" style="width:auto">+</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Colour by</label>
+        <div class="seg" id="colour-seg">
+          <button data-mode="resource">resource_type</button>
+          <button data-mode="status">status</button>
+        </div>
+        <label class="check"><input id="chk-labels" type="checkbox" /> label bars</label>
+      </div>
+
+      <div class="field">
+        <label>Legend</label>
+        <div id="legend-body"></div>
+      </div>
+
+      <div class="field">
+        <label>Stats</label>
+        <div id="metadata-body" class="mono-block"></div>
+      </div>
+
+      <div class="field">
+        <label>Longest nodes</label>
+        <div id="detail-body" class="mono-block"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- collapse-rail expand button (only visible when collapsed) -->
+  <div id="rail">
+    <button id="rail-expand" class="rail-btn" title="Expand sidebar">›</button>
+  </div>
+
+  <!-- ── Gantt canvas ─────────────────────────────────────────────────── -->
+  <main>
+    <div id="chart"></div>
+    <div id="status">loading…</div>
+  </main>
+</div>
+
+<div id="tooltip"></div>
+
+<script src="gantt.js?v={{BUILD_ID}}" defer></script>
+</body>
+</html>
