@@ -6,8 +6,14 @@ name: dbt deploy / prod
 #
 # Routing (matches the SA scoping in infra/stacks/dbt_platform/dbt.tf):
 #   - push to main                    → `parse` only (validation; no deploy)
-#   - push tag v*                     → `parse` then `deploy / prod`
+#   - push tag v*                     → `parse` then `deploy / prod` (single build)
 #   - workflow_dispatch (from main)   → `parse` then `deploy / prod`
+#       · thread_sweep=false (default) → single `dbt build` (normal deploy)
+#       · thread_sweep=true            → sweep `dbt build --threads N` over thread_sweep_set,
+#                                        each a distinct Elementary invocation, to curate
+#                                        run telemetry for the `obs` Gantt viewer. Off by
+#                                        default so normal deploys aren't multiplied; use a
+#                                        larger `runner` input for clean high-thread (>4) data.
 #
 # The IAM condition on the dbt-prod WIF binding additionally restricts push
 # events to refs/tags/* — branch pushes can't impersonate even if the workflow
@@ -28,6 +34,19 @@ on:
       - 'dbt-jaffleshop/**'
       - '.github/workflows/dbt-deploy-prod.yml'
   workflow_dispatch:
+    inputs:
+      thread_sweep:
+        description: "Run the dbt-build thread-permutation sweep (curates obs Gantt telemetry). OFF for normal deploys."
+        type: boolean
+        default: false
+      thread_sweep_set:
+        description: "Space-separated thread counts to sweep when thread_sweep is on."
+        type: string
+        default: "1 2 4 8 16 32"
+      runner:
+        description: "Runner label. Bump to a larger runner for clean high-thread (>4) sweeps; standard runners are ~2-4 cores."
+        type: string
+        default: "ubuntu-latest"
 
 permissions:
   contents: read
@@ -95,7 +114,9 @@ jobs:
     if: |
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
+    # Runner is dispatch-selectable so a deliberate high-thread sweep can request a larger
+    # runner; tag-push deploys fall back to the standard ubuntu-latest.
+    runs-on: ${{ github.event.inputs.runner || 'ubuntu-latest' }}
     environment: prod          # required reviewers + deployment branches enforced here
     env:
       DBT_PROFILES_DIR: ${{ github.workspace }}/dbt-jaffleshop
@@ -139,11 +160,38 @@ jobs:
       # errors if they're missing). This is a plain incremental run; a forced --full-refresh
       # is an occasional maintenance task, moved to the dispatch-only
       # .github/workflows/elementary-full-refresh.yml instead of every deploy.
+      #
+      # Normal deploys run a SINGLE `dbt build`. The thread-permutation sweep is a
+      # FEATURE-FLAGGED, dispatch-only data-generation mode (off by default):
+      #
+      #   workflow_dispatch → thread_sweep=true (+ thread_sweep_set, runner)
+      #
+      # When enabled, `dbt build` runs once per thread count in the set. dbt build is
+      # idempotent on prod data, so each pass rebuilds the same models at a different
+      # parallelism, and Elementary logs each as its OWN invocation_id (with `threads`
+      # in dbt_invocations) — curating a spread of run telemetry for the `obs` Gantt to
+      # compare. `--threads N` overrides the profile. Note: dbt+BigQuery threads are
+      # I/O-bound (each blocks on a BQ job), so high counts still issue N concurrent BQ
+      # queries on a small runner; the runner cores only cap dbt's local work. For a
+      # CLEAN high-thread benchmark, dispatch with a larger `runner`. The LAST pass leaves
+      # target/ for the artefact upload below.
       - name: run dbt build
+        env:
+          THREAD_SWEEP: ${{ github.event.inputs.thread_sweep || 'false' }}
+          THREAD_SWEEP_SET: ${{ github.event.inputs.thread_sweep_set || '1 2 4 8 16 32' }}
         run: |
           uv run dbt run -s elementary --target prod
           uv run dbt seed --target prod --vars '{"load_source_data": true}'
-          uv run dbt build --target prod
+          if [ "$THREAD_SWEEP" = "true" ]; then
+            echo "Thread-permutation sweep ENABLED — set: $THREAD_SWEEP_SET"
+            for N in $THREAD_SWEEP_SET; do
+              echo "::group::dbt build --threads $N"
+              uv run dbt build --threads "$N" --target prod
+              echo "::endgroup::"
+            done
+          else
+            uv run dbt build --target prod
+          fi
 
       - name: Upload dbt artefacts to GCS (runs/<id> + latest)
         if: always()

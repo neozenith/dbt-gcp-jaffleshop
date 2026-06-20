@@ -1212,6 +1212,7 @@ dev = [
     { name = "adaf" },
     { name = "dbt-autofix" },
     { name = "elementary-data", extra = ["bigquery"] },
+    { name = "obs" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-xdist" },
@@ -1234,6 +1235,7 @@ dev = [
     { name = "adaf", editable = "../.github/cli/adaf" },
     { name = "dbt-autofix", specifier = ">=0.20.5" },
     { name = "elementary-data", extras = ["bigquery"], specifier = "==0.24.0" },
+    { name = "obs", editable = "../.github/cli/obs" },
     { name = "pre-commit", specifier = ">=3.7.0" },
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
@@ -1684,6 +1686,26 @@ sdist = { url = "https://files.pythonhosted.org/packages/0b/5f/19930f824ffeb0ad4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/9c/92789c596b8df838baa98fa71844d84283302f7604ed565dafe5a6b5041a/oauthlib-3.3.1-py3-none-any.whl", hash = "sha256:88119c938d2b8fb88561af5f6ee0eec8cc8d552b7bb1f712743136eb7523b7a1", size = 160065, upload-time = "2025-06-19T22:48:06.508Z" },
 ]
+
+[[package]]
+name = "obs"
+version = "0.1.0"
+source = { editable = "../.github/cli/obs" }
+dependencies = [
+    { name = "google-auth" },
+    { name = "google-cloud-bigquery" },
+    { name = "python-dotenv" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "google-auth", specifier = ">=2.30" },
+    { name = "google-cloud-bigquery", specifier = ">=3.25" },
+    { name = "python-dotenv", specifier = ">=1.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
 name = "orderly-set"
