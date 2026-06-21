@@ -21,12 +21,12 @@ Multiple ``--select`` union (dbt's own behaviour); ``--exclude`` subtracts.
 """
 
 # Standard Library
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
 # Local
 from adaf import config
+from adaf.dbt.ls import ls_select_exclude_paths
 from adaf.gitutil import changed_model_files
 
 
@@ -71,20 +71,10 @@ def all_model_files(cwd: Path) -> list[Path]:
 def dbt_ls_paths(select: list[str], exclude: list[str], *, cwd: Path) -> set[str]:
     """Resolve dbt ``--select``/``--exclude`` to a set of model file paths via ``dbt ls``.
 
-    ``--quiet`` suppresses dbt's banner; warnings go to stderr, so capturing stdout and
-    keeping only ``.sql`` lines yields a clean path set. Fail loud if dbt errors.
+    A thin wrapper over :func:`adaf.dbt.ls.ls_select_exclude_paths` (the single ``dbt ls`` home);
+    kept as a named function here so existing call sites and tests that monkeypatch it are unchanged.
     """
-    cmd = ["dbt", "ls", "--quiet", "--resource-type", "model", "--output", "path"]
-    for selector in select:
-        cmd += ["--select", selector]
-    for selector in exclude:
-        cmd += ["--exclude", selector]
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"`dbt ls` failed (exit {proc.returncode}):\n--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr}"
-        )
-    return {line.strip() for line in proc.stdout.splitlines() if line.strip().endswith(".sql")}
+    return ls_select_exclude_paths(select, exclude, cwd=cwd)
 
 
 def resolve_model_files(selection: Selection, *, cwd: Path | None = None) -> list[Path]:

@@ -20,16 +20,21 @@ parents at all) is an inbound boundary because the product's lineage *starts* th
 children at all) is an outbound boundary because the product's lineage *ends* there — exactly the
 points where a data contract with the outside world has to live.
 
-Pure: ``Graph`` and ``classify_boundary`` take plain data and read no I/O beyond ``Graph.load``'s
-single file read, so the classification is unit-testable against a hand-built manifest dict.
+Pure: ``Graph`` and ``classify_boundary`` take plain data and read no I/O. The mechanical manifest
+parse lives once in :class:`~adaf.dbt.manifest_view.ManifestView`; ``Graph.load`` /
+``Graph.from_dict`` are thin wrappers over :meth:`Graph.from_view`, so the classification stays
+unit-testable against a hand-built manifest dict.
 """
 
 # Standard Library
-import json
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+
+# Local
+from adaf.dbt.manifest_view import ManifestView
 
 # The resource types that carry data and so form the lineage backbone. Everything else in the
 # manifest (test, semantic_model, metric, exposure, analysis, ...) is an attachment/consumer and is
@@ -52,6 +57,7 @@ class Graph:
 
     Construct via ``Graph.load(path)`` (reads manifest.json) or ``Graph.from_dict(data)`` (for tests,
     with a hand-built manifest dict — same shape dbt writes: ``nodes``/``sources`` maps + ``parent_map``).
+    Both delegate to :meth:`from_view` over a :class:`ManifestView`.
     """
 
     def __init__(self, nodes: dict[str, NodeInfo], edges: list[tuple[str, str]]) -> None:
@@ -65,37 +71,29 @@ class Graph:
 
     @classmethod
     def load(cls, path: Path | str) -> "Graph":
-        return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+        return cls.from_view(ManifestView.load(path))
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Graph":
-        # Pass 1: the data nodes (model/source/seed/snapshot), without test counts yet.
-        raw: dict[str, tuple[str, str]] = {}  # uid -> (resource_type, name)
-        for section in ("nodes", "sources"):
-            for uid, node in (data.get(section) or {}).items():
-                rt = node.get("resource_type") or ("source" if section == "sources" else "")
-                if rt not in DATA_RESOURCE_TYPES:
-                    continue
-                raw[uid] = (rt, node.get("name") or uid.rsplit(".", 1)[-1])
-        # Pass 2: attribute each test node to the data node(s) its `depends_on.nodes` references — a
-        # model can be referenced by many tests, and sources/seeds/snapshots carry tests too (same
-        # approach as manifest.py, but for every data node, not just models).
+    def from_dict(cls, data: dict[str, Any]) -> "Graph":
+        """Build from an already-parsed manifest dict (convenience wrapper over :meth:`from_view`)."""
+        return cls.from_view(ManifestView.from_dict(data))
+
+    @classmethod
+    def from_view(cls, view: ManifestView) -> "Graph":
+        # The data nodes (model/source/seed/snapshot) are the only backbone; test counts come from a
+        # second pass over the `test` nodes (same approach as manifest.py, but for every data node).
+        data_records = view.of_type(*DATA_RESOURCE_TYPES)
         test_counts: dict[str, int] = defaultdict(int)
-        for node in (data.get("nodes") or {}).values():
-            if node.get("resource_type") != "test":
-                continue
-            for dep in (node.get("depends_on") or {}).get("nodes", []):
-                if dep in raw:
+        for rec in view.of_type("test").values():
+            for dep in (rec.raw.get("depends_on") or {}).get("nodes", []):
+                if dep in data_records:
                     test_counts[dep] += 1
-        nodes = {uid: NodeInfo(uid, rt, name, test_counts.get(uid, 0)) for uid, (rt, name) in raw.items()}
-        # parent_map is keyed by child → [parents]; keep only edges where BOTH ends are data nodes.
-        parent_map = data.get("parent_map") or {}
-        edges = [
-            (parent, child)
-            for child, parents in parent_map.items()
-            for parent in (parents or [])
-            if parent in nodes and child in nodes
-        ]
+        nodes = {
+            uid: NodeInfo(uid, rec.resource_type, rec.raw.get("name") or uid.rsplit(".", 1)[-1], test_counts.get(uid, 0))
+            for uid, rec in data_records.items()
+        }
+        # The view keeps only edges whose BOTH endpoints are in the set we pass (drops model->test).
+        edges = view.parent_edges(set(nodes))
         return cls(nodes, edges)
 
     def nodes(self) -> dict[str, NodeInfo]:

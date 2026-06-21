@@ -14,7 +14,6 @@ both — or internal. The result dataclasses live in ``adaf.reports.dataproducts
 # Standard Library
 import json
 import logging
-import subprocess
 from pathlib import Path
 
 # Third Party
@@ -22,6 +21,7 @@ import yaml
 
 # Local
 from adaf import config, viewer
+from adaf.dbt import ls, runner
 from adaf.graph import Graph, classify_boundary
 from adaf.reports.dataproducts import (
     BoundaryReport,
@@ -61,11 +61,12 @@ __all__ = [
 
 
 def dbt_parse(cwd: Path | None = None) -> None:
-    """Run ``dbt parse`` to refresh target/manifest.json (fail loud)."""
-    cwd = cwd or config.PROJECT_ROOT
-    proc = subprocess.run(["dbt", "parse"], cwd=cwd, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"`dbt parse` failed (exit {proc.returncode}):\n{proc.stderr or proc.stdout}")
+    """Run ``dbt parse`` to refresh target/manifest.json (fail loud).
+
+    Thin wrapper over :func:`adaf.dbt.runner.dbt_parse` (the single dbt entry point); kept as a named
+    function here so the ``products``/``check`` call sites and ``__all__`` re-export are unchanged.
+    """
+    runner.dbt_parse(cwd)
 
 
 def load_graph(path: Path | str, *, parse: bool = False, cwd: Path | None = None) -> Graph:
@@ -96,22 +97,12 @@ def load_selector_names(path: Path | str) -> list[tuple[str, str]]:
 
 
 def resolve_members(name: str, *, cwd: Path | None = None) -> set[str]:
-    """unique_ids dbt resolves for the named selector — full grammar, via ``dbt ls``."""
-    cwd = cwd or config.PROJECT_ROOT
-    cmd = ["dbt", "ls", "--quiet", "--selector", name, "--output", "json", "--output-keys", "unique_id"]
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"`dbt ls --selector {name}` failed (exit {proc.returncode}):\n"
-            f"--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr}"
-        )
-    uids: set[str] = set()
-    for line in proc.stdout.splitlines():
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        uids.add(json.loads(line)["unique_id"])
-    return uids
+    """unique_ids dbt resolves for the named selector — full grammar, via ``dbt ls``.
+
+    Thin wrapper over :func:`adaf.dbt.ls.ls_member_ids` (the single ``dbt ls`` home); kept as a named
+    function here so existing call sites and ``__all__`` re-export are unchanged.
+    """
+    return ls.ls_member_ids(name, cwd=cwd)
 
 
 # ─── products boundaries: evaluate + handler ─────────────────────────────────

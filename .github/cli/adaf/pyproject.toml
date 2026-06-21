@@ -8,7 +8,15 @@ dependencies = [
     "jsonschema>=4.21",
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
+    "ruamel.yaml>=0.18",
+    "deepdiff>=7.0",
 ]
+
+# Optional extras. `fusion` adds duckdb for reading dbt v2.0 ("Fusion") parquet artifact sets
+# (adaf.dbt.artifact.ParquetManifestArtifact). The JSON manifest path — every user today — stays
+# duckdb-free; a missing duckdb on the parquet path is a loud ImportError, never a silent fallback.
+[project.optional-dependencies]
+fusion = ["duckdb>=1.0"]
 
 [project.scripts]
 adaf = "adaf.app:main"

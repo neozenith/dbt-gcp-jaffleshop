@@ -8,12 +8,19 @@ The manifest is dbt's compiled source of truth. We extract just two things per m
 
 Keying models by ``original_file_path`` lets us join directly against the git
 "changed files" set, whose paths are already project-relative (e.g. ``models/staging/stg_orders.sql``).
+
+The mechanical parse (read file, iterate ``nodes``, find ``test`` nodes) lives once in
+:class:`~adaf.dbt.manifest_view.ManifestView`; this projection only adds the doc/test *meaning* via
+:meth:`Manifest.from_view`. ``load`` / ``from_dict`` stay as thin wrappers so call sites are unchanged.
 """
 
 # Standard Library
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+# Local
+from adaf.dbt.manifest_view import ManifestView
 
 
 @dataclass
@@ -36,15 +43,18 @@ class Manifest:
 
     @classmethod
     def load(cls, path: Path | str) -> "Manifest":
-        return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+        return cls.from_view(ManifestView.load(path))
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Manifest":
-        nodes = data.get("nodes", {})
+    def from_dict(cls, data: dict[str, Any]) -> "Manifest":
+        """Build from an already-parsed manifest dict (convenience wrapper over :meth:`from_view`)."""
+        return cls.from_view(ManifestView.from_dict(data))
+
+    @classmethod
+    def from_view(cls, view: ManifestView) -> "Manifest":
         models: dict[str, ModelDoc] = {}
-        for uid, node in nodes.items():
-            if node.get("resource_type") != "model":
-                continue
+        for uid, rec in view.of_type("model").items():
+            node = rec.raw
             columns = {name: (col.get("description") or "") for name, col in (node.get("columns") or {}).items()}
             models[uid] = ModelDoc(
                 unique_id=uid,
@@ -54,10 +64,8 @@ class Manifest:
                 columns=columns,
             )
         # Second pass: attribute each test node to the model(s) it depends on.
-        for node in nodes.values():
-            if node.get("resource_type") != "test":
-                continue
-            for dep in (node.get("depends_on") or {}).get("nodes", []):
+        for rec in view.of_type("test").values():
+            for dep in (rec.raw.get("depends_on") or {}).get("nodes", []):
                 model = models.get(dep)
                 if model is not None:
                     model.test_count += 1
