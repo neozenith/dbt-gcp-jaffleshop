@@ -2,9 +2,9 @@
 
 ``ManifestView`` owns *normalisation* (records, edges); each projection owns *meaning*. This module
 owns the layer below both: reading a dbt compiled-artifact set off disk and presenting it as the two
-section/parent_map dicts the view consumes. Splitting it out is ADR-0022's seam extended one level
-deeper — the *artifact* owns I/O + format, so the loading mechanism is swappable without the view or
-any projection noticing.
+section/parent_map dicts the view consumes. It extends the ManifestView seam one level deeper — the
+*artifact* owns I/O + format, so the loading mechanism is swappable without the view or any projection
+noticing.
 
 Two readers live here. :class:`JsonManifestArtifact` holds the behaviour ``ManifestView`` used to do
 inline (``json.loads`` of a ``manifest.json`` path). :class:`ParquetManifestArtifact` reads the columnar

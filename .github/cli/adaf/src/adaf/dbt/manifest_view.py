@@ -1,17 +1,19 @@
 """The single seam every manifest projection builds on — parse dbt's ``manifest.json`` ONCE.
 
-dbt's ``manifest.json`` is the CLI's central artifact, and several projections read it: the
-coverage view (``adaf.dbt.manifest.Manifest``), the lineage graph (``adaf.graph.Graph``), the
-deterministic taxonomy detectors (``adaf.taxonomy.NodeFacts``), and the sdag viewer's display graph
+dbt's ``manifest.json`` is the CLI's central artifact, and several projections read it: the coverage
+view (``adaf.dbt.manifest.Manifest``), the lineage graph (``adaf.graph.Graph``), the boundary-lint
+artifact sets (``adaf.commands.sdaglint.Artifacts``), and the sdag viewer's display graph
 (``adaf.viewer``). Each used to re-do the same mechanical work — read the file, iterate the
 ``nodes`` + ``sources`` sections (defaulting a source's ``resource_type``), flatten ``parent_map``
 into edges, and find the ``test`` nodes. That duplication lived in several places; a dbt schema
 change meant several edits.
 
 ``ManifestView`` owns exactly that mechanical layer and nothing domain-specific: it does NOT know
-what a "contract" or a "boundary" is. Each projection keeps its own meaning, building from a view
-via a ``from_view`` constructor (the projections' existing ``load`` / ``from_dict`` entry points
-remain as thin wrappers, so call sites and tests are unchanged).
+what a "contract" or a "boundary" is. The projections that share it keep their own meaning, building
+from a view via a ``from_view`` constructor (``Manifest``, ``Graph``, and the lint ``Artifacts``);
+their existing ``load`` / ``from_dict`` entry points remain as thin wrappers, so call sites and tests
+are unchanged. (The deterministic detectors in ``adaf.taxonomy`` still read the manifest directly —
+they are not yet migrated onto the view.)
 
 Pure: the only I/O is delegated to a :class:`~adaf.dbt.artifact.ManifestArtifact` in ``load``;
 everything else operates on the parsed dict. The artifact seam is what makes "the manifest is one

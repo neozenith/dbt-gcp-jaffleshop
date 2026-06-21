@@ -1,5 +1,4 @@
 {
-  "$schema": "./design-tokens.schema (see README.md)",
   "version": 1,
   "description": "Design tokens for the adaf sdag viewer. Source of truth for the canvas palette; sdag.js fetches this at runtime and builds RESOURCE_COLOURS / THEMES / the RAG thresholds / the canvas fonts from it.",
 

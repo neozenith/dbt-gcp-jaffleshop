@@ -129,7 +129,7 @@
     outline: 2px solid var(--accent); outline-offset: 1px;
   }
 
-  /* Cytoscape hover tooltip (governance facts — T21). */
+  /* Cytoscape hover tooltip (governance facts). */
   .cy-tooltip {
     position: absolute; pointer-events: none;
     background: var(--tooltip-bg); color: var(--text);
@@ -139,7 +139,7 @@
     box-shadow: 0 4px 14px var(--shadow);
   }
 
-  /* ── Compliance panel (T20) ─────────────────────────────────────────── */
+  /* ── Compliance panel ─────────────────────────────────────────── */
   #compliance { display: none; }
   #compliance.visible { display: block; }
   .compliance-card {
@@ -176,7 +176,7 @@
   #detail-body, #metadata-body { color: var(--text-secondary); }
   .divider { border-top: 1px solid var(--border-soft); }
 
-  /* ── Collapsible sidebar (T39) ───────────────────────────────────────────
+  /* ── Collapsible sidebar ───────────────────────────────────────────
      The sidebar collapses to free the canvas; sdag.js toggles .sidebar-collapsed
      on #app-root, persists the choice in localStorage, and calls
      cy.resize()+cy.fit() so the graph reflows into the reclaimed space. The
@@ -200,7 +200,7 @@
         <h1 class="panel-title text-lg font-semibold mb-1 tracking-tight">sdag</h1>
         <p class="text-sub text-xs mb-1">super-DAG over named selectors</p>
       </div>
-      <!-- Theme toggle (T22) — shows the theme you'll switch TO. -->
+      <!-- Theme toggle — shows the theme you'll switch TO. -->
       <button id="btn-theme"
               class="ctl px-2 py-1 rounded text-xs font-medium shrink-0"
               title="Toggle light / dark theme" aria-label="Toggle theme">🌙 Dark</button>
@@ -231,7 +231,7 @@
       </p>
     </div>
 
-    <!-- ── Compliance panel (T20) — visible only when a selector is filtered ── -->
+    <!-- ── Compliance panel — visible only when a selector is filtered ── -->
     <div id="compliance" class="mb-4"></div>
 
     <div class="space-y-2 mb-4">

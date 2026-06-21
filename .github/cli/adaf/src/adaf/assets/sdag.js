@@ -1,6 +1,6 @@
 // sdag.js — viewer logic for the super-DAG.
 //
-// Templated by `sdag.py write_outputs()` at build time:
+// Templated by `adaf/viewer.py write_outputs()` at build time:
 //   {{BUILD_ID}}  → timestamp of the generate run (cache-bust + banner)
 //   {{SOURCE}}    → dbt target/ path the manifest was read from
 // If you ever load this file directly without templating, both will appear
@@ -135,7 +135,7 @@ const THEME_KEY = "sdag-theme";
 let currentTheme = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Build identity — substituted at write-time by sdag.py write_outputs().
+// Build identity — substituted at write-time by adaf/viewer.py write_outputs().
 // Used as a cache-bust query-string on the JSON fetches so the browser
 // can't serve stale data across regenerations of the same output dir.
 // ─────────────────────────────────────────────────────────────────────────
@@ -277,7 +277,7 @@ function buildStyle(t) {
     },
 
     // Super nodes (collapsed-selector view) — sized by member count. The label
-    // is a multi-line product health summary (T33): name + compliance + a
+    // is a multi-line product health summary: name + compliance + a
     // governance roll-up, so font-size drops from the single-line original and
     // the min size grows to keep all three lines legible on the smallest node.
     {
@@ -310,8 +310,8 @@ function buildStyle(t) {
       style: { "background-color": t.superUnmatchedBg, "border-color": t.superUnmatchedBorder },
     },
 
-    // ── Super-node health rings (T33) — RAG by the product's compliance %,
-    // mirroring T20's thresholds (>=80 ok, >=50 warn, else fail). A FAILED
+    // ── Super-node health rings — RAG by the product's compliance %,
+    // mirroring the RAG thresholds (>=80 ok, >=50 warn, else fail). A FAILED
     // product gets the thick ring + red underlay glow (same language as the
     // per-node compliance-fail ring); an UNGRADED product (no compliance data
     // in the cache) gets a calm dashed slate ring — never green, so a missing
@@ -384,7 +384,7 @@ function buildStyle(t) {
         "background-opacity": 0.15, "color": t.haloCompoundLabel,
       } },
 
-    // ── Compliance rings (T20) — applied over boundary nodes when a selector
+    // ── Compliance rings — applied over boundary nodes when a selector
     // filter is active. A FAILED boundary obligation gets a thick ring + a red
     // underlay glow so it's unmissable; a fully-satisfied boundary node gets a
     // calmer pass ring.
@@ -403,7 +403,7 @@ function buildStyle(t) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Theme provider (T22)
+// Theme provider
 // ─────────────────────────────────────────────────────────────────────────
 function applyTheme(theme, { persist = true } = {}) {
   currentTheme = theme === "light" ? "light" : "dark";
@@ -460,7 +460,7 @@ async function fetchView(name) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Compliance (T20) — per-selector rollup + per-node annotations, embedded in
+// Compliance — per-selector rollup + per-node annotations, embedded in
 // full_graph.json metadata.compliance by viewer.py (read straight from the
 // cache files that `adaf sdag check` enriches).
 // ─────────────────────────────────────────────────────────────────────────
@@ -508,7 +508,7 @@ function barColourVar(pct) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Super-node product health summary (T33) — a SUMMARISED version of the
+// Super-node product health summary — a SUMMARISED version of the
 // per-node governance/compliance visuals, stamped onto each collapsed super
 // node so a reviewer reads each data product's health WITHOUT expanding it.
 //
@@ -516,10 +516,10 @@ function barColourVar(pct) {
 // viewer.py change needed):
 //   • compliance % + fails ← cache.full.metadata.compliance[selector]
 //   • governance roll-up    ← aggregated across the product's entity nodes,
-//                             reusing the per-node fields T21 stamped.
+//                             reusing the per-node fields stamped.
 // ─────────────────────────────────────────────────────────────────────────
 
-// RAG bucket for a compliance %, matching T20's pctClass thresholds.
+// RAG bucket for a compliance %, matching the pctClass thresholds.
 function superHealthState(pct) {
   if (pct >= RAG_THRESHOLDS.ok) return "ok";
   if (pct >= RAG_THRESHOLDS.warn) return "warn";
@@ -583,7 +583,7 @@ function decorateSuperNodes(superData) {
   }
 }
 
-// HTML summary card for the super-node selection panel (T33) — the SUMMARISED
+// HTML summary card for the super-node selection panel — the SUMMARISED
 // per-node detail visuals (the praised badges) rolled up to product level.
 function superSummaryHtml(selector) {
   const comp = superComplianceSummary(selector);
@@ -702,7 +702,7 @@ async function showView(name) {
 
   const data = await fetchView(name);
   if (name === "full") populateFilterDropdown(data);
-  // Stamp each collapsed super node with its product health summary (T33).
+  // Stamp each collapsed super node with its product health summary.
   // cache.full is always loaded first at boot, so the compliance + governance
   // source data is guaranteed present by the time the super view renders.
   if (name === "super") decorateSuperNodes(data);
@@ -736,11 +736,11 @@ async function showView(name) {
   cy.on("tap", "edge", (evt) => renderDetail(evt.target.data()));
   cy.on("tap", (evt) => { if (evt.target === cy) clearDetail(); });
 
-  // Governance hover tooltip (T21).
+  // Governance hover tooltip.
   cy.on("mouseover", "node.entity", (evt) => showTooltip(evt));
   cy.on("mousemove", "node.entity", (evt) => moveTooltip(evt));
   cy.on("mouseout", "node.entity", () => hideTooltip());
-  // Super-node product-health tooltip (T40).
+  // Super-node product-health tooltip.
   cy.on("mouseover", "node.super", (evt) => showSuperTooltip(evt));
   cy.on("mousemove", "node.super", (evt) => moveTooltip(evt));
   cy.on("mouseout", "node.super", () => hideTooltip());
@@ -790,7 +790,7 @@ const FILTER_CLASSES = [
 
 // The data-carrying resource types — the only ones that form the lineage backbone
 // the boundary classification runs over. Mirrors `DATA_RESOURCE_TYPES` in
-// `adaf.dbt.graph`: tests / semantic models / analyses are attachments ON or
+// `adaf.graph`: tests / semantic models / analyses are attachments ON or
 // consumers OF data nodes, not lineage. Including them misclassifies — a childless
 // `test` reads as an outbound leaf, and a model whose only child is a test reads as
 // outbound — so they are excluded from BOTH the member set and the neighbour sets,
@@ -807,7 +807,7 @@ function restoreRehomed() {
   rehomedNodes = [];
 }
 
-// Layer compliance rings (T20) onto the filtered members from the selector's
+// Layer compliance rings onto the filtered members from the selector's
 // per-node annotations: a member with any failing obligation gets compliance-
 // fail (red ring + glow), a boundary member with none gets compliance-pass.
 function applyComplianceClasses() {
@@ -1018,7 +1018,7 @@ function renderBuildBanner() {
   el.textContent = `build ${BUILD_ID}\nsrc   ${SOURCE}`;
 }
 
-// ── Boundary role (T38) ────────────────────────────────────────────────────
+// ── Boundary role ────────────────────────────────────────────────────
 // A node's obligations and governance expectations MUST match its boundary role
 // within the active selector. The per-selector annotations already carry the
 // authoritative role + the ONLY applicable obligation rules per role
@@ -1047,7 +1047,7 @@ function expectsSemanticModel(role) {
   return role === "outbound" || role === "both";
 }
 
-// ── Governance (T21) ──────────────────────────────────────────────────────
+// ── Governance ──────────────────────────────────────────────────────
 // Doc coverage, test count/types and semantic backing — sourced from the
 // manifest data viewer.py stamps onto every entity node.
 function governanceFacts(d) {
@@ -1178,10 +1178,10 @@ function showTooltip(evt) {
   moveTooltip(evt);
 }
 
-// ── Super-node hover tooltip (T40) ─────────────────────────────────────────
+// ── Super-node hover tooltip ─────────────────────────────────────────
 // Collapsed super nodes (one per data product) get a tooltip mirroring the
 // per-node detail: product name + compliance %/fails + the governance roll-up,
-// reusing the same T33 summary helpers the detail card and node label use.
+// reusing the same summary helpers the detail card and node label use.
 function superTooltipText(superName) {
   const comp = superComplianceSummary(superName);
   const gov = governanceRollup(superName);
@@ -1365,7 +1365,7 @@ function buildLegend() {
       <span class="text-body">${kind}</span>`;
     wrap.appendChild(row);
   }
-  // Super-graph product-health ring legend (T33).
+  // Super-graph product-health ring legend.
   const superLegend = document.createElement("div");
   superLegend.className = "mt-2 pt-2 divider space-y-1";
   superLegend.innerHTML = `
@@ -1430,7 +1430,7 @@ function setFilterLegendVisible(visible) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Collapsible sidebar (T39) — toggles .sidebar-collapsed on #app-root so the
+// Collapsible sidebar — toggles .sidebar-collapsed on #app-root so the
 // canvas reclaims the sidebar's width, persists the choice in localStorage, and
 // resizes+refits cytoscape so the graph reflows into (or out of) the new space.
 // ─────────────────────────────────────────────────────────────────────────
@@ -1468,7 +1468,7 @@ function toggleSidebar() {
 // Wire up
 // ─────────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadTokens();  // T35: pull the externalised design tokens BEFORE first paint
+  await loadTokens();  // pull the externalised design tokens BEFORE first paint
   applyTheme(currentTheme, { persist: false });  // sync the toggle label to the booted theme
   renderBuildBanner();
   buildLegend();

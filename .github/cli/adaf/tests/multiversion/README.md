@@ -3,9 +3,15 @@
 Builds **one Docker image per pinned dbt version — all from a SINGLE, ARG-parametrised Dockerfile**
 (`docker/Dockerfile`), `dbt parse`s the tiny committed `fixture/` project under that version, runs adaf's
 read-only gates against the resulting artifact, and snapshots their stdout / stderr / exit codes against
-a committed golden per capability per version LINE (`goldens/<capability>/<series-id>.txt`). A diff is the regression signal: if a new dbt
-parser drops, renames, or *rejects* a field one of adaf's projections reads, the snapshot diverges and
-the run fails loudly — escalators-not-stairs, never a silent skip.
+a golden per capability per version LINE (`goldens/<capability>/<series-id>.txt`). A diff is the
+regression signal: if a new dbt parser drops, renames, or *rejects* a field one of adaf's projections
+reads, the snapshot diverges and the run fails loudly — escalators-not-stairs, never a silent skip.
+
+> **Bootstrap:** no goldens are committed yet. The first run on a fresh checkout (or whenever a new
+> version line resolves) must **rebaseline** to create them — `adaf-multiversion-ci` asserts
+> `golden.exists()` and fails loudly with a "re-baseline" message until you do. This is by design:
+> goldens are version/behaviour snapshots that can only be produced by actually running the matrix on
+> a Docker host, so they are generated, reviewed, then committed — never hand-authored.
 
 The harness is driven by **testcontainers** (`test_multiversion.py`), needs a running **Docker daemon**,
 and is **off `make ci`**.
@@ -13,8 +19,10 @@ and is **off `make ci`**.
 ## Run it
 
 ```bash
+# First time (or after a new version line lands): create + review the goldens, then commit them.
+make -C .github/cli/adaf adaf-multiversion-rebaseline    # build + run every version, WRITE goldens
+# Thereafter: assert the committed goldens still hold (the regression gate).
 make -C .github/cli/adaf adaf-multiversion-ci            # build + run every version, assert vs goldens
-make -C .github/cli/adaf adaf-multiversion-rebaseline    # same, but rewrite goldens (deliberate)
 ```
 
 Under the hood (the target just selects the marker — nothing extra to install, see below):

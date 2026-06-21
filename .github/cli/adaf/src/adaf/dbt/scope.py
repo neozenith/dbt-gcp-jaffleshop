@@ -288,8 +288,8 @@ def hop_context_nodes(selection: Selection, view: ManifestView, *, cwd: Path | N
     """The NON-model nodes (sources/seeds/snapshots) that ``--upstream``/``--downstream`` pulled into
     scope, as sorted ``(unique_id, resource_type)`` pairs.
 
-    These nodes have no ``.sql``, so the file-scoped gates (defer-diff, docscov, testcov, sqlfluff,
-    deprecations) can't act on them — but a command that silently drops them makes a hop flag look
+    These nodes have no ``.sql``, so the file-scoped gates (defer-diff, check docs, check tests,
+    lint, deprecations) can't act on them — but a command that silently drops them makes a hop flag look
     like a no-op. Commands call this to DISCLOSE what the hop added so the flag is never invisible.
     Empty when no hop flag is set.
     """
