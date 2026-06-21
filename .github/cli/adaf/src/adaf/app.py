@@ -45,6 +45,7 @@ from adaf.commands import review as review_cmd
 from adaf.commands import rules as rules_cmd
 from adaf.commands import sqlfluff as sqlfluff_cmd
 from adaf.commands.defer import cmd_defer_diff, cmd_defer_state
+from adaf.commands.sdaglint import cmd_sdag_check
 from adaf.commands.targets import cmd_list
 from adaf.gha import cmd_analyse as gha_analyse
 from adaf.gha import cmd_create as gha_create
@@ -58,7 +59,7 @@ log = logging.getLogger(__name__)
 _ROLES = ("entity", "dimension", "measure", "time", "model")
 _DETECTIONS = ("deterministic", "hybrid", "llm")
 # groups/commands that operate on a dbt project (lazy root discovery + profiles pinning in main())
-_NEEDS_PROJECT = ("check", "products", "review", "report", "defer-diff", "defer-state", "list", "ls", "gha")
+_NEEDS_PROJECT = ("check", "products", "review", "report", "defer-diff", "defer-state", "list", "ls", "gha", "sdag")
 
 
 def _help(p: argparse.ArgumentParser):
@@ -293,8 +294,38 @@ def build_parser() -> argparse.ArgumentParser:
     _add_report_group(sub, common)
     _add_defer_group(sub, common)
     _add_gha_group(sub, common)
+    _add_sdag_group(sub, common)
 
     return parser
+
+
+def _add_sdag_group(sub, common: argparse.ArgumentParser) -> None:
+    """``adaf sdag check`` — the system-boundary obligation lint (rule-ID rigorous, suppression-aware).
+
+    The rule-coded sibling of ``check system-boundaries``: outbound models owe a contract (MD-02),
+    exposure (MD-11), semantic model (MD-12); inbound sources owe freshness (TM-AU-01); inbound nodes
+    owe an Elementary volume-anomaly test (MD-07). Scoped by named ``--selector`` (the data product)."""
+    sdag_p = sub.add_parser("sdag", parents=[common], help="Data-product system-boundary obligation lint")
+    sdag_p.set_defaults(func=_help(sdag_p))
+    sdag_sub = sdag_p.add_subparsers(dest="sdag_cmd", required=False)
+
+    check = sdag_sub.add_parser(
+        "check",
+        parents=[common],
+        help="Lint each data product's boundary nodes for system-boundary obligations",
+        description=(
+            "Lint a data product's system-boundary nodes against their obligations — outbound models need "
+            "a contract (MD-02), exposure (MD-11), semantic model (MD-12); inbound sources need freshness "
+            "(TM-AU-01); inbound nodes need a volume-anomaly test (MD-07). --selector bounds the product, "
+            "default reports only changed boundary nodes, --all the whole product. Exits 1 on any "
+            "unsuppressed violation; suppress false positives in adaf.yml."
+        ),
+        epilog="Examples:\n  adaf sdag check --all --selector demand\n  adaf sdag check --selector demand",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_scope(check)
+    _add_manifest(check)
+    check.set_defaults(func=cmd_sdag_check)
 
 
 def _add_gha_common(p: argparse.ArgumentParser) -> None:

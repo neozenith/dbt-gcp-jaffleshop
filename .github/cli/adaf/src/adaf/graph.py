@@ -41,6 +41,14 @@ from adaf.dbt.manifest_view import ManifestView
 # excluded from both the node set and the edge set.
 DATA_RESOURCE_TYPES = frozenset({"model", "source", "seed", "snapshot"})
 
+# The four boundary labels a member can carry (the string values ``classify_boundary`` returns).
+# Exposed as named constants so the boundary-obligation lint (``commands.sdaglint``) reads on labels
+# rather than string literals. INNER is "internal" — the label for a fully-interior product member.
+INBOUND = "inbound"
+OUTBOUND = "outbound"
+BOTH = "both"
+INNER = "internal"
+
 
 @dataclass(frozen=True)
 class NodeInfo:
@@ -110,6 +118,15 @@ class Graph:
 
     def children_of(self, uid: str) -> list[str]:
         return self._children.get(uid, [])
+
+    def classify(self, members: set[str]) -> dict[str, str]:
+        """Classify each member as an ``inbound`` / ``outbound`` / ``both`` / ``internal`` boundary
+        node — the string-label convenience over :func:`classify_boundary` the boundary-obligation
+        lint (``commands.sdaglint``) consumes. Non-data members (e.g. a ``test`` that slipped into the
+        selector) carry no node in this graph, so :func:`classify_boundary` still labels them by their
+        edges; callers that only care about data members intersect with :meth:`nodes` themselves.
+        """
+        return {uid: nb.classification for uid, nb in classify_boundary(members, self._edges).items()}
 
 
 # ─── Boundary classification (pure) ──────────────────────────────────────────
