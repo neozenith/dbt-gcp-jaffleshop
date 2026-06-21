@@ -1,123 +1,140 @@
-"""obs CLI wiring — build_parser() + main() only. No business logic lives here;
-handlers come from obs.commands.*.
+"""obs CLI — a Typer app over the prod Elementary telemetry.
 
-Follows the project argparse convention (.claude/rules/python/cli.md): a ``_help``
-closure as each parser's default func so an incomplete path prints that group's help
-instead of erroring; leaf subcommands override it via ``set_defaults(func=...)``;
-``main()`` dispatches ``args.func(args)`` and exits with its returned code.
+Two commands today, ``generate`` and ``serve``: both extract prod Elementary run
+telemetry into a JSON bundle + a templated Gantt viewer; ``serve`` additionally hosts
+it. Business logic lives in ``obs.{elementary,gantt,viewer}`` — this module is *wiring
+only*. (Ported from argparse; the migration rationale lives in ``CLAUDE.md``.)
 
-Command tree (one observability *feature* — the Gantt — to start; more incubate as
-sibling subcommands sharing the generate/serve shape)::
+Typer supplies, for free, what hand-rolled wiring otherwise needs: auto-generated
+``--help``, ``@app.command`` dispatch, annotation-driven type coercion + validation,
+shell completion (``obs --install-completion``), and a ``no_args_is_help`` group.
 
-    obs
-      generate    extract prod Elementary run telemetry → gantt.json + templated viewer
-      serve       generate, then host the viewer over HTTP
+The ``@app.callback`` runs before any command (logging + repo-root discovery + ``.env``
+load) so ``config``'s env-reading functions see a loaded environment before a command
+body runs. ``main()`` maps the fail-loud exceptions to a clean ``❌`` line + exit 1 —
+see its docstring for how they reach it.
 """
 
 # Standard Library
-import argparse
 import logging
 import os
 from pathlib import Path
+from typing import Annotated
 
 # Third Party
+import typer
 from dotenv import load_dotenv
 
 # Local
-from obs import config
-from obs.commands import gantt as gantt_cmd
+from obs import config, elementary, gantt, viewer
 from obs.utils.logging_setup import configure_logging
 
 log = logging.getLogger(__name__)
 
+app = typer.Typer(
+    name="obs",
+    help="dbt observability CLI over the prod Elementary telemetry.",
+    no_args_is_help=True,  # bare `obs` prints group help
+    add_completion=True,  # free `--install-completion` / `--show-completion`
+    pretty_exceptions_enable=False,  # plain traceback for any UNEXPECTED escaping exception (not the 3 caught in main)
+)
 
-def _help(p: argparse.ArgumentParser):
-    """Return a handler that prints help for parser p (used as the default func)."""
-
-    def _print_help(_: argparse.Namespace) -> int:
-        p.print_help()
-        return 0
-
-    return _print_help
-
-
-def _add_generate_args(p: argparse.ArgumentParser) -> None:
-    """Shared selection + output flags for generate/serve."""
-    p.add_argument(
-        "--days",
-        type=int,
-        default=config.DEFAULT_LOOKBACK_DAYS,
-        help="Look-back window (days) of runs to extract (default: %(default)s)",
-    )
-    p.add_argument(
-        "--invocation-id",
-        dest="invocation_id",
-        default=None,
-        help="Limit extraction to a single dbt invocation_id (default: every run in the window)",
-    )
-    p.add_argument(
-        "--no-impersonate",
-        dest="no_impersonate",
-        action="store_true",
-        help="Use ADC directly instead of impersonating the read SA (for CI runners already authed as dbt-prod)",
-    )
-    p.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=None,
-        help="Directory for the generated viewer assets (default: <repo>/tmp/obs)",
-    )
+# ─── Shared option types ──────────────────────────────────────────────────────
+# Declared once as Annotated aliases so generate/serve stay DRY.
+DaysOpt = Annotated[int, typer.Option(help="Look-back window (days) of runs to extract.")]
+InvocationOpt = Annotated[
+    str | None,
+    typer.Option("--invocation-id", help="Limit extraction to a single dbt invocation_id (default: the whole window)."),
+]
+NoImpersonateOpt = Annotated[
+    bool,
+    typer.Option(
+        "--no-impersonate", help="Use ADC directly instead of impersonating the read SA (CI runners as dbt-prod)."
+    ),
+]
+OutputOpt = Annotated[
+    Path | None,
+    typer.Option("-o", "--output", help="Directory for the generated viewer assets (default: <repo>/tmp/obs)."),
+]
 
 
-def build_parser() -> argparse.ArgumentParser:
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--debug", action="store_true", default=argparse.SUPPRESS, help="Verbose debug logging")
+@app.callback()
+def _bootstrap(debug: Annotated[bool, typer.Option(help="Verbose debug logging.")] = False) -> None:
+    """Run before every command: configure logging, discover the repo root, load its .env.
 
-    parser = argparse.ArgumentParser(
-        prog="obs",
-        description="dbt observability CLI over the prod Elementary telemetry.",
-        parents=[common],
-    )
-    parser.set_defaults(func=_help(parser))
-    sub = parser.add_subparsers(dest="command", required=False)
-
-    generate = sub.add_parser(
-        "generate", parents=[common], help="Extract prod Elementary run telemetry → gantt.json + viewer"
-    )
-    _add_generate_args(generate)
-    generate.set_defaults(func=gantt_cmd.cmd_generate)
-
-    serve = sub.add_parser("serve", parents=[common], help="Generate the Gantt viewer, then host it over HTTP")
-    _add_generate_args(serve)
-    serve.add_argument("-p", "--port", type=int, default=8099, help="HTTP port (default: %(default)s)")
-    serve.set_defaults(func=gantt_cmd.cmd_serve)
-
-    return parser
-
-
-def main(argv: list[str] | None = None) -> None:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    args.debug = getattr(args, "debug", False)
-    configure_logging(debug=args.debug)
-
-    # Discover the repo root, load its .env (prod project id / SA overrides), and resolve the
-    # default output dir against it — done after parsing so config functions see the loaded env.
+    Done here (not per-command) so ``config``'s env-reading functions see the loaded
+    ``.env`` before any command resolves a project id / SA / output dir.
+    """
+    configure_logging(debug=debug)
     config.set_project_root()
     load_dotenv(config.PROJECT_ROOT / ".env")
-    if getattr(args, "output", None) is None and hasattr(args, "output"):
-        args.output = config.default_output_dir()
-    # --no-impersonate is sugar for OBS_IMPERSONATE=false (config reads the env).
-    if getattr(args, "no_impersonate", False):
-        os.environ["OBS_IMPERSONATE"] = "false"
 
+
+def _prepare(output: Path | None, *, no_impersonate: bool) -> Path:
+    """Resolve the output-dir default and apply the ``--no-impersonate`` sugar.
+
+    ``--no-impersonate`` is sugar for ``OBS_IMPERSONATE=false`` — ``config`` reads the env.
+    """
+    if no_impersonate:
+        os.environ["OBS_IMPERSONATE"] = "false"
+    return output or config.default_output_dir()
+
+
+def _generate(days: int, invocation_id: str | None, output: Path) -> None:
+    """Shared core of generate/serve: query the window → bundle → write the templated viewer."""
+    client = elementary.build_client()
+    invocations = elementary.fetch_invocations(client, days=days, invocation_id=invocation_id)
+    rows = elementary.fetch_run_results_window(client, days=days, invocation_id=invocation_id)
+    bundle = gantt.build_bundle(invocations, rows, source_label=config.run_results_table(), days=days)
+    gantt.write_bundle(output, bundle)
+
+    scope = f"invocation {invocation_id}" if invocation_id else f"last {days} days"
+    log.info("extracted %d run(s) over %s → %s", bundle["metadata"]["n_runs"], scope, output)
+
+
+@app.command()
+def generate(
+    days: DaysOpt = config.DEFAULT_LOOKBACK_DAYS,
+    invocation_id: InvocationOpt = None,
+    no_impersonate: NoImpersonateOpt = False,
+    output: OutputOpt = None,
+) -> None:
+    """Extract prod Elementary run telemetry → JSON bundle + Gantt viewer."""
+    out = _prepare(output, no_impersonate=no_impersonate)
+    _generate(days, invocation_id, out)
+    log.info("open %s/%s in a browser, or run `obs serve` to host it", out, gantt.OBS_HTML)
+
+
+@app.command()
+def serve(
+    days: DaysOpt = config.DEFAULT_LOOKBACK_DAYS,
+    invocation_id: InvocationOpt = None,
+    no_impersonate: NoImpersonateOpt = False,
+    output: OutputOpt = None,
+    port: Annotated[int, typer.Option("-p", "--port", help="HTTP port.")] = 8099,
+) -> None:
+    """Generate the Gantt viewer, then host it over HTTP."""
+    out = _prepare(output, no_impersonate=no_impersonate)
+    _generate(days, invocation_id, out)  # always regenerate first so the served bundle is fresh
+    viewer.serve(out, port)
+
+
+def main() -> None:
+    """Console-script entrypoint. Maps the fail-loud exceptions to ``❌`` + exit 1.
+
+    Click's standalone mode does not catch non-Click exceptions and Typer re-raises them,
+    so these three propagate out of ``app()`` to here (independently of
+    ``pretty_exceptions_enable``). They are the expected failure modes: ``RuntimeError``
+    (``elementary`` — empty window / auth denied), ``ValueError`` (``gantt`` — empty rows),
+    ``FileNotFoundError`` (a missing asset or output path). Each becomes a terse stderr
+    line, exit 1, no traceback. Any *other* exception is a bug and escapes with its
+    traceback (plain, per ``pretty_exceptions_enable=False``).
+    """
     try:
-        rc = args.func(args)
+        app()
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
         log.error("❌ %s", exc)
         raise SystemExit(1) from exc
-    raise SystemExit(rc or 0)
 
 
 if __name__ == "__main__":

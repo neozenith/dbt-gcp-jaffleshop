@@ -9,10 +9,10 @@ This is the *transform* half (the I/O half is ``elementary.py``). Both builders 
 
 :func:`write_bundle` then writes the "index + per-item" layout (``index.json`` +
 ``runs/<id>.json``), copies ``design-tokens.json`` (the brand/theme curate point), and
-drops the templated ``gantt.html`` / ``gantt.js`` — substituting ``{{BUILD_ID}}`` and
+drops the templated ``obs.html`` / ``obs.js`` — substituting ``{{BUILD_ID}}`` and
 ``{{SOURCE}}``, exactly as ``adaf``'s sdag viewer does.
 
-Per-run payload schema (one ``runs/<id>.json``, consumed by ``assets/gantt.js``)::
+Per-run payload schema (one ``runs/<id>.json``, consumed by ``assets/obs.js``)::
 
     {
       "metadata": { invocation_id, build_id, source, generated_at,
@@ -47,19 +47,9 @@ OBS_HTML = "obs.html"
 OBS_JS = "obs.js"
 DESIGN_TOKENS = "design-tokens.json"
 
-# resource_type → colour. Kept in sync with gantt.js's RESOURCE_COLOURS (Okabe-Ito,
-# colour-blind-safe). The payload carries resource_type; the JS owns the actual palette,
-# but this is the authoritative reference both sides agree on.
-RESOURCE_COLOURS: dict[str, str] = {
-    "model": "#0072B2",
-    "test": "#E69F00",
-    "unit_test": "#CC79A7",
-    "seed": "#009E73",
-    "snapshot": "#D55E00",
-    "source": "#56B4E9",
-    "exposure": "#F0E442",
-    "operation": "#999999",
-}
+# Resource-type colours live in `design-tokens.json` (`resourceColours`), owned by the JS
+# viewer per brand; the payload carries only `resource_type` and the viewer maps it. Python
+# holds no palette of its own.
 
 _THREAD_NUM = re.compile(r"(\d+)")
 

@@ -6,9 +6,10 @@ interval for a dbt invocation, grouped into one lane per worker thread so you ca
 *see* parallelism and bottlenecks — with a **run picker** to step through every run in
 the window and compare thread-count permutations.
 
-It's a sibling of [`adaf`](../adaf/) — same src-layout, same argparse/`_help` CLI
-shape, same "Python emits JSON → templated HTML + vanilla JS renders it" viewer
-pattern (here an index + per-run bundle, there the sdag bundle).
+It's a sibling of [`adaf`](../adaf/) — same src-layout and same "Python emits JSON →
+templated HTML + vanilla JS renders it" viewer pattern (here an index + per-run bundle,
+there the sdag bundle). The CLI itself is a [Typer](https://typer.tiangolo.com/) app
+(`adaf` is still argparse); see `CLAUDE.md` for why that deviates from the project rule.
 
 ## What it does
 
@@ -149,13 +150,12 @@ overview, and the sidebar collapses.
 .github/cli/obs/
 ├── pyproject.toml          # [project.scripts] obs = obs.app:main; hatchling bundles assets/
 ├── src/obs/
-│   ├── app.py              # argparse wiring + main(). NO business logic.
+│   ├── app.py              # Typer app (callback + generate/serve commands) + main(). NO business logic.
 │   ├── config.py           # prod/elementary/SA defaults (env-overridable) + repo-root discovery
 │   ├── elementary.py       # BigQuery client (impersonate OR direct ADC) + window queries → list[dict]
 │   ├── gantt.py            # PURE transforms (build_gantt_payload, build_bundle) + write_bundle
 │   ├── viewer.py           # serve() the bundle over HTTP (no-store)
 │   ├── assets/             # obs.html + obs.js + design-tokens.json (vanilla SPA; {{BUILD_ID}}/{{SOURCE}})
-│   ├── commands/gantt.py   # generate/serve handlers
 │   └── utils/              # logging_setup
 ├── tests/                  # pure-transform unit tests (payload + bundle) + seeded fixture
 └── e2e/                    # Playwright suite over the served static SPA (test-e2e; not in ci)

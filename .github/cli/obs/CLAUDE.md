@@ -58,9 +58,15 @@ scales as the thread-permutation sweep accumulates runs.
   state then renders; `popstate` re-renders from the URL. Deep links and Back/Forward
   MUST keep working — the e2e suite asserts it. The overview Plotly scatter uses SVG
   (`type:"scatter"`, not `scattergl`) so its points are addressable by the e2e tests.
-- **CLI shape:** stdlib `argparse` only; `_help` closure as each parser's default
-  `func`; leaves override via `set_defaults`; `main()` dispatches `args.func(args)`
-  and exits with its returned code (`.claude/rules/python/cli.md`).
+- **CLI shape:** `typer` app (`app = typer.Typer(...)` in `app.py`). `@app.command()`
+  decorators register `generate`/`serve`; an `@app.callback()` runs the logging +
+  repo-root + `.env` bootstrap before any command; `no_args_is_help=True` replaces the
+  old `_help` closure. Shared flags are module-level `Annotated[...]` option aliases.
+  `pretty_exceptions_enable=False` so the three fail-loud exceptions reach `main()`,
+  which renders `❌ <msg>` + exit 1 (the same UX the argparse `main()` gave). NOTE: this
+  deviates from `.claude/rules/python/cli.md` ("stdlib argparse only; do not introduce
+  typer") — the deviation is scoped to `obs` and must be ratified there (or reverted)
+  before other CLIs follow; sibling `adaf` is still argparse.
 - **Output discipline:** human + log lines → stderr (`logging`); stdout stays clean
   for any future `--json`.
 
@@ -68,11 +74,12 @@ scales as the thread-permutation sweep accumulates runs.
 
 - [ ] Adding a new viewer feature (e.g. freshness timeline)? Read its Elementary
       table(s) in `elementary.py`, add a pure `build_<x>_payload` + a `write_bundle`-style
-      writer, ship its `assets/` template + a `commands/<x>.py` handler. Unit-test the
-      transform against a seeded fixture (no warehouse); add e2e coverage if it has UI.
-- [ ] Second feature ⇒ promote `generate`/`serve` into a per-feature group
-      (`obs gantt generate`, `obs <new> generate`), mirroring `adaf products generate/serve`.
-      Keep `app.py` logic-free.
+      writer, ship its `assets/` template, and wire a handler as a `@app.command()` (or a
+      sub-app module, see next item). Unit-test the transform against a seeded fixture (no
+      warehouse); add e2e coverage if it has UI.
+- [ ] Second feature ⇒ split each feature into its own `typer.Typer()` sub-app and
+      mount them with `app.add_typer(gantt_app, name="gantt")` etc. (`obs gantt generate`,
+      `obs <new> generate`), so `app.py` stays wiring-only.
 - [ ] New `dbt_run_results` field in the payload? Update the schema docstring in
       `gantt.py`, the JS consumer, AND the fixture + tests in the same change.
 - [ ] Changed a default project/dataset/SA? It belongs in `config.py` as an
