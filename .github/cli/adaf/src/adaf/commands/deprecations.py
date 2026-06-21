@@ -16,10 +16,11 @@ deprecations actually live. The result dataclass lives in ``adaf.reports.depreca
 # Standard Library
 import json
 import logging
+import sys
 from pathlib import Path
 
 # Local
-from adaf import config
+from adaf import config, report
 from adaf.dbt import selection
 from adaf.gitutil import dirs_of
 from adaf.reports.deprecations import DeprecationsReport
@@ -28,7 +29,15 @@ from adaf.utils.toollog import ToolLog, run_tool
 
 log = logging.getLogger(__name__)
 
-__all__ = ["DeprecationsReport", "parse_autofix_output", "scan_dir", "run", "cmd"]
+__all__ = ["DeprecationsReport", "parse_autofix_output", "scan_dir", "argv_for", "run", "cmd"]
+
+
+def argv_for(directory: Path, *, fix: bool) -> list[str]:
+    """The dbt-autofix argv for one folder — the single source of truth for both running and
+    printing (``--commands``). Detection is a dry-run JSON scan (``-d --json``); ``fix`` drops both
+    so dbt-autofix rewrites the files in place."""
+    argv = ["dbt-autofix", "deprecations", "-s", str(directory)]
+    return argv if fix else [*argv, "-d", "--json"]
 
 
 def parse_autofix_output(stdout: str) -> list[dict]:
@@ -88,5 +97,8 @@ def run(files: list[Path], *, scope: str, fix: bool = False, cwd: Path | None = 
 def cmd(args) -> int:
     sel = selection.from_args(args)
     files = selection.resolve_model_files(sel)
-    report = run(files, scope=selection.describe(sel), fix=args.fix)
-    return render_from_args(report, args)
+    if getattr(args, "commands", False):  # print the exact dbt-autofix command(s), don't run them
+        color = report.should_colorize(getattr(args, "color", "auto"), sys.stdout)
+        return report.print_commands("deprecations", [argv_for(d, fix=args.fix) for d in dirs_of(files)], color=color)
+    result = run(files, scope=selection.describe(sel), fix=args.fix)
+    return render_from_args(result, args)

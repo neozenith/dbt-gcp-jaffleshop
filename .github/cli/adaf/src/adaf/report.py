@@ -19,6 +19,7 @@ The catalogue checks (``check …``) keep their own ``utils.style`` / ``utils.fo
 
 # Standard Library
 import os
+import shlex
 import sys
 from dataclasses import dataclass
 from typing import Literal, Protocol, TextIO
@@ -172,6 +173,20 @@ def render_note(text: str, *, color: bool, indent: int = 4, stream: TextIO | Non
     """
     out = stream if stream is not None else sys.stdout
     print(colorize(f"{' ' * indent}{text}", "dim", color), file=out)
+
+
+def print_commands(label: str, argvs: list[list[str]], *, color: bool) -> int:
+    """Print each subprocess command verbatim instead of running it — one runnable, shell-quoted
+    line to STDOUT (pipeable), a headline to STDERR. Lets a user inspect, copy, or run the exact
+    command adaf would have shelled out to. Paths are relative to the dbt project root, so the
+    printed commands are meant to be run from there. Always returns 0 (nothing was executed).
+    """
+    render_headline(
+        f"# {label} — {len(argvs)} command(s); run from the dbt project root", color=color, severity="info"
+    )
+    for argv in argvs:
+        print(shlex.join(argv))
+    return 0
 
 
 def render_table(headers: list[str], rows: list[list[str]], *, aligns: list[str] | None = None) -> str:

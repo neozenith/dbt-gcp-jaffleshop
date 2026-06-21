@@ -30,11 +30,12 @@ project root is discovered lazily in main() only for the groups that touch it.
 import argparse
 import logging
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from adaf import config
+from adaf import config, report
 from adaf.dbt import selection
 from adaf.dbt.scope import UNBOUNDED
 from adaf.utils import style
@@ -44,6 +45,7 @@ from adaf.commands import review as review_cmd
 from adaf.commands import rules as rules_cmd
 from adaf.commands import sqlfluff as sqlfluff_cmd
 from adaf.commands.defer import cmd_defer_diff, cmd_defer_state
+from adaf.commands.targets import cmd_list
 from adaf.gha import cmd_analyse as gha_analyse
 from adaf.gha import cmd_create as gha_create
 from adaf.gha import cmd_update as gha_update
@@ -125,6 +127,14 @@ def _add_output(p: argparse.ArgumentParser) -> None:
 def _add_fix(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--fix", action="store_true", help="Apply fixes instead of only checking (where the tool supports it)"
+    )
+
+
+def _add_commands(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--commands",
+        action="store_true",
+        help="Print the exact subprocess command(s) adaf would run instead of running them (no magic)",
     )
 
 
@@ -275,6 +285,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.set_defaults(func=_help(parser))
     sub = parser.add_subparsers(dest="command", required=False)
 
+    _add_list_command(sub, common)
     _add_rules_group(sub, common)
     _add_check_group(sub, common)
     _add_products_group(sub, common)
@@ -390,6 +401,43 @@ def _add_gha_group(sub, common: argparse.ArgumentParser) -> None:
     analyse.set_defaults(func=gha_analyse)
 
 
+def _add_list_command(sub, common: argparse.ArgumentParser) -> None:
+    """``adaf list`` (alias ``ls``) — preview the resolved target model files for a product scope."""
+    p_list = sub.add_parser(
+        "list",
+        aliases=["ls"],
+        parents=[common],
+        help="List the resolved target model files for a product scope",
+        description=(
+            "Resolve the scope (changed or --all models that are also in the named --selector) and print the "
+            "model .sql files the gates would run on. The dry-run preview of every product-scoped command's "
+            "target set. --upstream/--downstream grow it along the lineage; --macros lists dependent repo "
+            "macros; --paths previews the gha trigger globs and their false-positive over-match."
+        ),
+        epilog="Examples:\n  adaf list --selector demand\n  adaf list --all --selector demand --upstream 1",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_scope(p_list)
+    p_list.add_argument(
+        "--bare",
+        action="store_true",
+        help="Flat path list with no group headers (pipeable); default groups by selector/upstream/downstream",
+    )
+    p_list.add_argument(
+        "--macros",
+        action="store_true",
+        help="Also list the repo macro files the selected models depend on (read from the manifest)",
+    )
+    p_list.add_argument(
+        "--paths",
+        choices=PATH_MODES,
+        default=None,
+        help="Preview the gha trigger globs this --paths mode would emit for the selector, and highlight "
+        "(dark red) the FALSE-POSITIVE files those globs also match beyond the selector's own members",
+    )
+    p_list.set_defaults(func=cmd_list)
+
+
 def _add_defer_group(sub, common: argparse.ArgumentParser) -> None:
     """``adaf defer-diff`` + ``adaf defer-state`` — the dbt --defer / state workflow commands.
 
@@ -501,16 +549,19 @@ def _add_check_group(sub, common: argparse.ArgumentParser) -> None:
     dep = check_sub.add_parser("deprecations", parents=[common], help="dbt-autofix over folders of selected models")
     _add_selection(dep)
     _add_fix(dep)
+    _add_commands(dep)
     dep.set_defaults(func=deprecations.cmd)
 
     lint = check_sub.add_parser("lint", parents=[common], help="SQLFluff full ruleset (lint / --fix)")
     _add_selection(lint)
     _add_fix(lint)
+    _add_commands(lint)
     lint.set_defaults(func=lambda a: _run_sqlfluff("lint", a))
 
     fmt = check_sub.add_parser("format", parents=[common], help="SQLFluff formatter subset (check / --fix)")
     _add_selection(fmt)
     _add_fix(fmt)
+    _add_commands(fmt)
     fmt.set_defaults(func=lambda a: _run_sqlfluff("format", a))
 
     docs = check_sub.add_parser("docs", parents=[common], help="Model description coverage of selected models")
@@ -662,8 +713,11 @@ def _run_sqlfluff(name: str, args: argparse.Namespace) -> int:
     sqlfluff.py) so that module stays free of argparse/selection coupling."""
     sel = selection.from_args(args)
     files = selection.resolve_model_files(sel)
-    report = sqlfluff_cmd.run(name, files, fix=args.fix, scope=selection.describe(sel))
-    return render_from_args(report, args)
+    if getattr(args, "commands", False):  # print the exact sqlfluff command, don't run it
+        color = report.should_colorize(getattr(args, "color", "auto"), sys.stdout)
+        return report.print_commands(name, [sqlfluff_cmd.argv_for(name, files, fix=args.fix)], color=color)
+    rep = sqlfluff_cmd.run(name, files, fix=args.fix, scope=selection.describe(sel))
+    return render_from_args(rep, args)
 
 
 # ─── dispatch ────────────────────────────────────────────────────────────────
