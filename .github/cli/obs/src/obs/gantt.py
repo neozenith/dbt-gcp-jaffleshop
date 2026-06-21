@@ -96,9 +96,13 @@ def _to_canonical_iso(value: Any) -> str | None:
         return None
 
 
-def _is_ok(status: str | None) -> bool:
-    """Whether a node status counts as a clean pass (vs error/fail/skip)."""
-    return (status or "").lower() in ("success", "pass")
+def _is_failure(status: str | None) -> bool:
+    """Whether a node status is a genuine FAILURE (error/fail), as opposed to a clean
+    outcome. Only ``error``/``fail``/``runtime error`` count — ``success``, ``pass``,
+    ``no-op`` (dbt 1.8+ "did nothing") and ``skipped`` are NOT failures, so they must not
+    flip a run's ``has_failures`` or red-flag its bars."""
+    s = (status or "").lower()
+    return "error" in s or "fail" in s
 
 
 def build_gantt_payload(rows: list[dict[str, Any]], invocation_id: str, *, source_label: str) -> dict[str, Any]:
@@ -193,7 +197,7 @@ def _run_summary(payload: dict[str, Any], inv: dict[str, Any]) -> dict[str, Any]
         "wall_secs": m["wall_secs"],
         "cpu_secs": m["cpu_secs"],
         "speedup": m["speedup"],
-        "has_failures": any(not _is_ok(n["status"]) for n in payload["nodes"]),
+        "has_failures": any(_is_failure(n["status"]) for n in payload["nodes"]),
     }
 
 

@@ -100,7 +100,9 @@
     (state.tokens.resourceColours || {})[rt] || (state.tokens.resourceColours || {})._fallback || "#94a3b8";
   const statusColour = (s) =>
     (state.tokens.statusColours || {})[(s || "").toLowerCase()] || (state.tokens.statusColours || {})._fallback || "#94a3b8";
-  const isOk = (s) => ["success", "pass"].includes((s || "").toLowerCase());
+  // A genuine FAILURE is error/fail only — NOT no-op or skipped (dbt logs those as
+  // non-failing outcomes). Drives the red bar stroke + the red log line.
+  const isFailure = (s) => { const x = (s || "").toLowerCase(); return x.includes("error") || x.includes("fail"); };
   const barFill = (n) => (state.colourBy === "status" ? statusColour(n.status) : resourceColour(n.resource_type));
 
   const fmtClock = (iso) => new Date(iso).toLocaleTimeString("en-GB", { hour12: false, timeZone: "UTC" });
@@ -285,7 +287,7 @@
       const y = laneY(n.thread_id) + barPad;
       const g = svgEl("g", {});
       const rect = svgEl("rect", { class: "bar", x: x0, y, width: w, height: BAR_H, rx: 3, fill: barFill(n),
-        stroke: isOk(n.status) ? p.barStroke : "#ef4444", "stroke-width": isOk(n.status) ? 0.5 : 2, style: "cursor:pointer" });
+        stroke: isFailure(n.status) ? "#ef4444" : p.barStroke, "stroke-width": isFailure(n.status) ? 2 : 0.5, style: "cursor:pointer" });
       rect.addEventListener("mousemove", (e) => showTip(e, n));
       rect.addEventListener("mouseleave", hideTip);
       g.appendChild(rect);
@@ -398,7 +400,7 @@
     body.replaceChildren();
     for (const n of ordered) {
       const row = document.createElement("div");
-      if (!isOk(n.status)) row.className = "log-fail";
+      if (isFailure(n.status)) row.className = "log-fail";
       const dur = (n.duration_secs.toFixed(2) + "s").padStart(8);
       const st = (n.status || "").toUpperCase().padEnd(8);
       const msg = n.message ? "  " + String(n.message).replace(/\s+/g, " ").trim() : "";
