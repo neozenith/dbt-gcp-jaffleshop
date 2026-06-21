@@ -44,6 +44,7 @@ second place. Add a rule by editing `catalog.json` only; `adaf rules validate`
 .github/cli/adaf/
 ├── Makefile                # dev command-and-control: fix (inner loop) · ci (lint+typecheck+test+validate)
 ├── pyproject.toml          # [project.scripts] adaf = adaf.app:main; hatchling bundles rules/ + assets/
+├── docs/                   # dbt-fusion-artifacts.md — the verified Fusion v20 parquet schema reference
 ├── src/adaf/
 │   ├── app.py              # argparse wiring + main(). NO business logic. Lazy project discovery.
 │   ├── __main__.py         # `python -m adaf` entry

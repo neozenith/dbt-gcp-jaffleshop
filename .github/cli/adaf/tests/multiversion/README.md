@@ -66,18 +66,22 @@ degradation (the dependency is present and the tests are real).
 
 ## The matrix — version LINES, resolved from PyPI (auto-tracking)
 
-The matrix is **not** a list of fixed pins. It is one row per dbt-core *version line* (a `Series` in
-`test_multiversion.py`), and each line resolves its concrete patch **from PyPI when the test runs**. So
-a new prerelease — or the GA that supersedes it — **auto-enrols the moment it lands on PyPI**, with no
-edit to this suite. Every row is still a plain pip install of `dbt-core` + `dbt-duckdb` into an isolated
-venv; the fixture is migrated to be forward-compatible (see below), so all lines parse clean and produce
-identical gate output:
+The matrix is **not** a list of fixed pins. It is one row per dbt *version line* (a `Series` in
+`test_multiversion.py`), and each line resolves its concrete build **when the test runs**. So a new
+prerelease — or the GA that supersedes it — **auto-enrols the moment it lands**, with no edit to this
+suite. The pip lines are a plain pip install of `dbt-core` + `dbt-duckdb` into an isolated venv; the
+`dbt-fusion` line is different — it installs the Rust **Fusion engine** from the public CDN (not PyPI)
+and is the row that exercises the new **v20 parquet** artifact set (see
+[`docs/dbt-fusion-artifacts.md`](../../docs/dbt-fusion-artifacts.md)). The fixture is migrated to be
+forward-compatible (see below), so all lines parse clean and produce identical *gate* output (only the
+`parse` golden differs per row):
 
-| Line id (golden key) | Specifier (resolved at runtime) | Prereleases? | Parser | Resolves to today |
+| Line id (golden key) | Engine / source | Prereleases? | Manifest read | Resolves to today |
 |-----------|-----|------|--------|---------|
-| `dbt-1.11` | `>=1.11,<1.12` | no — latest stable patch | classic Python parser | `dbt-core==1.11.11` |
-| `dbt-1.12` | `>=1.12.0a0,<1.13`, `--use-v2-parser` | yes (GA wins when out) | Rust **v2 parser** | `dbt-core==1.12.0b3` |
-| `dbt-2.0` | `>=2.0.0a0,<3`, installs `adaf[fusion]` | yes (GA wins when out) | dbt v2.0 (the Rust "Fusion" engine) | `dbt-core==2.0.0a2` |
+| `dbt-1.11` | `dbt-core` (PyPI), classic Python parser | no — latest stable patch | JSON `manifest.json` | `dbt-core==1.11.11` |
+| `dbt-1.12` | `dbt-core` (PyPI), `--use-v2-parser` (Rust v2 parser) | yes (GA wins when out) | JSON `manifest.json` | `dbt-core==1.12.0b3` |
+| `dbt-2.0` | `dbt-core` 2.0 (PyPI) — still a **v12 JSON** manifest, no parquet | yes (GA wins when out) | JSON `manifest.json` | `dbt-core==2.0.0a2` |
+| `dbt-fusion` | **Fusion** Rust engine (CDN installer), `--write-index` | n/a — floats to CDN latest | **parquet** (`metadata/parse/*.parquet`) | `dbt-fusion==2.0.0-preview.190` |
 
 **How auto-tracking works.** A line that `track_prereleases` takes the newest alpha/beta/rc that matches
 its specifier; because a GA is a *higher* version than any of its prereleases, the line auto-promotes

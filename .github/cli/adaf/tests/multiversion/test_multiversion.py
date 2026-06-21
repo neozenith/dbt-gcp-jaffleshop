@@ -149,14 +149,16 @@ class Engine:
     series_id: str  # the owning line's STABLE id (e.g. "dbt-1.12") — the golden key + host dir name
     spec_profile: str  # "legacy" | "inline" — which fixture semantic-layer variant to stage
     dbt_adapter_spec: str = "dbt-duckdb==1.10.1"  # pip spec for the adapter
-    parse_flags: str = ""  # extra `dbt parse` flags, e.g. "--use-v2-parser"
+    parse_flags: str = ""  # extra `dbt parse` flags, e.g. "--use-v2-parser" / "--write-index"
     adaf_install_spec: str = "/opt/adaf_pkg"  # or "/opt/adaf_pkg[fusion]" for the parquet reader
     pip_prerelease: str = "disallow"  # uv --prerelease: "allow" for pre-release pins (beta / alpha)
+    kind: str = "pip"  # "pip" (dbt-core+adapter venv) | "fusion" (Rust binary via the CDN installer)
 
     def build_args(self) -> dict[str, str]:
         """The exact ``buildargs`` dict handed to the single Dockerfile for this engine."""
         return {
             "ENGINE_NAME": self.name,
+            "ENGINE_KIND": self.kind,
             "DBT_CORE_SPEC": self.dbt_core_spec,
             "DBT_ADAPTER_SPEC": self.dbt_adapter_spec,
             "PARSE_FLAGS": self.parse_flags,
@@ -178,15 +180,31 @@ class Series:
     ``parse`` golden needs a (deliberate) one-line re-baseline that records the new version."""
 
     id: str  # STABLE pytest param id AND golden key, e.g. "dbt-1.12" — never the floating version
-    specifier: str  # PEP 440 line, e.g. ">=1.12.0a0,<1.13"
+    specifier: str  # PEP 440 line, e.g. ">=1.12.0a0,<1.13" (ignored for kind="fusion": not on PyPI)
     spec_profile: str  # "legacy" | "inline" — selects the fixture's semantic-layer variant
     track_prereleases: bool = False  # True ⇒ alphas/betas/rcs eligible (a later GA still wins)
     dbt_adapter_spec: str = "dbt-duckdb==1.10.1"
     parse_flags: str = ""
     adaf_install_spec: str = "/opt/adaf_pkg"
+    kind: str = "pip"  # "pip" (resolved from PyPI) | "fusion" (Rust binary, floats to CDN latest)
 
     def resolve(self) -> Engine:
-        """Pin this line to its newest matching PyPI release and return the concrete Engine to build."""
+        """Resolve this line to a concrete :class:`Engine` to build.
+
+        pip lines pin to their newest matching PyPI release. The fusion line does NOT touch PyPI (the
+        Fusion engine ships only via the public CDN installer, which always fetches the latest); its
+        concrete version is discovered at run time from ``dbt --version`` and recorded in the parse
+        golden — so "float to latest" holds for Fusion exactly as it does for the pip lines."""
+        if self.kind == "fusion":
+            return Engine(
+                name="dbt-fusion",
+                dbt_core_spec="dbt-fusion (public CDN installer, latest)",
+                series_id=self.id,
+                spec_profile=self.spec_profile,
+                parse_flags=self.parse_flags or "--write-index",
+                adaf_install_spec=self.adaf_install_spec,
+                kind="fusion",
+            )
         version = _resolve_dbt_core(self.specifier, track_prereleases=self.track_prereleases)
         return Engine(
             name=f"dbt{str(version).replace('.', '-')}",
@@ -217,13 +235,25 @@ SERIES: list[Series] = [
         track_prereleases=True,
         parse_flags="--use-v2-parser",
     ),
-    # The 2.0 line — the Rust engine (alphas now → beta → GA). Installs adaf[fusion] for the parquet
-    # artifact a v2.0 engine may emit. Tracks the latest 2.0 prerelease and auto-promotes to 2.0.0 GA.
+    # The 2.0 line — dbt-core 2.0 from PyPI (alphas now → beta → GA). NOTE: pip dbt-core 2.0 still emits
+    # a v12 JSON manifest.json (NOT the v20 parquet set — that is Fusion-only; see the dbt-fusion row and
+    # docs/dbt-fusion-artifacts.md). Installs adaf[fusion] anyway so the row is ready if that changes.
     Series(
         id="dbt-2.0",
         specifier=">=2.0.0a0,<3",
         spec_profile="inline",
         track_prereleases=True,
+        adaf_install_spec="/opt/adaf_pkg[fusion]",
+    ),
+    # The dbt FUSION engine — the Rust binary (NOT on PyPI; installed from the public CDN, floats to
+    # latest). This is the row that truly exercises the v20 PARQUET artifact set: it parses with
+    # `--write-index` and adaf reads `target/metadata/parse/*.parquet` via ParquetManifestArtifact.
+    Series(
+        id="dbt-fusion",
+        specifier="",  # unused: fusion is not resolved from PyPI
+        spec_profile="inline",
+        kind="fusion",
+        parse_flags="--write-index",
         adaf_install_spec="/opt/adaf_pkg[fusion]",
     ),
 ]

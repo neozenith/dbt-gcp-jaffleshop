@@ -17,7 +17,8 @@ they are not yet migrated onto the view.)
 
 Pure: the only I/O is delegated to a :class:`~adaf.dbt.artifact.ManifestArtifact` in ``load``;
 everything else operates on the parsed dict. The artifact seam is what makes "the manifest is one
-JSON file on disk" swappable (dbt v2.0 / Fusion parquet) without the view or any projection noticing.
+JSON file on disk" swappable (the dbt Fusion / v2.0 parquet set) without the view or any projection
+noticing — see ``docs/dbt-fusion-artifacts.md``.
 """
 
 # Standard Library
@@ -61,8 +62,8 @@ class ManifestView:
         """Load a manifest from disk via the artifact seam; fail loud if it is missing.
 
         ``path`` is detected by :func:`~adaf.dbt.artifact.load_artifact` (a ``manifest.json`` file →
-        JSON reader; a directory of ``*.parquet`` → the dbt v2.0 / Fusion parquet reader), then the
-        view is built from the artifact's sections + parent_map.
+        JSON reader; a Fusion target dir with ``metadata/parse/nodes/v1_0.parquet`` → the parquet
+        reader), then the view is built from the artifact's sections + parent_map.
         """
         p = Path(path)
         if not p.exists():
