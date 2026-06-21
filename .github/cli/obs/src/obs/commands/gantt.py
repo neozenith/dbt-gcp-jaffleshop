@@ -29,7 +29,7 @@ def _generate(args: argparse.Namespace) -> str:
 
 def cmd_generate(args: argparse.Namespace) -> int:
     _generate(args)
-    log.info("open %s/%s in a browser, or run `obs serve` to host it", args.output, gantt.GANTT_HTML)
+    log.info("open %s/%s in a browser, or run `obs serve` to host it", args.output, gantt.OBS_HTML)
     return 0
 
 

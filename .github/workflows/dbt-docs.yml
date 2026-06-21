@@ -42,12 +42,13 @@ name: dbt docs
 # its own project. (The LOCAL `make elementary-report` path instead impersonates a dedicated,
 # narrowly-scoped dbt-dev-elementary SA — see dbt-jaffleshop/Makefile and infra/stacks/dbt_platform/dbt.tf.)
 #
-# We ALSO publish the obs Gantt viewer (gantt.html + gantt.js + design-tokens.json + index.json +
+# We ALSO publish the obs viewer (obs.html + obs.js + design-tokens.json + index.json +
 # runs/*.json) under <pages-url>/obs/. It extracts the last 30 days of prod Elementary run telemetry
-# (dbt_run_results + dbt_invocations) so each dbt run is selectable as a thread-grouped Gantt — letting
-# you compare parallelism across the thread-permutation sweep (see dbt-deploy-prod.yml). It reads
-# ELEMENTARY as the dbt-prod SA (--no-impersonate); the emitted JSON carries only run timings + node
-# names (no compiled SQL), matching the "no exposed SQL" stance of the siblings above.
+# (dbt_run_results + dbt_invocations) into a 2-page SPA: an overview Plotly scatter (run time ×
+# duration, coloured pass/fail) that deep-links (?run=<id>) into each run's thread-grouped Gantt —
+# letting you compare parallelism across the thread-permutation sweep (see dbt-deploy-prod.yml). It
+# reads ELEMENTARY as the dbt-prod SA (--no-impersonate); the emitted JSON carries only run timings +
+# node names (no compiled SQL), matching the "no exposed SQL" stance of the siblings above.
 #
 # Finally we publish the MkDocs "guides" site as a FIFTH SIBLING, reachable at <pages-url>/guides/.
 # It renders docs/guides/testing_taxonomy/ (the dbt testing-taxonomy catalogue) as a Material static
@@ -162,7 +163,7 @@ jobs:
             --target-path "${{ github.workspace }}/edr_target" \
             --file-path "${{ github.workspace }}/_site/elementary_report.html"
 
-      # obs Gantt viewer → <pages-url>/obs/gantt.html. Extracts the last 30 days of prod
+      # obs viewer → <pages-url>/obs/obs.html. Extracts the last 30 days of prod
       # Elementary run telemetry (dbt_run_results + dbt_invocations) into index.json + per-run
       # JSON and a vanilla-JS Gantt viewer. Runs as the dbt-prod SA authenticated above, so it
       # reads ELEMENTARY directly — hence --no-impersonate (the LOCAL path instead impersonates

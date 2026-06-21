@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 # Local
-from obs.gantt import GANTT_HTML
+from obs.gantt import OBS_HTML
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ def serve(output_dir: Path, port: int) -> None:
         raise
 
     with httpd:
-        url = f"http://localhost:{port}/{GANTT_HTML}"
+        url = f"http://localhost:{port}/{OBS_HTML}"
         log.info("serving %s on %s (Ctrl-C to stop)", output_dir, url)
         try:
             httpd.serve_forever()

@@ -43,8 +43,8 @@ ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 INDEX_JSON = "index.json"
 RUNS_DIR = "runs"
-GANTT_HTML = "gantt.html"
-GANTT_JS = "gantt.js"
+OBS_HTML = "obs.html"
+OBS_JS = "obs.js"
 DESIGN_TOKENS = "design-tokens.json"
 
 # resource_type → colour. Kept in sync with gantt.js's RESOURCE_COLOURS (Okabe-Ito,
@@ -241,10 +241,10 @@ def write_bundle(output_dir: Path, bundle: dict[str, Any], *, assets_dir: Path =
         index.json                 # run-picker summaries + bundle metadata
         runs/<invocation_id>.json  # one per-run Gantt payload
         design-tokens.json         # brand/theme tokens (copied from assets; curate point)
-        gantt.html / gantt.js      # templated viewer
+        obs.html / obs.js          # templated SPA viewer (overview scatter + run-detail Gantt)
     """
-    html_tpl = assets_dir / GANTT_HTML
-    js_tpl = assets_dir / GANTT_JS
+    html_tpl = assets_dir / OBS_HTML
+    js_tpl = assets_dir / OBS_JS
     tokens_src = assets_dir / DESIGN_TOKENS
     for asset in (html_tpl, js_tpl, tokens_src):
         if not asset.exists():
@@ -269,19 +269,20 @@ def write_bundle(output_dir: Path, bundle: dict[str, Any], *, assets_dir: Path =
     # Brand/theme tokens: copied verbatim so editing the source curates the viewer.
     shutil.copyfile(tokens_src, output_dir / DESIGN_TOKENS)
 
-    (output_dir / GANTT_HTML).write_text(
+    (output_dir / OBS_HTML).write_text(
         _apply_tokens(html_tpl.read_text(encoding="utf-8"), build_id=build_id, source_label=source_label),
         encoding="utf-8",
     )
-    (output_dir / GANTT_JS).write_text(
+    (output_dir / OBS_JS).write_text(
         _apply_tokens(js_tpl.read_text(encoding="utf-8"), build_id=build_id, source_label=source_label),
         encoding="utf-8",
     )
     log.info(
-        "wrote %s + %d run file(s) + %s + viewer into %s (build_id=%s)",
+        "wrote %s + %d run file(s) + %s + %s into %s (build_id=%s)",
         INDEX_JSON,
         len(bundle["runs"]),
         DESIGN_TOKENS,
+        OBS_HTML,
         output_dir,
         build_id,
     )

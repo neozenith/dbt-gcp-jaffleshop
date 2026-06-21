@@ -196,7 +196,7 @@ gha-docs: deps
 	@echo "  http://localhost:8089/index.html              (dbt docs)"
 	@echo "  http://localhost:8089/sdag.html               (data-product lineage)"
 	@echo "  http://localhost:8089/elementary_report.html  (Elementary observability)"
-	@echo "  http://localhost:8089/obs/gantt.html          (obs run Gantt — 30 days)"
+	@echo "  http://localhost:8089/obs/obs.html            (obs SPA — overview scatter + run Gantt)"
 	@echo "Ctrl-C to stop."
 	uv run python -m http.server 8089 --directory "$(GHA_SITE)"
 
