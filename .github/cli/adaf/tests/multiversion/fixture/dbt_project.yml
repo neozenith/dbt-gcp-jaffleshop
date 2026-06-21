@@ -3,8 +3,8 @@ version: "1.0.0"
 config-version: 2
 
 # A deliberately tiny dbt project that the version-matrix harness parses under each
-# pinned dbt engine. It is NOT the real CDIP project — it exists only so adaf's
-# read-only gates (docscov / testcov / sdag check) have a real manifest to chew on.
+# pinned dbt engine. It is NOT a real production project — it exists only so adaf's
+# read-only gates (list / check docs / check tests / sdag check) have a real manifest to chew on.
 profile: matrix_fixture
 
 model-paths: ["models"]

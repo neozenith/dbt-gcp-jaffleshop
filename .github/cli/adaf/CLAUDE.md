@@ -8,18 +8,18 @@ for what it does; this file is rationale and invariants only.
 > deterministic taxonomy detectors (`check taxonomy`) + suppression layer — per
 > [ADR-0005](../../../docs/arch/adr-0005-adaf-automated-data-assurance-framework.md).
 >
-> **Backported from the sibling `dbt_cartology_cdip/.github/cli/adaf` (the dbt-engineering
-> specialist):** the `run_dbt`/`ManifestView`/artifact seam (parse the manifest once; `[fusion]`
-> parquet reader for dbt v2.0); the **`defer-diff`/`defer-state`** workflow commands (built-vs-deferred
-> split via a cached worktree-parsed baseline + deepdiff); the **`list`/`ls`** scope preview
-> (hop-walks, `--macros`, `--paths`, `--commands` on the gates); the **`gha`** workflow generator
-> (paths derived from `dbt ls`, three glob algorithms + false-positive audit); the **`sdag check`**
-> boundary-obligation lint (catalogue rule IDs MD-02/11/12, TM-AU-01, MD-07); the **selector cache**
-> (fingerprint-keyed, parallel resolution) + **viewer enrichment** (compliance RAG rings, governance,
-> inline/archive); and the **`tests/multiversion/`** Docker matrix (dbt 1.11/1.12/2.0, off `make ci`).
-> These ride on a SECOND, product-scoped selection (`dbt/scope.py`, required `--selector` + hop-walks),
-> parallel to the catalogue checks' changed/all + `--select`/`--exclude` (`dbt/selection.py`) — the two
-> coexist by design; a workflow command is product-scoped, a `check` gate is changed-file-scoped.
+> **dbt-engineering surface:** the `run_dbt`/`ManifestView`/artifact seam (parse the manifest once;
+> `[fusion]` parquet reader for dbt v2.0); the **`defer-diff`/`defer-state`** workflow commands
+> (built-vs-deferred split via a cached worktree-parsed baseline + deepdiff); the **`list`/`ls`**
+> scope preview (hop-walks, `--macros`, `--paths`, `--commands` on the gates); the **`gha`** workflow
+> generator (paths derived from `dbt ls`, three glob algorithms + false-positive audit); the
+> **`sdag check`** boundary-obligation lint (catalogue rule IDs MD-02/11/12, TM-AU-01, MD-07); the
+> **selector cache** (fingerprint-keyed, parallel resolution) + **viewer enrichment** (compliance
+> RAG rings, governance, inline/archive); and the **`tests/multiversion/`** Docker matrix (dbt
+> 1.11/1.12/2.0, off `make ci`). These ride on a SECOND, product-scoped selection (`dbt/scope.py`,
+> required `--selector` + hop-walks), parallel to the catalogue checks' changed/all +
+> `--select`/`--exclude` (`dbt/selection.py`) — the two coexist by design; a workflow command is
+> product-scoped, a `check` gate is changed-file-scoped.
 
 ## The one idea that holds it together: the catalogue is the only source of truth
 

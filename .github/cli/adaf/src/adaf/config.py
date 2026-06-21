@@ -54,8 +54,8 @@ def project_root() -> Path:
     """The discovered dbt project root (an accessor over the module global ``PROJECT_ROOT``).
 
     A function form so call sites read the *current* root even if ``set_project_root`` runs after
-    import; several modules ported from the sibling CLI call ``config.project_root()`` rather than
-    reaching for the ``PROJECT_ROOT`` global directly.
+    import; several modules call ``config.project_root()`` rather than reaching for the
+    ``PROJECT_ROOT`` global directly.
     """
     return PROJECT_ROOT
 
