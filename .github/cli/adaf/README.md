@@ -24,16 +24,49 @@ adaf rules show MD-01
 
 ## Commands
 
+Two scoping models coexist (see [`CLAUDE.md`](CLAUDE.md)). The **`check`** gates
+scope by **changed files** (default) or `--all`, narrowed by inline dbt
+`--select`/`--exclude`. The **data-product** commands (`list`, `defer-*`,
+`sdag check`) scope by a **named `--selector`** from `selectors.yml`, optionally
+grown along the lineage with `--upstream`/`--downstream`.
+
+### Inspect the catalogue (no dbt project needed)
+
 | Command | What it does |
 |---------|--------------|
 | `adaf rules list [--role/--detection/--dama] [--json]` | List catalogue rules, filterable by role, detection mode, or DAMA-UK6 dimension. |
 | `adaf rules show <code> [--json]` | One rule in full — both DQ attributions, detection mode, boundary class, framework ladder, vignette path. |
+| `adaf rules explain <code> [--json]` | `show` plus the exact `adaf.yml` / inline syntax to suppress the rule. |
 | `adaf rules validate` | Validate `catalog.json` against its meta-schema; non-zero exit on any violation (the SSoT guard). |
 
-> The `check`, `review`, and `products` command groups are added as the ADAF
-> build-out migrates the deterministic checker and the LLM reviewer in. This
-> README's reference table and architecture diagram are completed in the docs
-> consolidation pass.
+### Deterministic gates over the selected models
+
+| Command | What it does |
+|---------|--------------|
+| `adaf check taxonomy [--strict]` | Run the deterministic catalogue detectors (grain/freshness/contracts/keys) over the selected models. |
+| `adaf check docs` / `doc-columns` / `tests` | Model-description, resolved-column, and test coverage of the selected models (from the manifest / catalog). |
+| `adaf check lint` / `format` `[--fix] [--commands]` | SQLFluff full ruleset / formatter subset; `--commands` prints the exact argv instead of running it. |
+| `adaf check deprecations [--fix] [--commands]` | `dbt-autofix` over the folders of the selected models. |
+| `adaf check system-boundaries` | Gate each inbound/outbound boundary node of a data product on its required artifacts. |
+| `adaf check all [--fix --md <path>]` | Run every check; non-zero if any fail. `--md` writes a PR-comment summary table. |
+
+### Data-product workflows (scoped by a named `--selector`)
+
+| Command | What it does |
+|---------|--------------|
+| `adaf list` (alias `ls`) `[--upstream/--downstream] [--macros] [--paths] [--bare]` | Preview the resolved scope — the model files the gates would run on, grouped by selector/upstream/downstream. |
+| `adaf sdag check` | Boundary-obligation lint: outbound models owe a contract (MD-02), exposure (MD-11), semantic model (MD-12); inbound sources owe freshness (TM-AU-01) + a volume-anomaly test (MD-07). |
+| `adaf defer-diff [--details]` | Which models in scope would be **built** vs **deferred** against a `--defer-ref` baseline, with deepdiff explaining each rebuild. |
+| `adaf defer-state [--force]` | Build (or reuse) the defer-target state for a ref and print its `--state` dir on stdout (CI plumbing). |
+| `adaf products boundaries` / `generate` / `serve` | Classify a product's nodes; build / host the interactive sdag Cytoscape viewer (`--inline`, `--archive`). |
+| `adaf gha create` / `update` / `analyse` | Generate / refresh / analyse a per-data-product GHA workflow whose trigger `paths` are derived from the selector. |
+
+### LLM review + reconciliation
+
+| Command | What it does |
+|---------|--------------|
+| `adaf review [--post] [--model ...]` | LLM taxonomy review via GitHub Models (keyless); `--post` upserts sticky PR comments. |
+| `adaf report [--review <json>] [-o <file>]` | Per-model markdown; with `--review`, reconciles the LLM findings against the deterministic ground truth. |
 
 ## Data-quality attribution
 

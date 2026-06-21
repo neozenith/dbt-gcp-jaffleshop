@@ -8,7 +8,15 @@ dependencies = [
     "jsonschema>=4.21",
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
+    "ruamel.yaml>=0.18",
+    "deepdiff>=7.0",
 ]
+
+# Optional extras. `fusion` adds duckdb for reading dbt v2.0 ("Fusion") parquet artifact sets
+# (adaf.dbt.artifact.ParquetManifestArtifact). The JSON manifest path — every user today — stays
+# duckdb-free; a missing duckdb on the parquet path is a loud ImportError, never a silent fallback.
+[project.optional-dependencies]
+fusion = ["duckdb>=1.0"]
 
 [project.scripts]
 adaf = "adaf.app:main"
@@ -26,8 +34,16 @@ build-backend = "hatchling.build"
 packages = ["src/adaf"]
 
 [dependency-groups]
+# testcontainers (+ the docker SDK it drives) + packaging are HARD dev dependencies, not an optional
+# extra: tests/multiversion/test_multiversion.py imports them unconditionally at module top (no
+# importorskip), so the suite errors LOUDLY if they are ever missing. The Docker-backed matrix is kept
+# off `make ci` purely by the `multiversion` marker (addopts `-m 'not multiversion'`) — environment
+# economy (ci stays fast/offline/Docker-free), NOT requirement degradation.
 dev = [
     "pytest>=8.0",
+    "testcontainers>=4.0",
+    "docker>=7.0",
+    "packaging>=24.0",
 ]
 # Heavy LLM-eval stack, isolated so the fast `dev` test loop never pulls it in.
 # Run with: uv run --group eval pytest evals/
@@ -39,3 +55,12 @@ eval = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+# The Docker-backed dbt version-matrix suite is marked `multiversion` and DESELECTED by default, so
+# `uv run pytest` (and `make ci`) stays fast, offline, and Docker-free. The adaf-multiversion-ci target
+# re-selects it with an explicit `-m multiversion` (a CLI -m overrides this addopts -m). testcontainers
+# is a hard dev dep (imported unconditionally at module top), so the suite errors loudly if it is ever
+# missing — deselection, never a silent skip, keeps it off ci.
+addopts = "-m 'not multiversion'"
+markers = [
+    "multiversion: dbt version-matrix integration tests (build + run one Docker image per dbt engine; off ci)",
+]

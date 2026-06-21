@@ -1,0 +1,55 @@
+{
+  "metadata": {"dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json"},
+  "nodes": {
+    "model.adaf_demo.stg_a": {
+      "resource_type": "model",
+      "name": "stg_a",
+      "original_file_path": "models/staging/stg_a.sql",
+      "tags": ["demand"],
+      "depends_on": {"nodes": ["source.adaf_demo.raw.s1"]}
+    },
+    "model.adaf_demo.stg_b": {
+      "resource_type": "model",
+      "name": "stg_b",
+      "original_file_path": "models/staging/stg_b.sql",
+      "tags": ["demand"],
+      "depends_on": {"nodes": ["source.adaf_demo.raw.s2"]}
+    },
+    "model.adaf_demo.fct": {
+      "resource_type": "model",
+      "name": "fct",
+      "original_file_path": "models/marts/fct.sql",
+      "tags": ["demand"],
+      "depends_on": {"nodes": ["model.adaf_demo.stg_a", "model.adaf_demo.stg_b"]}
+    },
+    "model.adaf_demo.downstream_consumer": {
+      "resource_type": "model",
+      "name": "downstream_consumer",
+      "original_file_path": "models/marts/downstream_consumer.sql",
+      "tags": [],
+      "depends_on": {"nodes": ["model.adaf_demo.fct"]}
+    }
+  },
+  "sources": {
+    "source.adaf_demo.raw.s1": {
+      "resource_type": "source",
+      "name": "s1",
+      "source_name": "raw",
+      "original_file_path": "models/staging/_sources.yml"
+    },
+    "source.adaf_demo.raw.s2": {
+      "resource_type": "source",
+      "name": "s2",
+      "source_name": "raw",
+      "original_file_path": "models/staging/_sources.yml"
+    }
+  },
+  "parent_map": {
+    "source.adaf_demo.raw.s1": [],
+    "source.adaf_demo.raw.s2": [],
+    "model.adaf_demo.stg_a": ["source.adaf_demo.raw.s1"],
+    "model.adaf_demo.stg_b": ["source.adaf_demo.raw.s2"],
+    "model.adaf_demo.fct": ["model.adaf_demo.stg_a", "model.adaf_demo.stg_b"],
+    "model.adaf_demo.downstream_consumer": ["model.adaf_demo.fct"]
+  }
+}

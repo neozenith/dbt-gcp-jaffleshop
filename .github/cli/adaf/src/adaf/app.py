@@ -30,18 +30,27 @@ project root is discovered lazily in main() only for the groups that touch it.
 import argparse
 import logging
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from adaf import config
+from adaf import config, report
 from adaf.dbt import selection
+from adaf.dbt.scope import UNBOUNDED
 from adaf.utils import style
 from adaf.commands import checks, coverage, dataproducts, deprecations, taxonomy
 from adaf.commands import report as report_cmd
 from adaf.commands import review as review_cmd
 from adaf.commands import rules as rules_cmd
 from adaf.commands import sqlfluff as sqlfluff_cmd
+from adaf.commands.defer import cmd_defer_diff, cmd_defer_state
+from adaf.commands.sdaglint import cmd_sdag_check
+from adaf.commands.targets import cmd_list
+from adaf.gha import cmd_analyse as gha_analyse
+from adaf.gha import cmd_create as gha_create
+from adaf.gha import cmd_update as gha_update
+from adaf.gha.globber import DEFAULT_PATH_MODE, PATH_MODES
 from adaf.utils.formatting import render_from_args
 from adaf.utils.logging_setup import configure_logging
 
@@ -49,7 +58,8 @@ log = logging.getLogger(__name__)
 
 _ROLES = ("entity", "dimension", "measure", "time", "model")
 _DETECTIONS = ("deterministic", "hybrid", "llm")
-_NEEDS_PROJECT = ("check", "products", "review", "report")  # groups that operate on a dbt project
+# groups/commands that operate on a dbt project (lazy root discovery + profiles pinning in main())
+_NEEDS_PROJECT = ("check", "products", "review", "report", "defer-diff", "defer-state", "list", "ls", "gha", "sdag")
 
 
 def _help(p: argparse.ArgumentParser):
@@ -121,6 +131,14 @@ def _add_fix(p: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_commands(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--commands",
+        action="store_true",
+        help="Print the exact subprocess command(s) adaf would run instead of running them (no magic)",
+    )
+
+
 def _add_manifest(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--manifest",
@@ -171,6 +189,79 @@ def _add_sdag_output(p: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_target(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--target",
+        default=None,
+        help="dbt --target (e.g. dev/test) for the live `dbt ls` (default: dbt's profile default)",
+    )
+
+
+def _add_defer_target(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--defer-target",
+        dest="defer_target",
+        default=None,
+        help="dbt --target for the defer-target parse, when it differs from --target "
+        "(e.g. --target dev --defer-target nonprod). Defaults to --target's value.",
+    )
+
+
+def _add_scope(p: argparse.ArgumentParser) -> None:
+    """Product-scope flags shared by the workflow commands (list / defer-diff): changed/all +
+    base-ref + a REQUIRED named --selector + optional defer + lineage-hop expansion + targets.
+
+    Distinct from ``_add_selection`` (the catalogue ``check`` gates' changed/all + inline
+    --select/--exclude) — here the scope is always bounded to ONE named data product."""
+    scope_grp = p.add_mutually_exclusive_group()
+    scope_grp.add_argument("--changed-only", action="store_true", help="Only models changed vs --base-ref (default)")
+    scope_grp.add_argument("--all", action="store_true", dest="all_models", help="All in-scope models, not only changed")
+    p.add_argument(
+        "--base-ref",
+        default=config.DEFAULT_BASE_REF,
+        help="Git ref the changed-only scope diffs against (default: %(default)s)",
+    )
+    p.add_argument(
+        "--selector",
+        required=True,
+        help="Named dbt selector (from selectors.yml) bounding the scope (REQUIRED — be explicit)",
+    )
+    p.add_argument(
+        "--defer",
+        action="store_true",
+        help="Defer unchanged refs to a baseline manifest parsed from --defer-ref (built + cached in tmp/)",
+    )
+    p.add_argument(
+        "--defer-ref",
+        dest="defer_ref",
+        default="main",
+        metavar="REF",
+        help="Git ref (branch/tag/sha) whose parsed manifest is the defer target (default: %(default)s)",
+    )
+    # Lineage expansion: nargs="?" so bare --upstream (const=UNBOUNDED ⇒ all hops) and --upstream N
+    # (type=int ⇒ that many hops) both parse; absent ⇒ default None (no expansion).
+    p.add_argument(
+        "--upstream",
+        nargs="?",
+        type=int,
+        const=UNBOUNDED,
+        default=None,
+        metavar="N",
+        help="Grow the scope with N ancestor hops (bare --upstream = all ancestors; default: no expansion)",
+    )
+    p.add_argument(
+        "--downstream",
+        nargs="?",
+        type=int,
+        const=UNBOUNDED,
+        default=None,
+        metavar="N",
+        help="Grow the scope with N descendant hops (bare --downstream = all descendants; default: no expansion)",
+    )
+    _add_target(p)
+    _add_defer_target(p)
+
+
 # ─── parser construction ─────────────────────────────────────────────────────
 
 
@@ -195,13 +286,241 @@ def build_parser() -> argparse.ArgumentParser:
     parser.set_defaults(func=_help(parser))
     sub = parser.add_subparsers(dest="command", required=False)
 
+    _add_list_command(sub, common)
     _add_rules_group(sub, common)
     _add_check_group(sub, common)
     _add_products_group(sub, common)
     _add_review_group(sub, common)
     _add_report_group(sub, common)
+    _add_defer_group(sub, common)
+    _add_gha_group(sub, common)
+    _add_sdag_group(sub, common)
 
     return parser
+
+
+def _add_sdag_group(sub, common: argparse.ArgumentParser) -> None:
+    """``adaf sdag check`` — the system-boundary obligation lint (rule-ID rigorous, suppression-aware).
+
+    The rule-coded sibling of ``check system-boundaries``: outbound models owe a contract (MD-02),
+    exposure (MD-11), semantic model (MD-12); inbound sources owe freshness (TM-AU-01); inbound nodes
+    owe an Elementary volume-anomaly test (MD-07). Scoped by named ``--selector`` (the data product)."""
+    sdag_p = sub.add_parser("sdag", parents=[common], help="Data-product system-boundary obligation lint")
+    sdag_p.set_defaults(func=_help(sdag_p))
+    sdag_sub = sdag_p.add_subparsers(dest="sdag_cmd", required=False)
+
+    check = sdag_sub.add_parser(
+        "check",
+        parents=[common],
+        help="Lint each data product's boundary nodes for system-boundary obligations",
+        description=(
+            "Lint a data product's system-boundary nodes against their obligations — outbound models need "
+            "a contract (MD-02), exposure (MD-11), semantic model (MD-12); inbound sources need freshness "
+            "(TM-AU-01); inbound nodes need a volume-anomaly test (MD-07). --selector bounds the product, "
+            "default reports only changed boundary nodes, --all the whole product. Exits 1 on any "
+            "unsuppressed violation; suppress false positives in adaf.yml."
+        ),
+        epilog="Examples:\n  adaf sdag check --all --selector demand\n  adaf sdag check --selector demand",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_scope(check)
+    _add_manifest(check)
+    check.set_defaults(func=cmd_sdag_check)
+
+
+def _add_gha_common(p: argparse.ArgumentParser) -> None:
+    """Args shared by ``gha create`` / ``update`` / ``analyse``: the product (or --all), selectors
+    file, the path-collapse mode, macro inclusion, and the output workflows dir."""
+    p.add_argument(
+        "product_name",
+        metavar="PRODUCT",
+        nargs="?",
+        help="Named selector / data product (must exist in selectors.yml). Omit with --all.",
+    )
+    p.add_argument(
+        "--all",
+        dest="all_products",
+        action="store_true",
+        help="Act on EVERY named selector in selectors.yml (template/refresh them all for review)",
+    )
+    p.add_argument(
+        "--selectors",
+        type=Path,
+        default=config.DEFAULT_SELECTORS,
+        help="selectors.yml defining the data products (default: <project>/%(default)s)",
+    )
+    p.add_argument(
+        "--paths",
+        choices=PATH_MODES,
+        default=DEFAULT_PATH_MODE,
+        help="How to collapse the selector's files into trigger globs: strict (every file) | leaf "
+        "(<dir>/*.{sql,yml}) | recursive (wildcard varying path components). Default: %(default)s",
+    )
+    p.add_argument(
+        "--macros",
+        action="store_true",
+        help="Also include the repo macros the selected models depend on (read from the manifest)",
+    )
+    p.add_argument(
+        "--workflows-dir",
+        type=Path,
+        default=config.DEFAULT_WORKFLOWS_DIR,
+        dest="workflows_dir",
+        help="Directory holding the workflows (default: <project>/%(default)s)",
+    )
+
+
+def _add_gha_group(sub, common: argparse.ArgumentParser) -> None:
+    """``adaf gha create|update|analyse`` — generate / refresh / analyse per-data-product workflows.
+
+    Each data product (named selector) gets a thin ``adaf-<product>.yml`` whose ``on.pull_request.paths``
+    trigger is DERIVED from the selector's membership (collapsed per --paths), so the workflow only fires
+    when that product's files change."""
+    gha_p = sub.add_parser("gha", parents=[common], help="Generate per-data-product GHA workflow entrypoints")
+    gha_p.set_defaults(func=_help(gha_p))
+    gha_sub = gha_p.add_subparsers(dest="gha_cmd", required=False)
+
+    create = gha_sub.add_parser(
+        "create",
+        parents=[common],
+        help="Create .github/workflows/adaf-<product>.yml from the template",
+        description=(
+            "Clone the CLI-owned workflow template into .github/workflows/adaf-<product>.yml, with the "
+            "trigger `paths` DERIVED from `dbt ls --selector <product>` (collapsed per --paths). Prints the "
+            "collapse working-out + false-positive audit. Refuses to overwrite without --force."
+        ),
+        epilog="Examples:\n  adaf gha create demand\n  adaf gha create --all --paths leaf",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_gha_common(create)
+    create.add_argument(
+        "--template",
+        type=Path,
+        default=config.DEFAULT_WORKFLOW_TEMPLATE,
+        help="Workflow template to clone (default: the CLI-owned base template)",
+    )
+    create.add_argument("--force", action="store_true", help="Overwrite an existing adaf-<product>.yml")
+    create.set_defaults(func=gha_create)
+
+    update = gha_sub.add_parser(
+        "update",
+        parents=[common],
+        help="Re-derive ONLY the trigger paths of an existing adaf-<product>.yml",
+        description=(
+            "Refresh the `on.pull_request.paths` of an existing workflow from the current selector "
+            "membership (e.g. after adding a model), leaving every other hand-edit intact."
+        ),
+        epilog="Examples:\n  adaf gha update demand\n  adaf gha update --all",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_gha_common(update)
+    update.set_defaults(func=gha_update)
+
+    analyse = gha_sub.add_parser(
+        "analyse",
+        parents=[common],
+        help="Tabulate selector size vs each --paths algorithm's false-positive rate",
+        description=(
+            "Read-only: for one selector (or --all), print a TUI table of how many files are TRUE members, "
+            "how many each of the 3 path algorithms would match, and the false-positive count + rate per "
+            "algorithm — so you can pick a --paths mode with eyes open."
+        ),
+        epilog="Examples:\n  adaf gha analyse demand\n  adaf gha analyse --all --macros",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_gha_common(analyse)
+    analyse.set_defaults(func=gha_analyse)
+
+
+def _add_list_command(sub, common: argparse.ArgumentParser) -> None:
+    """``adaf list`` (alias ``ls``) — preview the resolved target model files for a product scope."""
+    p_list = sub.add_parser(
+        "list",
+        aliases=["ls"],
+        parents=[common],
+        help="List the resolved target model files for a product scope",
+        description=(
+            "Resolve the scope (changed or --all models that are also in the named --selector) and print the "
+            "model .sql files the gates would run on. The dry-run preview of every product-scoped command's "
+            "target set. --upstream/--downstream grow it along the lineage; --macros lists dependent repo "
+            "macros; --paths previews the gha trigger globs and their false-positive over-match."
+        ),
+        epilog="Examples:\n  adaf list --selector demand\n  adaf list --all --selector demand --upstream 1",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_scope(p_list)
+    p_list.add_argument(
+        "--bare",
+        action="store_true",
+        help="Flat path list with no group headers (pipeable); default groups by selector/upstream/downstream",
+    )
+    p_list.add_argument(
+        "--macros",
+        action="store_true",
+        help="Also list the repo macro files the selected models depend on (read from the manifest)",
+    )
+    p_list.add_argument(
+        "--paths",
+        choices=PATH_MODES,
+        default=None,
+        help="Preview the gha trigger globs this --paths mode would emit for the selector, and highlight "
+        "(dark red) the FALSE-POSITIVE files those globs also match beyond the selector's own members",
+    )
+    p_list.set_defaults(func=cmd_list)
+
+
+def _add_defer_group(sub, common: argparse.ArgumentParser) -> None:
+    """``adaf defer-diff`` + ``adaf defer-state`` — the dbt --defer / state workflow commands.
+
+    Top-level (not under ``check``) because they are CI plumbing, not catalogue gates: ``defer-state``
+    builds + caches a baseline manifest from a git ref and prints its --state dir; ``defer-diff``
+    shows which models in a selector's scope would be BUILT vs DEFERRED against that baseline.
+    """
+    dd = sub.add_parser(
+        "defer-diff",
+        parents=[common],
+        help="Show built vs deferred models under a selector (vs a --defer-ref baseline)",
+        description=(
+            "Show which models in scope would be BUILT (differ from the --defer-ref baseline) vs DEFERRED "
+            "(resolved to it), with deepdiff explaining why each built model changed. --selector bounds the "
+            "product, default reports only changed models, --all the whole product, --upstream / --downstream "
+            "grow the scope along the lineage. --details adds a git-diff-style field-level diff per built model."
+        ),
+        epilog="Examples:\n  adaf defer-diff --selector demand --defer-ref main\n"
+        "  adaf defer-diff --all --selector demand --upstream 1 --details",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_scope(dd)
+    _add_manifest(dd)
+    dd.add_argument(
+        "--details",
+        action="store_true",
+        help="Under each BUILT model, show a colourised git-diff-style unified diff of the changed node facets",
+    )
+    dd.set_defaults(func=cmd_defer_diff)
+
+    ds = sub.add_parser(
+        "defer-state",
+        parents=[common],
+        help="Build (or reuse) the defer-target state for a ref and print its --state dir (for CI)",
+        description=(
+            "Check out a git worktree to build the defer-target manifest for a git ref and print its --state "
+            "directory on stdout — the plumbing behind --defer, for CI to feed `dbt build --state`."
+        ),
+        epilog="Examples:\n  STATE=$(adaf defer-state --defer-ref main --target dev --defer-target nonprod)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ds.add_argument(
+        "--defer-ref",
+        dest="defer_ref",
+        default="main",
+        metavar="REF",
+        help="Git ref whose parsed manifest is the defer-target baseline (default: %(default)s)",
+    )
+    ds.add_argument("--force", action="store_true", help="Rebuild even if a cached state dir exists for this sha")
+    _add_target(ds)
+    _add_defer_target(ds)
+    ds.set_defaults(func=cmd_defer_state)
 
 
 def _add_report_group(sub, common: argparse.ArgumentParser) -> None:
@@ -261,16 +580,19 @@ def _add_check_group(sub, common: argparse.ArgumentParser) -> None:
     dep = check_sub.add_parser("deprecations", parents=[common], help="dbt-autofix over folders of selected models")
     _add_selection(dep)
     _add_fix(dep)
+    _add_commands(dep)
     dep.set_defaults(func=deprecations.cmd)
 
     lint = check_sub.add_parser("lint", parents=[common], help="SQLFluff full ruleset (lint / --fix)")
     _add_selection(lint)
     _add_fix(lint)
+    _add_commands(lint)
     lint.set_defaults(func=lambda a: _run_sqlfluff("lint", a))
 
     fmt = check_sub.add_parser("format", parents=[common], help="SQLFluff formatter subset (check / --fix)")
     _add_selection(fmt)
     _add_fix(fmt)
+    _add_commands(fmt)
     fmt.set_defaults(func=lambda a: _run_sqlfluff("format", a))
 
     docs = check_sub.add_parser("docs", parents=[common], help="Model description coverage of selected models")
@@ -350,19 +672,50 @@ def _add_products_group(sub, common: argparse.ArgumentParser) -> None:
     generate = products_sub.add_parser(
         "generate", parents=[common], help="Build the sdag Cytoscape JSON + HTML viewer assets"
     )
-    _add_manifest(generate)
-    _add_dataproduct_scope(generate)
-    _add_sdag_output(generate)
+    _add_sdag_viewer_args(generate)
     generate.set_defaults(func=dataproducts.cmd_generate)
 
     serve = products_sub.add_parser(
         "serve", parents=[common], help="Generate the sdag assets, then host them over HTTP"
     )
-    _add_manifest(serve)
-    _add_dataproduct_scope(serve)
-    _add_sdag_output(serve)
+    _add_sdag_viewer_args(serve)
     serve.add_argument("-p", "--port", type=int, default=8088, help="HTTP port (default: %(default)s)")
     serve.set_defaults(func=dataproducts.cmd_serve)
+
+
+def _add_sdag_viewer_args(p: argparse.ArgumentParser) -> None:
+    """Args for ``products generate`` / ``serve``: manifest (default-on freshness-aware parse),
+    data-product scope, output dir, plus --inline (one standalone HTML) and --archive (portable zip)."""
+    p.add_argument(
+        "--manifest",
+        type=Path,
+        default=config.DEFAULT_MANIFEST,
+        help="Path to dbt manifest.json (default: <project>/%(default)s)",
+    )
+    # Default ON (matches dbt's --no-* convention): the viewer reflects the live graph, so it reparses
+    # unless --no-parse is given (and even then only when a source is newer than the manifest).
+    p.add_argument(
+        "--parse",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run `dbt parse` first to refresh the manifest when stale (default: on; --no-parse to skip)",
+    )
+    _add_dataproduct_scope(p)
+    _add_sdag_output(p)
+    p.add_argument(
+        "--inline",
+        action="store_true",
+        help="Emit a single standalone sdag.html with the JS + graph JSON inlined (no sidecar files)",
+    )
+    p.add_argument(
+        "--archive",
+        nargs="?",
+        const=dataproducts.ARCHIVE_DEFAULT,
+        default=None,
+        metavar="PATH",
+        help="Bundle the generated viewer into a portable .zip (bare: <output>/sdag.zip; or --archive PATH). "
+        "Pair with --inline for a single-file archive.",
+    )
 
 
 def _add_review_group(sub, common: argparse.ArgumentParser) -> None:
@@ -422,8 +775,11 @@ def _run_sqlfluff(name: str, args: argparse.Namespace) -> int:
     sqlfluff.py) so that module stays free of argparse/selection coupling."""
     sel = selection.from_args(args)
     files = selection.resolve_model_files(sel)
-    report = sqlfluff_cmd.run(name, files, fix=args.fix, scope=selection.describe(sel))
-    return render_from_args(report, args)
+    if getattr(args, "commands", False):  # print the exact sqlfluff command, don't run it
+        color = report.should_colorize(getattr(args, "color", "auto"), sys.stdout)
+        return report.print_commands(name, [sqlfluff_cmd.argv_for(name, files, fix=args.fix)], color=color)
+    rep = sqlfluff_cmd.run(name, files, fix=args.fix, scope=selection.describe(sel))
+    return render_from_args(rep, args)
 
 
 # ─── dispatch ────────────────────────────────────────────────────────────────
@@ -437,7 +793,7 @@ def _prepare_project(args: argparse.Namespace) -> None:
     # profiles.yml is committed inside the dbt project; force dbt + the sqlfluff dbt templater at
     # it so an inherited DBT_PROFILES_DIR (e.g. the repo root) can't win.
     os.environ["DBT_PROFILES_DIR"] = str(config.PROJECT_ROOT)
-    for attr in ("manifest", "catalog", "selectors", "output", "md_path", "review"):
+    for attr in ("manifest", "catalog", "selectors", "output", "md_path", "review", "template", "workflows_dir"):
         if hasattr(args, attr):
             setattr(args, attr, config.under_root(getattr(args, attr)))
 

@@ -1,0 +1,20 @@
+version: 2
+
+# LEGACY semantic-layer spec (standalone top-level `semantic_models:` resource).
+# Supported by dbt Core 1.6–1.11 only; dbt 2.0/Fusion DROPS this form (warning dbt1157).
+# Suffix `__dbt1-11-11` ⇒ staged ONLY into the dbt1-11-11 context. 1.12 / 2.0 use the inline
+# `semantic_model:` block in their own _marts variant instead (see _marts__dbt1-12-0b3.yml).
+semantic_models:
+  # Backs dim_customers only — so MD-12 (must back a semantic model) is satisfied for
+  # dim_customers and VIOLATED for fct_orders. Measure-free on purpose.
+  - name: sm_customers
+    description: "Semantic model over the customer dimension."
+    model: ref('dim_customers')
+    entities:
+      - name: customer
+        type: primary
+        expr: customer_id
+    dimensions:
+      - name: customer_segment
+        type: categorical
+        expr: customer_id

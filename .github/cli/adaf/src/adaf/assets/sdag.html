@@ -5,7 +5,15 @@
 <title>sdag — super-DAG viewer</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<!-- Tailwind via CDN. Pinned to v3 — v4 ships only via build tooling. -->
+<!-- Poppins — a freely-licensed geometric-sans display face for the viewer canvas. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+<!-- Tailwind via CDN. Pinned to v3 — v4 ships only via build tooling.
+     NOTE: Tailwind colour utilities are NOT used for chrome colours any more —
+     every colour is a CSS variable driven by [data-theme]. Tailwind
+     stays for LAYOUT utilities only (flex, spacing, sizing, rounding). -->
 <script src="https://cdn.tailwindcss.com/3.4.16"></script>
 
 <!-- Cytoscape core + dagre layout. Pinned to specific versions for
@@ -14,77 +22,245 @@
 <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
 <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
 
+<!-- ── Theme bootstrap (runs before paint to avoid a flash of the wrong theme) ──
+     Resolves: localStorage choice → prefers-color-scheme → dark default, and
+     stamps it on <html data-theme>. sdag.js reads/writes the same key. -->
+<script>
+  (function () {
+    var KEY = "sdag-theme";
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    var prefersLight =
+      window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+    var theme = saved === "light" || saved === "dark"
+      ? saved
+      : (prefersLight ? "light" : "dark");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+
 <style>
+  /* ── Theme provider: every chrome colour is a CSS variable so a single
+       [data-theme] flip re-themes the whole UI. Both themes are tuned for
+       WCAG AA (>=4.5:1) on their text/background pairs. Cytoscape can't read
+       CSS variables, so sdag.js carries a parallel JS THEMES object for the
+       canvas — the two are kept in sync by hand. ───────────────────────── */
+  :root[data-theme="dark"] {
+    --canvas:        #242C30;
+    --app-bg:        #242C30;
+    --sidebar-bg:    #2D373D;
+    --panel-bg:      #3A474E;
+    --panel-hover:   #4B5C65;
+    --border:        #4B5C65;
+    --border-soft:   #3A474E;
+    --text-strong:   #F1F3F3;
+    --text:          #E3E6E7;
+    --text-secondary:#C7CDD0;
+    --text-muted:    #ACB5B9;  /* AA on panel + sidebar in dark */
+    --accent:        #A5C84D;  /* brand lime — fills */
+    --accent-text:   #B8D666;  /* lime as text on dark (AA on sidebar/panel) */
+    --on-accent:     #1B2125;  /* text on a lime fill */
+    --ok-text:       #6EE7B7;
+    --warn-text:     #FCD34D;
+    --fail-text:     #FCA5A5;
+    --badge-fail-bg: #B91C1C;  --badge-fail-text: #FFFFFF;
+    --badge-pass-bg: #15803D;  --badge-pass-text: #FFFFFF;
+    --badge-warn-bg: #B45309;  --badge-warn-text: #FFFFFF;
+    --tooltip-bg:    rgba(20,26,29,0.96);
+    --shadow:        rgba(0,0,0,0.45);
+  }
+  :root[data-theme="light"] {
+    --canvas:        #EDEFF0;
+    --app-bg:        #E4E7E8;
+    --sidebar-bg:    #FFFFFF;
+    --panel-bg:      #F1F3F4;
+    --panel-hover:   #E2E5E7;
+    --border:        #C2C8CB;
+    --border-soft:   #DDE0E2;
+    --text-strong:   #1B2125;
+    --text:          #28323A;  /* AA on white + on panel */
+    --text-secondary:#3A474E;
+    --text-muted:    #56656D;
+    --accent:        #A5C84D;
+    --accent-text:   #46630F;  /* dark olive — AA on white/panel */
+    --on-accent:     #1B2125;
+    --ok-text:       #0D6B30;
+    --warn-text:     #B45309;
+    --fail-text:     #C2151B;
+    --badge-fail-bg: #DC2626;  --badge-fail-text: #FFFFFF;
+    --badge-pass-bg: #15803D;  --badge-pass-text: #FFFFFF;
+    --badge-warn-bg: #B45309;  --badge-warn-text: #FFFFFF;
+    --tooltip-bg:    rgba(255,255,255,0.97);
+    --shadow:        rgba(60,72,80,0.22);
+  }
+
   html, body, #cy { height: 100%; width: 100%; margin: 0; padding: 0; }
-  #cy { background: #0f172a; }
-  /* Compound (selector) parent boxes — faint, labeled top-left */
+  body {
+    font-family: "Poppins", ui-sans-serif, system-ui, sans-serif;
+    background: var(--sidebar-bg);
+    color: var(--text);
+  }
+  #cy { background: var(--canvas); transition: background 0.15s ease; }
+
+  /* ── Semantic chrome classes (replace baked Tailwind colour utilities) ── */
+  .app-sidebar { background: var(--app-bg); border-color: var(--border); }
+  .panel-title { color: var(--accent-text); }
+  .text-sub    { color: var(--text-muted); }
+  .text-body   { color: var(--text); }
+  .text-label  { color: var(--text-muted); }
+  .rule-accent { background: var(--accent); }
+
+  .ctl {
+    background: var(--panel-bg);
+    color: var(--text);
+    border: 1px solid var(--border-soft);
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .ctl:hover { background: var(--panel-hover); }
+  .ctl-group { border: 1px solid var(--border); }
+  select.ctl { color: var(--text); }
+  select.ctl:focus { border-color: var(--accent); }
+
+  /* Active view-toggle — brand lime fill with dark text (lime is light, so
+     dark text is the WCAG-safe pairing in BOTH themes). */
+  .view-btn.is-active { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+
+  button:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+
+  /* Cytoscape hover tooltip (governance facts). */
   .cy-tooltip {
     position: absolute; pointer-events: none;
-    background: rgba(15,23,42,0.95); color: #e2e8f0;
+    background: var(--tooltip-bg); color: var(--text);
     font-family: ui-monospace, monospace; font-size: 11px;
-    padding: 6px 8px; border-radius: 6px; border: 1px solid #334155;
-    max-width: 360px; white-space: pre-wrap; z-index: 50;
+    padding: 7px 9px; border-radius: 7px; border: 1px solid var(--border);
+    max-width: 320px; white-space: pre-wrap; z-index: 50;
+    box-shadow: 0 4px 14px var(--shadow);
+  }
+
+  /* ── Compliance panel ─────────────────────────────────────────── */
+  #compliance { display: none; }
+  #compliance.visible { display: block; }
+  .compliance-card {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 11px;
+  }
+  .compliance-pct { font-size: 26px; font-weight: 700; line-height: 1; }
+  .pct-ok   { color: var(--ok-text); }
+  .pct-warn { color: var(--warn-text); }
+  .pct-fail { color: var(--fail-text); }
+  .compliance-bar {
+    height: 7px; border-radius: 999px; overflow: hidden;
+    background: var(--panel-hover); margin: 8px 0 6px;
+  }
+  .compliance-bar > span { display: block; height: 100%; border-radius: 999px; }
+  .badge {
+    display: inline-block; font-family: ui-monospace, monospace;
+    font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+    line-height: 1.5;
+  }
+  .badge-fail { background: var(--badge-fail-bg); color: var(--badge-fail-text); }
+  .badge-pass { background: var(--badge-pass-bg); color: var(--badge-pass-text); }
+  .badge-warn { background: var(--badge-warn-bg); color: var(--badge-warn-text); }
+  .badge-soft {
+    background: transparent; color: var(--text-secondary);
+    border: 1px solid var(--border); font-weight: 600;
+  }
+  .failed-node-row { border-top: 1px solid var(--border-soft); }
+
+  /* Generic governance / detail blocks */
+  .gov-row { display: flex; align-items: center; gap: 6px; }
+  .mono { font-family: ui-monospace, monospace; }
+  #detail-body, #metadata-body { color: var(--text-secondary); }
+  .divider { border-top: 1px solid var(--border-soft); }
+
+  /* ── Collapsible sidebar ───────────────────────────────────────────
+     The sidebar collapses to free the canvas; sdag.js toggles .sidebar-collapsed
+     on #app-root, persists the choice in localStorage, and calls
+     cy.resize()+cy.fit() so the graph reflows into the reclaimed space. The
+     toggle chevron floats over the canvas and is themed in both palettes. */
+  #app-root.sidebar-collapsed .app-sidebar { display: none; }
+  #btn-sidebar-toggle {
+    position: absolute; top: 8px; left: 8px; z-index: 20;
+    line-height: 1; font-family: ui-monospace, monospace;
   }
 </style>
 </head>
-<body class="bg-slate-900 text-slate-100">
+<body>
 
-<div class="flex h-screen w-screen overflow-hidden">
+<div id="app-root" class="flex h-screen w-screen overflow-hidden">
 
   <!-- ── Sidebar ───────────────────────────────────────────────────────── -->
-  <aside class="w-80 shrink-0 border-r border-slate-700 bg-slate-950 p-4 overflow-y-auto">
-    <h1 class="text-lg font-semibold mb-1">sdag</h1>
-    <p class="text-xs text-slate-400 mb-1">super-DAG over named selectors</p>
-    <p id="build-banner" class="text-[10px] text-slate-500 font-mono mb-4 leading-tight"></p>
+  <aside class="app-sidebar w-80 shrink-0 border-r p-4 overflow-y-auto">
+
+    <div class="flex items-start justify-between">
+      <div>
+        <h1 class="panel-title text-lg font-semibold mb-1 tracking-tight">sdag</h1>
+        <p class="text-sub text-xs mb-1">super-DAG over named selectors</p>
+      </div>
+      <!-- Theme toggle — shows the theme you'll switch TO. -->
+      <button id="btn-theme"
+              class="ctl px-2 py-1 rounded text-xs font-medium shrink-0"
+              title="Toggle light / dark theme" aria-label="Toggle theme">🌙 Dark</button>
+    </div>
+
+    <p id="build-banner" class="text-sub text-[10px] mono mb-3 leading-tight"></p>
+    <div class="rule-accent h-0.5 w-10 rounded-full mb-4"></div>
 
     <div class="space-y-2 mb-4">
-      <label class="block text-xs uppercase tracking-wider text-slate-400">View</label>
-      <div class="flex rounded overflow-hidden border border-slate-700">
-        <button id="btn-full"  class="flex-1 px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700">Full graph</button>
-        <button id="btn-super" class="flex-1 px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700">Super graph</button>
+      <label class="text-label block text-xs uppercase tracking-wider">View</label>
+      <div class="ctl-group flex rounded overflow-hidden">
+        <button id="btn-full"  class="view-btn ctl flex-1 px-2 py-1 text-xs">Full graph</button>
+        <button id="btn-super" class="view-btn ctl flex-1 px-2 py-1 text-xs">Super graph</button>
       </div>
     </div>
 
     <!-- Filter applies to the Full graph view: pick a single selector to
          drill into its compound, hiding the rest of the lineage tree. -->
     <div class="space-y-1 mb-4">
-      <label class="block text-xs uppercase tracking-wider text-slate-400"
+      <label class="text-label block text-xs uppercase tracking-wider"
              for="filter-selector">Filter to selector</label>
-      <select id="filter-selector"
-              class="w-full px-2 py-1 text-xs bg-slate-800 border border-slate-700 rounded
-                     text-slate-200 font-mono">
+      <select id="filter-selector" class="ctl w-full px-2 py-1 text-xs rounded mono">
         <option value="__all__">(show all)</option>
       </select>
-      <p class="text-[10px] text-slate-500 leading-tight">
+      <p class="text-sub text-[10px] leading-tight">
         Only applies in Full graph view. Picking a selector shows its compound
         plus the lineage between its members.
       </p>
     </div>
 
+    <!-- ── Compliance panel — visible only when a selector is filtered ── -->
+    <div id="compliance" class="mb-4"></div>
+
     <div class="space-y-2 mb-4">
-      <button id="btn-fit"     class="w-full px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded">Fit to viewport</button>
-      <button id="btn-relayout" class="w-full px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded">Re-run layout</button>
+      <button id="btn-fit"      class="ctl w-full px-2 py-1 text-xs rounded">Fit to viewport</button>
+      <button id="btn-relayout" class="ctl w-full px-2 py-1 text-xs rounded">Re-run layout</button>
     </div>
 
     <div id="legend" class="space-y-1 text-xs mb-4">
-      <div class="text-slate-400 uppercase tracking-wider">Legend</div>
+      <div class="text-label uppercase tracking-wider">Legend</div>
     </div>
 
-    <div id="metadata" class="text-xs text-slate-300 space-y-0.5 mb-4">
-      <div class="text-slate-400 uppercase tracking-wider mb-1">Stats</div>
-      <div id="metadata-body" class="font-mono whitespace-pre"></div>
+    <div id="metadata" class="text-xs text-body space-y-0.5 mb-4">
+      <div class="text-label uppercase tracking-wider mb-1">Stats</div>
+      <div id="metadata-body" class="mono whitespace-pre"></div>
     </div>
 
     <div id="detail" class="text-xs">
-      <div class="text-slate-400 uppercase tracking-wider mb-1">Selection</div>
-      <div id="detail-body" class="font-mono whitespace-pre text-slate-200">click a node…</div>
+      <div class="text-label uppercase tracking-wider mb-1">Selection</div>
+      <div id="detail-body" class="text-body">click a node…</div>
     </div>
   </aside>
 
   <!-- ── Cytoscape canvas ─────────────────────────────────────────────── -->
   <main class="flex-1 relative">
+    <button id="btn-sidebar-toggle"
+            class="ctl px-2 py-1 rounded text-xs font-medium"
+            title="Collapse sidebar" aria-label="Toggle sidebar">⟨</button>
     <div id="cy"></div>
-    <div id="status" class="absolute top-2 right-2 text-xs text-slate-300 bg-slate-800/80 px-2 py-1 rounded">loading…</div>
+    <div id="status" class="ctl absolute top-2 right-2 text-xs px-2 py-1 rounded">loading…</div>
   </main>
 </div>
 

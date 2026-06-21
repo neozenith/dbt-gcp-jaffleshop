@@ -21,7 +21,7 @@ from adaf.utils.toollog import run_tool
 
 log = logging.getLogger(__name__)
 
-__all__ = ["SqlfluffReport", "FORMAT_RULES", "run"]
+__all__ = ["SqlfluffReport", "FORMAT_RULES", "argv_for", "run"]
 
 # The layout + keyword-case rules `sqlfluff format` is able to auto-fix — the formatter's remit.
 FORMAT_RULES = "layout,capitalisation.keywords"
@@ -34,6 +34,12 @@ def _command(name: str, mode: str, targets: list[str]) -> list[str]:
     if mode == "fix":
         return ["sqlfluff", "format", *targets]
     return ["sqlfluff", "lint", "--rules", FORMAT_RULES, *targets]
+
+
+def argv_for(name: str, files: list[Path], *, fix: bool) -> list[str]:
+    """The SQLFluff argv for the selected files — the single source of truth for both running and
+    printing (``--commands``)."""
+    return _command(name, "fix" if fix else "check", [str(f) for f in files])
 
 
 def run(name: str, files: list[Path], *, fix: bool, scope: str, cwd: Path | None = None) -> SqlfluffReport:

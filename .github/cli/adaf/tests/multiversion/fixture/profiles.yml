@@ -1,0 +1,11 @@
+# Profile for the version-matrix fixture. `dbt parse` loads a profile but opens NO
+# warehouse connection, so the fixture parses offline with no credentials. Every
+# engine in the matrix is a pip dbt-core + dbt-duckdb venv, so all rows use this one
+# local duckdb target; no DB file is created at parse time.
+matrix_fixture:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: "matrix_fixture.duckdb"
+      threads: 1
