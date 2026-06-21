@@ -41,6 +41,11 @@ DEFAULT_SELECTORS = Path("selectors.yml")  # dbt hardcodes this filename (never 
 DEFAULT_SDAG_OUTPUT = Path("tmp") / "sdag"
 DEFAULT_WORKFLOWS_DIR = Path(".github") / "workflows"  # where `gha create` writes adaf-<product>.yml
 
+# `gha create` clones a canonical skeleton regardless of what product workflows already exist. Absolute
+# (package-relative) path: `under_root` passes it through unchanged. Mirrors the sdag assets pattern.
+GHA_ASSETS_DIR = Path(__file__).resolve().parent / "gha" / "assets"
+DEFAULT_WORKFLOW_TEMPLATE = GHA_ASSETS_DIR / "workflow-template.yml"
+
 # Pathspec for "what is a model file" — kept identical to the Makefile's CHANGED_MODELS.
 MODEL_GLOB = "models/*.sql"
 

@@ -44,6 +44,10 @@ from adaf.commands import review as review_cmd
 from adaf.commands import rules as rules_cmd
 from adaf.commands import sqlfluff as sqlfluff_cmd
 from adaf.commands.defer import cmd_defer_diff, cmd_defer_state
+from adaf.gha import cmd_analyse as gha_analyse
+from adaf.gha import cmd_create as gha_create
+from adaf.gha import cmd_update as gha_update
+from adaf.gha.globber import DEFAULT_PATH_MODE, PATH_MODES
 from adaf.utils.formatting import render_from_args
 from adaf.utils.logging_setup import configure_logging
 
@@ -52,7 +56,7 @@ log = logging.getLogger(__name__)
 _ROLES = ("entity", "dimension", "measure", "time", "model")
 _DETECTIONS = ("deterministic", "hybrid", "llm")
 # groups/commands that operate on a dbt project (lazy root discovery + profiles pinning in main())
-_NEEDS_PROJECT = ("check", "products", "review", "report", "defer-diff", "defer-state", "list", "ls")
+_NEEDS_PROJECT = ("check", "products", "review", "report", "defer-diff", "defer-state", "list", "ls", "gha")
 
 
 def _help(p: argparse.ArgumentParser):
@@ -277,8 +281,113 @@ def build_parser() -> argparse.ArgumentParser:
     _add_review_group(sub, common)
     _add_report_group(sub, common)
     _add_defer_group(sub, common)
+    _add_gha_group(sub, common)
 
     return parser
+
+
+def _add_gha_common(p: argparse.ArgumentParser) -> None:
+    """Args shared by ``gha create`` / ``update`` / ``analyse``: the product (or --all), selectors
+    file, the path-collapse mode, macro inclusion, and the output workflows dir."""
+    p.add_argument(
+        "product_name",
+        metavar="PRODUCT",
+        nargs="?",
+        help="Named selector / data product (must exist in selectors.yml). Omit with --all.",
+    )
+    p.add_argument(
+        "--all",
+        dest="all_products",
+        action="store_true",
+        help="Act on EVERY named selector in selectors.yml (template/refresh them all for review)",
+    )
+    p.add_argument(
+        "--selectors",
+        type=Path,
+        default=config.DEFAULT_SELECTORS,
+        help="selectors.yml defining the data products (default: <project>/%(default)s)",
+    )
+    p.add_argument(
+        "--paths",
+        choices=PATH_MODES,
+        default=DEFAULT_PATH_MODE,
+        help="How to collapse the selector's files into trigger globs: strict (every file) | leaf "
+        "(<dir>/*.{sql,yml}) | recursive (wildcard varying path components). Default: %(default)s",
+    )
+    p.add_argument(
+        "--macros",
+        action="store_true",
+        help="Also include the repo macros the selected models depend on (read from the manifest)",
+    )
+    p.add_argument(
+        "--workflows-dir",
+        type=Path,
+        default=config.DEFAULT_WORKFLOWS_DIR,
+        dest="workflows_dir",
+        help="Directory holding the workflows (default: <project>/%(default)s)",
+    )
+
+
+def _add_gha_group(sub, common: argparse.ArgumentParser) -> None:
+    """``adaf gha create|update|analyse`` — generate / refresh / analyse per-data-product workflows.
+
+    Each data product (named selector) gets a thin ``adaf-<product>.yml`` whose ``on.pull_request.paths``
+    trigger is DERIVED from the selector's membership (collapsed per --paths), so the workflow only fires
+    when that product's files change."""
+    gha_p = sub.add_parser("gha", parents=[common], help="Generate per-data-product GHA workflow entrypoints")
+    gha_p.set_defaults(func=_help(gha_p))
+    gha_sub = gha_p.add_subparsers(dest="gha_cmd", required=False)
+
+    create = gha_sub.add_parser(
+        "create",
+        parents=[common],
+        help="Create .github/workflows/adaf-<product>.yml from the template",
+        description=(
+            "Clone the CLI-owned workflow template into .github/workflows/adaf-<product>.yml, with the "
+            "trigger `paths` DERIVED from `dbt ls --selector <product>` (collapsed per --paths). Prints the "
+            "collapse working-out + false-positive audit. Refuses to overwrite without --force."
+        ),
+        epilog="Examples:\n  adaf gha create demand\n  adaf gha create --all --paths leaf",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_gha_common(create)
+    create.add_argument(
+        "--template",
+        type=Path,
+        default=config.DEFAULT_WORKFLOW_TEMPLATE,
+        help="Workflow template to clone (default: the CLI-owned base template)",
+    )
+    create.add_argument("--force", action="store_true", help="Overwrite an existing adaf-<product>.yml")
+    create.set_defaults(func=gha_create)
+
+    update = gha_sub.add_parser(
+        "update",
+        parents=[common],
+        help="Re-derive ONLY the trigger paths of an existing adaf-<product>.yml",
+        description=(
+            "Refresh the `on.pull_request.paths` of an existing workflow from the current selector "
+            "membership (e.g. after adding a model), leaving every other hand-edit intact."
+        ),
+        epilog="Examples:\n  adaf gha update demand\n  adaf gha update --all",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_gha_common(update)
+    update.set_defaults(func=gha_update)
+
+    analyse = gha_sub.add_parser(
+        "analyse",
+        parents=[common],
+        help="Tabulate selector size vs each --paths algorithm's false-positive rate",
+        description=(
+            "Read-only: for one selector (or --all), print a TUI table of how many files are TRUE members, "
+            "how many each of the 3 path algorithms would match, and the false-positive count + rate per "
+            "algorithm — so you can pick a --paths mode with eyes open."
+        ),
+        epilog="Examples:\n  adaf gha analyse demand\n  adaf gha analyse --all --macros",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_gha_common(analyse)
+    analyse.set_defaults(func=gha_analyse)
 
 
 def _add_defer_group(sub, common: argparse.ArgumentParser) -> None:
@@ -568,7 +677,7 @@ def _prepare_project(args: argparse.Namespace) -> None:
     # profiles.yml is committed inside the dbt project; force dbt + the sqlfluff dbt templater at
     # it so an inherited DBT_PROFILES_DIR (e.g. the repo root) can't win.
     os.environ["DBT_PROFILES_DIR"] = str(config.PROJECT_ROOT)
-    for attr in ("manifest", "catalog", "selectors", "output", "md_path", "review"):
+    for attr in ("manifest", "catalog", "selectors", "output", "md_path", "review", "template", "workflows_dir"):
         if hasattr(args, attr):
             setattr(args, attr, config.under_root(getattr(args, attr)))
 
