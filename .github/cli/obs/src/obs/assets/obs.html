@@ -5,34 +5,35 @@
 <title>obs — dbt run telemetry</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<!-- Poppins — geometric-sans display face (Cartology design system). -->
+<!-- Brand display faces (one per brand pack). The active brand sets --obs-font-sans. -->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 
-<!-- Tailwind via CDN (v3) — LAYOUT utilities only; every colour is a CSS variable driven by [data-theme]. -->
+<!-- Tailwind via CDN (v3) — LAYOUT utilities only; every colour is a CSS variable (obs.js injects them per brand+theme). -->
 <script src="https://cdn.tailwindcss.com/3.4.16"></script>
 <!-- Plotly for the overview scatter. Pinned — bump deliberately, not silently. -->
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 
 <!-- ── Theme bootstrap (runs before paint to avoid a flash of the wrong theme) ──
-     Resolves: localStorage choice → prefers-color-scheme → dark default, and stamps
-     it on <html data-theme>. obs.js reads/writes the same key. -->
+     Stamps data-theme on <html>. obs.js then injects the active BRAND's chrome palette
+     onto the CSS variables below (this static block is only a first-paint fallback). -->
 <script>
   (function () {
-    var KEY = "obs-theme";
     var saved = null;
-    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    try { saved = localStorage.getItem("obs-theme"); } catch (e) {}
     var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
-    var theme = saved === "light" || saved === "dark" ? saved : (prefersLight ? "light" : "dark");
-    document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.setAttribute("data-theme", saved === "light" || saved === "dark" ? saved : (prefersLight ? "light" : "dark"));
   })();
 </script>
 
 <style>
-  /* ── Theme provider: every chrome colour is a CSS variable so one [data-theme]
-       flip re-themes the UI. Plotly + the SVG Gantt can't read CSS vars, so obs.js
-       carries a parallel JS palette (design-tokens.json) for those canvases. ──── */
+  /* Fonts + first-paint fallback chrome (Cartology). obs.js overrides every --* below
+     from design-tokens.json for the active brand+theme. */
+  :root {
+    --obs-font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+    --obs-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
   :root[data-theme="dark"] {
     --canvas:#242C30; --app-bg:#242C30; --sidebar-bg:#2D373D; --panel-bg:#3A474E;
     --panel-hover:#4B5C65; --border:#4B5C65; --border-soft:#3A474E;
@@ -51,17 +52,16 @@
   }
 
   html, body { height:100%; width:100%; margin:0; padding:0; }
-  body { font-family:"Poppins", ui-sans-serif, system-ui, sans-serif; background:var(--sidebar-bg); color:var(--text); }
+  body { font-family:var(--obs-font-sans); background:var(--sidebar-bg); color:var(--text); }
   .canvas-surface { background:var(--canvas); transition:background 0.15s ease; }
 
-  /* Semantic chrome classes (replace baked Tailwind colour utilities). */
   .app-sidebar { background:var(--app-bg); border-color:var(--border); }
   .panel-title { color:var(--accent-text); }
   .text-sub    { color:var(--text-muted); }
   .text-body   { color:var(--text); }
   .text-label  { color:var(--text-muted); }
   .rule-accent { background:var(--accent); }
-  .mono { font-family:ui-monospace, monospace; }
+  .mono { font-family:var(--obs-font-mono); }
 
   .ctl { background:var(--panel-bg); color:var(--text); border:1px solid var(--border-soft);
          transition:background 0.12s ease, color 0.12s ease; }
@@ -75,25 +75,44 @@
   .legend-item { display:flex; align-items:center; gap:0.5rem; font-size:0.72rem; color:var(--text-muted); }
   #metadata-body, #detail-body, #overview-stats { color:var(--text-secondary); }
 
-  /* View routing: body[data-view] toggles which sidebar panel + main section shows. */
   body[data-view="overview"] .only-detail { display:none; }
   body[data-view="detail"]   .only-overview { display:none; }
   body[data-view="overview"] #detail   { display:none; }
   body[data-view="detail"]   #overview { display:none; }
 
-  /* Tooltip for Gantt bars. */
   #tooltip { position:fixed; pointer-events:none; z-index:50; display:none;
     background:var(--tooltip-bg); color:var(--text); border:1px solid var(--border);
-    font-family:ui-monospace, monospace; font-size:11px; line-height:1.4;
+    font-family:var(--obs-font-mono); font-size:11px; line-height:1.4;
     padding:7px 9px; border-radius:7px; max-width:26rem; white-space:pre; box-shadow:0 4px 14px var(--shadow); }
 
-  /* Collapsible sidebar — floating chevron over the canvas (carto T39 pattern). */
   #app-root.sidebar-collapsed .app-sidebar { display:none; }
-  #btn-sidebar-toggle { position:absolute; top:8px; left:8px; z-index:20; line-height:1; font-family:ui-monospace, monospace; }
+  #btn-sidebar-toggle { position:absolute; top:8px; left:8px; z-index:20; line-height:1; font-family:var(--obs-font-mono); }
 
   #scatter { width:100%; height:100%; }
   #chart { width:100%; }
-  main { overflow:auto; }
+
+  /* ── Time-brush (cross-filter): a dual-thumb range over the run's wall window.
+       Both range inputs overlay one track; the fill shows the selected sub-window. ── */
+  .brush { position:relative; height:30px; margin-top:6px; }
+  .brush-track { position:absolute; left:0; right:0; top:13px; height:4px; border-radius:999px; background:var(--panel-hover); }
+  .brush-fill  { position:absolute; top:13px; height:4px; border-radius:999px; background:var(--accent); }
+  .brush input[type=range] { position:absolute; left:0; top:0; width:100%; height:30px; margin:0;
+    -webkit-appearance:none; appearance:none; background:transparent; pointer-events:none; }
+  .brush input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; pointer-events:auto;
+    height:20px; width:13px; border-radius:4px; background:var(--accent); border:1px solid var(--border); cursor:ew-resize; box-shadow:0 1px 3px var(--shadow); }
+  .brush input[type=range]::-moz-range-thumb { pointer-events:auto;
+    height:20px; width:13px; border-radius:4px; background:var(--accent); border:1px solid var(--border); cursor:ew-resize; }
+
+  /* Collapsible full run-logs (one line per node, in execution order). */
+  #run-logs { margin:10px 12px 18px; border:1px solid var(--border-soft); border-radius:8px; background:var(--app-bg); }
+  #run-logs > summary { cursor:pointer; padding:8px 12px; font-size:12px; color:var(--accent-text);
+    list-style:none; user-select:none; font-weight:600; }
+  #run-logs > summary::-webkit-details-marker { display:none; }
+  #run-logs > summary::before { content:"\25B8\00a0"; }
+  #run-logs[open] > summary::before { content:"\25BE\00a0"; }
+  #run-logs-body { padding:0 12px 12px; font-family:var(--obs-font-mono); font-size:11px; line-height:1.55;
+    white-space:pre-wrap; color:var(--text-secondary); max-height:42vh; overflow:auto; }
+  #run-logs-body .log-fail { color:var(--fail-text); }
 </style>
 </head>
 <body data-view="overview">
@@ -115,6 +134,12 @@
     <p id="build-banner" class="text-sub text-[10px] mono mb-3 leading-tight"></p>
     <div class="rule-accent h-0.5 w-10 rounded-full mb-4"></div>
 
+    <!-- Brand pack selector -->
+    <div class="space-y-1 mb-4">
+      <label class="text-label block text-xs uppercase tracking-wider" for="brand-picker">Brand</label>
+      <select id="brand-picker" class="ctl w-full px-2 py-1 text-xs rounded"></select>
+    </div>
+
     <!-- Primary nav -->
     <div class="space-y-2 mb-4">
       <div class="ctl-group flex rounded overflow-hidden">
@@ -125,16 +150,11 @@
 
     <!-- ── Overview-only panels ─────────────────────────────────────────── -->
     <div class="only-overview">
-      <div class="text-xs text-body space-y-0.5 mb-4">
+      <div class="text-xs text-body space-y-0.5 mb-2">
         <div class="text-label uppercase tracking-wider mb-1">Window</div>
         <div id="overview-stats" class="mono whitespace-pre"></div>
       </div>
-      <div class="space-y-1 text-xs mb-4">
-        <div class="text-label uppercase tracking-wider mb-1">Legend</div>
-        <div class="legend-item"><span class="swatch" id="lg-pass"></span><span>passed</span></div>
-        <div class="legend-item"><span class="swatch" id="lg-fail"></span><span>has failures</span></div>
-        <p class="text-sub text-[10px] leading-tight mt-1">Click a point to open that run's Gantt.</p>
-      </div>
+      <p class="text-sub text-[10px] leading-tight">Click a point to open that run's Gantt. The pass/fail legend is on the chart.</p>
     </div>
 
     <!-- ── Detail-only panels ───────────────────────────────────────────── -->
@@ -146,21 +166,11 @@
       </div>
 
       <div class="space-y-2 mb-4">
-        <label class="text-label block text-xs uppercase tracking-wider">Zoom (px / second)</label>
-        <div class="flex items-center gap-2">
-          <button id="btn-zoom-out" class="ctl px-2 py-1 rounded text-xs">−</button>
-          <input id="zoom" type="range" min="2" max="60" step="1" value="14" style="flex:1" />
-          <button id="btn-zoom-in" class="ctl px-2 py-1 rounded text-xs">+</button>
-        </div>
-      </div>
-
-      <div class="space-y-2 mb-4">
         <label class="text-label block text-xs uppercase tracking-wider">Colour by</label>
         <div class="ctl-group flex rounded overflow-hidden" id="colour-seg">
           <button class="view-btn ctl flex-1 px-2 py-1 text-xs" data-mode="resource">resource_type</button>
           <button class="view-btn ctl flex-1 px-2 py-1 text-xs" data-mode="status">status</button>
         </div>
-        <label class="legend-item mt-1" style="cursor:pointer"><input id="chk-labels" type="checkbox" /> label bars</label>
       </div>
 
       <div class="space-y-1 text-xs mb-4">
@@ -181,16 +191,37 @@
   </aside>
 
   <!-- ── Main ─────────────────────────────────────────────────────────── -->
-  <main class="canvas-surface flex-1 relative">
+  <main class="canvas-surface flex-1 relative overflow-hidden">
     <button id="btn-sidebar-toggle" class="ctl px-2 py-1 rounded text-xs font-medium"
             title="Collapse sidebar" aria-label="Toggle sidebar">⟨</button>
-    <div id="status" class="ctl absolute top-2 right-2 text-xs px-2 py-1 rounded">loading…</div>
+    <div id="status" class="ctl absolute top-2 right-2 text-xs px-2 py-1 rounded z-10">loading…</div>
 
     <!-- Overview: Plotly scatter (time × duration, coloured by pass/fail) -->
     <section id="overview" class="absolute inset-0 p-2"><div id="scatter"></div></section>
 
-    <!-- Detail: SVG Gantt for the selected run -->
-    <section id="detail" class="absolute inset-0"><div id="chart"></div></section>
+    <!-- Detail: time-brush (cross-filter) above a full-width SVG Gantt -->
+    <section id="detail" class="absolute inset-0 flex flex-col">
+      <div class="shrink-0 px-4 pt-3 pb-2 border-b" style="border-color:var(--border-soft)">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-label text-xs uppercase tracking-wider">Time window (brush to zoom)</span>
+          <button id="brush-reset" class="ctl px-2 py-0.5 rounded text-[11px]">reset</button>
+        </div>
+        <div id="brush" class="brush">
+          <div class="brush-track"></div>
+          <div id="brush-fill" class="brush-fill"></div>
+          <input id="brush-start" type="range" min="0" max="1000" step="1" value="0" aria-label="window start" />
+          <input id="brush-end" type="range" min="0" max="1000" step="1" value="1000" aria-label="window end" />
+        </div>
+        <div id="brush-readout" class="mono text-[11px] mt-1" style="color:var(--text-muted)"></div>
+      </div>
+      <div id="chart-scroll" class="flex-1 overflow-auto">
+        <div id="chart"></div>
+        <details id="run-logs">
+          <summary id="run-logs-summary">Run logs</summary>
+          <div id="run-logs-body"></div>
+        </details>
+      </div>
+    </section>
   </main>
 </div>
 

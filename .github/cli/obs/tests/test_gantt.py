@@ -150,3 +150,32 @@ def test_bundle_missing_invocation_metadata_tolerated(window_rows):
     assert b["metadata"]["n_runs"] == 2
     assert all(e["configured_threads"] is None for e in b["index"])
     assert all(e["command"] is None for e in b["index"])
+
+
+def _status_row(invocation_id: str, status: str) -> dict:
+    return {
+        "invocation_id": invocation_id,
+        "thread_id": "Thread-1 (worker)",
+        "node_id": f"model.x.{status}",
+        "name": status,
+        "resource_type": "model",
+        "status": status,
+        "execute_started_at": "2026-06-17T05:10:00.000000Z",
+        "execute_completed_at": "2026-06-17T05:10:01.000000Z",
+        "duration_secs": 1.0,
+    }
+
+
+@pytest.mark.parametrize("status", ["no-op", "NO-OP", "skipped", "success", "pass", "warn"])
+def test_noop_and_skipped_do_not_flag_failure(status):
+    # A run of only success + a no-op/skipped/warn node must NOT read as failed.
+    rows = [_status_row("inv", "success"), _status_row("inv", status)]
+    b = gantt.build_bundle([], rows, source_label="x", days=7)
+    assert b["index"][0]["has_failures"] is False
+
+
+@pytest.mark.parametrize("status", ["error", "fail", "failed", "runtime error"])
+def test_error_statuses_flag_failure(status):
+    rows = [_status_row("inv", "success"), _status_row("inv", status)]
+    b = gantt.build_bundle([], rows, source_label="x", days=7)
+    assert b["index"][0]["has_failures"] is True

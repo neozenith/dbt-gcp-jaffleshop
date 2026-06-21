@@ -38,25 +38,33 @@ A vanilla-JS single-page app (no build step) with two URL-routed views:
 
 - **Overview** (`obs.html`) — a **Plotly scatter** of every run: x = run start, y = wall
   duration, colour = pass/fail, marker size = thread count. Click any point to open that
-  run's detail. Built on the Cartology design system (Poppins, lime accent, CSS-variable
-  chrome) borrowed from `adaf`'s sdag viewer.
-- **Detail** (`obs.html?run=<id>`) — that run's thread-grouped **SVG Gantt**, plus a run
-  picker, zoom, colour-by `resource_type`/`status`, and hover tooltips.
+  run's detail. The pass/fail legend sits in the chart's right gutter.
+- **Detail** (`obs.html?run=<id>`) — that run's thread-grouped **SVG Gantt**, always sized
+  to the full width, with a **time-brush** (a dual-handle slider) to zoom into a sub-window.
+  Bars are always labelled. Plus a run picker, colour-by `resource_type`/`status`, hover
+  tooltips, and a collapsible **Run logs** panel (one line per node, in execution order,
+  with status + the dbt/adapter message).
 
 Navigation is **deep-linkable**: the URL updates (`?run=<id>`) as you move, Back/Forward
-work, and a `?run=` link opens straight into a run's Gantt. **Light/dark theme** is a
-provider that flips a `data-theme` attribute (CSS variables re-theme the chrome) *and*
-re-renders the Plotly + Gantt canvases from a parallel JS palette (canvases can't read CSS
-vars). The sidebar collapses; theme/zoom/collapse persist in `localStorage`.
+work, and a `?run=` link opens straight into a run's Gantt.
 
-### Design tokens (brand curate point)
+### Brands + theming
 
-Canvas colours and fonts live in **one file**,
-[`src/obs/assets/design-tokens.json`](src/obs/assets/design-tokens.json): per-theme Plotly
-palette (paper/plot/font/grid/pass/fail), the Gantt lane/grid/bar colours, the
-`resource_type`/`status` scales, and font stacks. The chrome palette lives as CSS variables
-in `obs.html` (`:root[data-theme]`). Edit either, re-serve (`design-tokens.json` is copied
-verbatim into the output), refresh. No code change, no rebuild.
+obs ships **three brand packs** — *FreshGreens* (lime/Poppins), *V2 AI* (amber-on-black/
+Outfit), and *Josh's Karaoke Bar* (magenta-on-purple/Inter, the default) — each with light
+and dark themes. A brand selector in the sidebar switches live; the choice and theme persist
+in `localStorage`. The theme provider flips a `data-theme` attribute and **injects** the
+active brand's `chrome` palette onto CSS variables, then re-renders the Plotly + Gantt
+canvases from a parallel JS palette (canvases can't read CSS vars).
+
+### Design tokens (single brand curate point)
+
+All brand colour + font definitions live in **one file**,
+[`src/obs/assets/design-tokens.json`](src/obs/assets/design-tokens.json): a `brands` map,
+each brand carrying `fonts` + `themes.{light,dark}`, and each theme a full `chrome` palette
+(the CSS variables), a `plotly` palette, and the `gantt` lane/grid/bar colours. The
+`resourceColours`/`statusColours` data scales are shared across brands. Edit it, re-serve
+(it's copied verbatim into the output), refresh. No code change, no rebuild.
 
 ## Auth — read-only, no keyfiles
 

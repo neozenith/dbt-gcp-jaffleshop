@@ -43,6 +43,7 @@ def _run_rows(invocation_id: str, base_minute: int, *, fail: bool) -> list[dict]
                 "name": name,
                 "resource_type": rtype,
                 "status": st,
+                "message": ("FAIL 1" if st not in ("success", "pass") else "SUCCESS"),
                 "execute_started_at": start,
                 "execute_completed_at": end,
                 "duration_secs": dur,

@@ -114,6 +114,7 @@ def fetch_run_results_window(
           name,
           resource_type,
           status,
+          message,
           execute_started_at,
           execute_completed_at,
           execution_time           AS duration_secs
