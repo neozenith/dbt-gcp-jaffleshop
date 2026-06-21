@@ -1,17 +1,10 @@
 {
-  "_about": "Single source of truth for obs viewer branding (Cartology design system). obs.html carries the CHROME palette as CSS variables per [data-theme]; obs.js fetches THIS file at runtime to colour the CANVAS surfaces that can't read CSS vars — the Plotly overview scatter and the SVG Gantt. Curate colours/fonts here; re-serve, refresh. No rebuild.",
-  "version": 1,
+  "_about": "Single source of truth for obs viewer branding. THREE brand styles, each with light + dark themes. obs.js fetches this at runtime and (a) injects each theme's `chrome` palette onto CSS custom properties (the sidebar/controls), (b) feeds the `plotly` + `gantt` palettes to the canvases (which can't read CSS vars). resourceColours/statusColours are SHARED across brands — they encode data, not brand. Curate here; re-serve, refresh. No rebuild.",
+  "version": 2,
+  "defaultBrand": "karaoke",
   "defaultTheme": "system",
-  "brand": {
-    "name": "obs",
-    "tagline": "dbt run telemetry"
-  },
-  "fonts": {
-    "sans": "\"Poppins\", ui-sans-serif, system-ui, -apple-system, sans-serif",
-    "mono": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
-  },
   "resourceColours": {
-    "_note": "Gantt bar fill by resource_type (Cartology canvas palette, extended for obs node kinds).",
+    "_note": "Gantt bar fill by resource_type. Shared across brands (semantic data encoding, colour-blind-safe).",
     "model": "#3b82f6",
     "test": "#a855f7",
     "unit_test": "#ec4899",
@@ -24,7 +17,7 @@
     "_fallback": "#94a3b8"
   },
   "statusColours": {
-    "_note": "Pass/fail semantics shared by the Gantt bar stroke and the overview scatter marks.",
+    "_note": "Pass/fail semantics shared by the Gantt bar stroke and (via per-theme markers) the overview scatter.",
     "pass": "#10b981",
     "success": "#10b981",
     "fail": "#ef4444",
@@ -34,49 +27,104 @@
     "skipped": "#6b7280",
     "_fallback": "#94a3b8"
   },
-  "themes": {
-    "dark": {
-      "name": "dark",
-      "toggleLabel": "☽ Dark",
-      "laneBandA": "#242C30",
-      "laneBandB": "#2D373D",
-      "grid": "#3A474E",
-      "axisText": "#ACB5B9",
-      "barStroke": "rgba(0,0,0,0.40)",
-      "plotly": {
-        "paper": "#242C30",
-        "plot": "#2D373D",
-        "font": "#E3E6E7",
-        "grid": "#3A474E",
-        "axisLine": "#4B5C65",
-        "markerPass": "#6EE7B7",
-        "markerFail": "#FCA5A5",
-        "markerLine": "#242C30",
-        "hoverBg": "#1B2125",
-        "hoverBorder": "#4B5C65",
-        "accent": "#A5C84D"
+  "brands": {
+    "freshgreens": {
+      "name": "FreshGreens",
+      "tagline": "dbt run telemetry",
+      "fonts": { "sans": "\"Poppins\", ui-sans-serif, system-ui, sans-serif", "mono": "ui-monospace, SFMono-Regular, Menlo, monospace" },
+      "themes": {
+        "dark": {
+          "toggleLabel": "☽ Dark",
+          "chrome": {
+            "canvas": "#242C30", "appBg": "#242C30", "sidebarBg": "#2D373D", "panelBg": "#3A474E", "panelHover": "#4B5C65",
+            "border": "#4B5C65", "borderSoft": "#3A474E", "textStrong": "#F1F3F3", "text": "#E3E6E7",
+            "textSecondary": "#C7CDD0", "textMuted": "#ACB5B9", "accent": "#A5C84D", "accentText": "#B8D666",
+            "onAccent": "#1B2125", "okText": "#6EE7B7", "warnText": "#FCD34D", "failText": "#FCA5A5",
+            "tooltipBg": "rgba(20,26,29,0.96)", "shadow": "rgba(0,0,0,0.45)"
+          },
+          "plotly": { "paper": "#242C30", "plot": "#2D373D", "font": "#E3E6E7", "grid": "#3A474E", "axisLine": "#4B5C65",
+            "markerPass": "#6EE7B7", "markerFail": "#FCA5A5", "markerLine": "#242C30", "hoverBg": "#1B2125", "hoverBorder": "#4B5C65", "accent": "#A5C84D" },
+          "gantt": { "laneBandA": "#242C30", "laneBandB": "#2D373D", "grid": "#3A474E", "axisText": "#ACB5B9", "barStroke": "rgba(0,0,0,0.40)" }
+        },
+        "light": {
+          "toggleLabel": "☼ Light",
+          "chrome": {
+            "canvas": "#EDEFF0", "appBg": "#E4E7E8", "sidebarBg": "#FFFFFF", "panelBg": "#F1F3F4", "panelHover": "#E2E5E7",
+            "border": "#C2C8CB", "borderSoft": "#DDE0E2", "textStrong": "#1B2125", "text": "#28323A",
+            "textSecondary": "#3A474E", "textMuted": "#56656D", "accent": "#A5C84D", "accentText": "#46630F",
+            "onAccent": "#1B2125", "okText": "#0D6B30", "warnText": "#B45309", "failText": "#C2151B",
+            "tooltipBg": "rgba(255,255,255,0.97)", "shadow": "rgba(60,72,80,0.22)"
+          },
+          "plotly": { "paper": "#FFFFFF", "plot": "#F1F3F4", "font": "#28323A", "grid": "#DDE0E2", "axisLine": "#C2C8CB",
+            "markerPass": "#0D6B30", "markerFail": "#C2151B", "markerLine": "#FFFFFF", "hoverBg": "#FFFFFF", "hoverBorder": "#C2C8CB", "accent": "#46630F" },
+          "gantt": { "laneBandA": "#FFFFFF", "laneBandB": "#F1F3F4", "grid": "#DDE0E2", "axisText": "#56656D", "barStroke": "rgba(27,33,37,0.18)" }
+        }
       }
     },
-    "light": {
-      "name": "light",
-      "toggleLabel": "☼ Light",
-      "laneBandA": "#FFFFFF",
-      "laneBandB": "#F1F3F4",
-      "grid": "#DDE0E2",
-      "axisText": "#56656D",
-      "barStroke": "rgba(27,33,37,0.18)",
-      "plotly": {
-        "paper": "#FFFFFF",
-        "plot": "#F1F3F4",
-        "font": "#28323A",
-        "grid": "#DDE0E2",
-        "axisLine": "#C2C8CB",
-        "markerPass": "#0D6B30",
-        "markerFail": "#C2151B",
-        "markerLine": "#FFFFFF",
-        "hoverBg": "#FFFFFF",
-        "hoverBorder": "#C2C8CB",
-        "accent": "#46630F"
+    "v2ai": {
+      "name": "V2 AI",
+      "tagline": "AI in the Enterprise",
+      "fonts": { "sans": "\"Outfit\", ui-sans-serif, system-ui, sans-serif", "mono": "ui-monospace, SFMono-Regular, Menlo, monospace" },
+      "themes": {
+        "dark": {
+          "toggleLabel": "☽ Dark",
+          "chrome": {
+            "canvas": "#000000", "appBg": "#000000", "sidebarBg": "#09090B", "panelBg": "#18181B", "panelHover": "#27272A",
+            "border": "#27272A", "borderSoft": "#18181B", "textStrong": "#FAFAFA", "text": "#F4F4F5",
+            "textSecondary": "#D4D4D8", "textMuted": "#A1A1AA", "accent": "#FEC40E", "accentText": "#FEC40E",
+            "onAccent": "#09090B", "okText": "#4ADE80", "warnText": "#FCD34D", "failText": "#FDA4AF",
+            "tooltipBg": "rgba(9,9,11,0.96)", "shadow": "rgba(0,0,0,0.55)"
+          },
+          "plotly": { "paper": "#000000", "plot": "#18181B", "font": "#F4F4F5", "grid": "#27272A", "axisLine": "#3F3F46",
+            "markerPass": "#4ADE80", "markerFail": "#FB7185", "markerLine": "#000000", "hoverBg": "#09090B", "hoverBorder": "#3F3F46", "accent": "#FEC40E" },
+          "gantt": { "laneBandA": "#000000", "laneBandB": "#18181B", "grid": "#27272A", "axisText": "#A1A1AA", "barStroke": "rgba(0,0,0,0.50)" }
+        },
+        "light": {
+          "toggleLabel": "☼ Light",
+          "chrome": {
+            "canvas": "#FAFAFA", "appBg": "#F4F4F5", "sidebarBg": "#FFFFFF", "panelBg": "#F4F4F5", "panelHover": "#E4E4E7",
+            "border": "#E4E4E7", "borderSoft": "#F4F4F5", "textStrong": "#09090B", "text": "#18181B",
+            "textSecondary": "#3F3F46", "textMuted": "#52525B", "accent": "#FEC40E", "accentText": "#8A6300",
+            "onAccent": "#09090B", "okText": "#15803D", "warnText": "#B45309", "failText": "#BE123C",
+            "tooltipBg": "rgba(255,255,255,0.97)", "shadow": "rgba(0,0,0,0.15)"
+          },
+          "plotly": { "paper": "#FFFFFF", "plot": "#F4F4F5", "font": "#18181B", "grid": "#E4E4E7", "axisLine": "#D4D4D8",
+            "markerPass": "#15803D", "markerFail": "#BE123C", "markerLine": "#FFFFFF", "hoverBg": "#FFFFFF", "hoverBorder": "#D4D4D8", "accent": "#8A6300" },
+          "gantt": { "laneBandA": "#FFFFFF", "laneBandB": "#F4F4F5", "grid": "#E4E4E7", "axisText": "#52525B", "barStroke": "rgba(9,9,11,0.16)" }
+        }
+      }
+    },
+    "karaoke": {
+      "name": "Josh's Karaoke Bar",
+      "tagline": "everyone is your friend",
+      "fonts": { "sans": "\"Inter\", ui-sans-serif, system-ui, sans-serif", "mono": "ui-monospace, SFMono-Regular, Menlo, monospace" },
+      "themes": {
+        "dark": {
+          "toggleLabel": "☽ Dark",
+          "chrome": {
+            "canvas": "#1A1625", "appBg": "#1A1625", "sidebarBg": "#2D2A3A", "panelBg": "#2D2A3A", "panelHover": "#3A3650",
+            "border": "#3A3650", "borderSoft": "#2D2A3A", "textStrong": "#F5F5F5", "text": "#ECECEC",
+            "textSecondary": "#D8D8DE", "textMuted": "#B8B8B8", "accent": "#E91E63", "accentText": "#FF6F9F",
+            "onAccent": "#FFFFFF", "okText": "#34D399", "warnText": "#FFD700", "failText": "#FB7185",
+            "tooltipBg": "rgba(26,22,37,0.96)", "shadow": "rgba(0,0,0,0.55)"
+          },
+          "plotly": { "paper": "#1A1625", "plot": "#2D2A3A", "font": "#ECECEC", "grid": "#3A3650", "axisLine": "#4A4660",
+            "markerPass": "#34D399", "markerFail": "#FB7185", "markerLine": "#1A1625", "hoverBg": "#2D2A3A", "hoverBorder": "#3A3650", "accent": "#E91E63" },
+          "gantt": { "laneBandA": "#1A1625", "laneBandB": "#2D2A3A", "grid": "#3A3650", "axisText": "#B8B8B8", "barStroke": "rgba(0,0,0,0.45)" }
+        },
+        "light": {
+          "toggleLabel": "☼ Light",
+          "chrome": {
+            "canvas": "#ECECEC", "appBg": "#ECECEC", "sidebarBg": "#FFFFFF", "panelBg": "#F5F5F5", "panelHover": "#ECECEC",
+            "border": "#D8D8DE", "borderSoft": "#ECECEC", "textStrong": "#1A1625", "text": "#2D2A3A",
+            "textSecondary": "#3A3650", "textMuted": "#5A5766", "accent": "#E91E63", "accentText": "#C2185B",
+            "onAccent": "#FFFFFF", "okText": "#15803D", "warnText": "#B45309", "failText": "#C2151B",
+            "tooltipBg": "rgba(255,255,255,0.97)", "shadow": "rgba(60,55,75,0.20)"
+          },
+          "plotly": { "paper": "#FFFFFF", "plot": "#F5F5F5", "font": "#2D2A3A", "grid": "#D8D8DE", "axisLine": "#B8B8B8",
+            "markerPass": "#15803D", "markerFail": "#C2151B", "markerLine": "#FFFFFF", "hoverBg": "#FFFFFF", "hoverBorder": "#D8D8DE", "accent": "#C2185B" },
+          "gantt": { "laneBandA": "#FFFFFF", "laneBandB": "#F5F5F5", "grid": "#D8D8DE", "axisText": "#5A5766", "barStroke": "rgba(26,22,37,0.18)" }
+        }
       }
     }
   }

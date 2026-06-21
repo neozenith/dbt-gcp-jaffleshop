@@ -86,3 +86,37 @@ def test_sidebar_collapses(overview):
     expect(overview.locator("#app-root")).not_to_have_class(COLLAPSED)
     overview.locator("#btn-sidebar-toggle").click()
     expect(overview.locator("#app-root")).to_have_class(COLLAPSED, timeout=5_000)
+
+
+def test_default_brand_is_karaoke(overview):
+    # design-tokens.json sets defaultBrand: karaoke.
+    assert overview.locator("#brand-picker").input_value() == "karaoke"
+
+
+def test_brand_switch_applies_palette(overview):
+    overview.locator("#brand-picker").select_option("v2ai")
+    accent = overview.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()")
+    assert accent.lower() == "#fec40e"  # V2 AI signature amber
+    assert overview.evaluate("() => localStorage.getItem('obs-brand')") == "v2ai"
+
+
+def test_run_logs_expand(page: Page, site):
+    page.goto(f"{site.url}?run={site.run_id}", wait_until="networkidle")
+    page.wait_for_selector("#chart svg", timeout=20_000)
+    expect(page.locator("#run-logs-summary")).to_contain_text("Run logs")
+    # Collapsed by default; expands on click; one row per node (the seeded run has 4).
+    assert page.locator("#run-logs").evaluate("el => el.open") is False
+    page.locator("#run-logs-summary").click()
+    assert page.locator("#run-logs").evaluate("el => el.open") is True
+    expect(page.locator("#run-logs-body > div")).to_have_count(4)
+
+
+def test_time_brush_narrows_window(page: Page, site):
+    page.goto(f"{site.url}?run={site.run_id}", wait_until="networkidle")
+    page.wait_for_selector("#chart svg", timeout=20_000)
+    # Full window ⇒ the selected-range fill spans the whole track.
+    assert page.locator("#brush-fill").evaluate("el => el.style.width") == "100%"
+    # Drag the end handle to the midpoint (500/1000) and fire input.
+    page.locator("#brush-end").evaluate("el => { el.value = '500'; el.dispatchEvent(new Event('input', {bubbles:true})); }")
+    assert page.locator("#brush-fill").evaluate("el => el.style.width") == "50%"
+    expect(page.locator("#brush-readout")).to_contain_text("of")

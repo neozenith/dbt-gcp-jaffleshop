@@ -44,14 +44,16 @@ scales as the thread-permutation sweep accumulates runs.
   `.env` load), never import-time constants. Never add a write path or a keyfile.
 - **Templates resolve package-relative** (`Path(__file__).parent / "assets"`), never
   cwd-relative — so the bundle resolves from source *and* when installed via `uvx`.
-- **Two-surface theming (Cartology design system).** Chrome colours are CSS variables
-  in `obs.html` (`:root[data-theme]`), flipped by a pre-paint bootstrap script + the
-  toggle. The **canvases can't read CSS vars** — Plotly and the SVG Gantt are coloured
-  from a parallel JS palette in `assets/design-tokens.json` (per-theme `plotly` block +
-  Gantt lane/grid/bar colours + resource/status scales). `applyTheme` MUST re-render the
-  live canvas (Plotly `react` / Gantt redraw) on toggle, not just flip the attribute.
+- **Brand + two-surface theming.** `design-tokens.json` holds a `brands` map (3 packs),
+  each with `fonts` + `themes.{light,dark}`, each theme carrying a `chrome` palette, a
+  `plotly` palette, and `gantt` colours. `applyBrandTheme` **injects** the chrome onto CSS
+  variables at runtime (the static `:root[data-theme]` block in `obs.html` is only a
+  first-paint fallback) AND re-renders the live canvas (Plotly `react` / Gantt redraw) —
+  Plotly + the SVG Gantt can't read CSS vars, so it MUST do both, not just flip the
+  attribute. `resourceColours`/`statusColours` are shared (data encodings, not brand).
   `design-tokens.json` is the single curate point (`FALLBACK_TOKENS` in the JS is a
-  soft-fail default only); `write_bundle` copies it verbatim so editing it curates the viewer.
+  soft-fail default only); `write_bundle` copies it verbatim. Default brand/theme come from
+  `defaultBrand`/`defaultTheme`; both persist in `localStorage`.
 - **URL is the router.** `?run=<id>` ⇒ detail, absent ⇒ overview. `navigate()` pushes
   state then renders; `popstate` re-renders from the URL. Deep links and Back/Forward
   MUST keep working — the e2e suite asserts it. The overview Plotly scatter uses SVG

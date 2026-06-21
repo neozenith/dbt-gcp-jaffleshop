@@ -19,7 +19,7 @@ Per-run payload schema (one ``runs/<id>.json``, consumed by ``assets/gantt.js``)
                     n_nodes, n_threads, wall_start, wall_end,
                     wall_secs, cpu_secs, speedup, resource_types[] },
       "threads": ["Thread-1 (worker)", ...],          # lane order, top-to-bottom
-      "nodes":   [ { thread_id, node_id, name, resource_type, status,
+      "nodes":   [ { thread_id, node_id, name, resource_type, status, message,
                      start, end,                       # ISO-8601
                      start_offset_secs, duration_secs  # numbers, for x-positioning
                    }, ... ]
@@ -134,6 +134,7 @@ def build_gantt_payload(rows: list[dict[str, Any]], invocation_id: str, *, sourc
                 "name": p.get("name") or p["node_id"].rsplit(".", 1)[-1],
                 "resource_type": p.get("resource_type") or "unknown",
                 "status": p.get("status") or "unknown",
+                "message": p.get("message"),
                 "start": _iso(p["_start"]),
                 "end": _iso(p["_end"]),
                 "start_offset_secs": round((p["_start"] - wall_start).total_seconds(), 3),
