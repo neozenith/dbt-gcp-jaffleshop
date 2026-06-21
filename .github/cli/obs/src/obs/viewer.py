@@ -2,7 +2,7 @@
 
 Kept separate from the Gantt engine (``gantt.py``) so the pure transform never imports
 ``http``/``socketserver``. ``no-store`` headers mean a browser reload always re-fetches the
-freshly-regenerated ``gantt.json`` + assets.
+freshly-regenerated bundle (``index.json`` + ``runs/<id>.json``) + assets.
 """
 
 # Standard Library
