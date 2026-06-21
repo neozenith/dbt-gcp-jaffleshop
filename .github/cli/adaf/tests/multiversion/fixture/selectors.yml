@@ -1,0 +1,7 @@
+selectors:
+  # The one data product the version-matrix harness exercises. Everything tagged
+  # `matrix_demo` (every model + the raw source) is a member, so adaf's boundary
+  # classification sees a real inbound source and outbound marts.
+  - name: matrix_demo
+    description: All fixture resources tagged matrix_demo (the harness data product).
+    definition: "tag:matrix_demo"

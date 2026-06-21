@@ -1,0 +1,15 @@
+version: 2
+
+exposures:
+  # Backs both outbound marts, so MD-11 (must back an exposure) is satisfied for each.
+  - name: orders_dashboard
+    type: dashboard
+    maturity: high
+    url: https://example.com/dashboards/orders
+    description: "Executive orders dashboard consuming the product's outbound marts."
+    owner:
+      name: Data Team
+      email: data@example.com
+    depends_on:
+      - ref('dim_customers')
+      - ref('fct_orders')

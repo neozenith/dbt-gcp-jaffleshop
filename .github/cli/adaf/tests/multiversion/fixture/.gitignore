@@ -1,0 +1,8 @@
+# dbt run-time artifacts — the version-matrix driver writes manifests/logs under the
+# repo's tmp/, but a stray local `dbt` invocation in this project dir would land here.
+target/
+logs/
+dbt_packages/
+tmp/
+.user.yml
+*.duckdb

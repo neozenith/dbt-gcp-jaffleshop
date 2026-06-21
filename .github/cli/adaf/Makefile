@@ -2,7 +2,8 @@
 # Dev command-and-control. Run via `make -C .github/cli/adaf <target>` from the repo root
 # (no cd needed), or `make <target>` from this directory.
 
-.PHONY: help fix ci sync format lint typecheck test evals validate
+.PHONY: help fix ci sync format lint typecheck test evals validate \
+	adaf-multiversion-ci adaf-multiversion-rebaseline
 
 help:
 	@echo "adaf dev targets:"
@@ -42,3 +43,13 @@ fix: format
 	uvx ruff check src tests --line-length 120 --fix
 
 ci: lint typecheck test validate
+
+# Docker-backed dbt version-matrix suite (off ci — minutes + image builds + PyPI). Builds + runs one
+# image per pinned dbt engine and snapshots adaf's gates vs tests/multiversion/goldens/. Needs Docker.
+# `-m multiversion` overrides the pyproject default `-m 'not multiversion'`. See tests/multiversion/README.md.
+adaf-multiversion-ci:
+	uv run pytest tests/multiversion/test_multiversion.py -m multiversion -s -v
+
+# Deliberate golden re-baseline (review the diff, then commit — never auto-green a run).
+adaf-multiversion-rebaseline:
+	ADAF_GOLDEN_UPDATE=1 uv run pytest tests/multiversion/test_multiversion.py -m multiversion -s -v

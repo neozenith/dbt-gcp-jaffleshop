@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  # Inbound boundary node for the data product. Has a freshness policy (satisfies
+  # TM-AU-01) but deliberately NO Elementary volume-anomaly test (violates MD-07).
+  - name: raw
+    schema: raw_data
+    # Forward-compatible: source-level `tags` / `loaded_at_field` / `freshness` MUST be nested under
+    # `config:`. dbt's classic Python parser (1.11) tolerated them loose, but dbt 2.0's strict Rust
+    # parser rejects loose keys (UnusedConfigKey dbt1060). Nested here they parse on ALL engines and
+    # the freshness still lands in the manifest (TM-AU-01 satisfied; MD-07 still fires — no vol test).
+    config:
+      tags: ["matrix_demo"]
+      loaded_at_field: created_at
+      freshness:
+        warn_after: { count: 24, period: hour }
+    tables:
+      - name: orders
+
+models:
+  - name: stg_orders
+    description: "Staged orders, one row per order. Interior (inner) node of the product."
+    columns:
+      - name: order_id
+        description: "Order primary key."
+        tests:
+          - not_null

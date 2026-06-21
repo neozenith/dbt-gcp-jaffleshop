@@ -1,0 +1,25 @@
+name: matrix_fixture
+version: "1.0.0"
+config-version: 2
+
+# A deliberately tiny dbt project that the version-matrix harness parses under each
+# pinned dbt engine. It is NOT the real CDIP project — it exists only so adaf's
+# read-only gates (docscov / testcov / sdag check) have a real manifest to chew on.
+profile: matrix_fixture
+
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# Only the staging + marts models carry the `matrix_demo` tag, so the named selector
+# in selectors.yml (tag:matrix_demo) resolves exactly the product. The MetricFlow
+# time-spine model is deliberately left untagged so it stays OUT of the product
+# (it exists only to satisfy the semantic layer's time-spine requirement).
+models:
+  matrix_fixture:
+    staging:
+      +tags: ["matrix_demo"]
+    marts:
+      +tags: ["matrix_demo"]
+    metricflow:
+      +materialized: table

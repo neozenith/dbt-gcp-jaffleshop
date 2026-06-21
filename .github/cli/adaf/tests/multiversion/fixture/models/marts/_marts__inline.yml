@@ -1,0 +1,52 @@
+version: 2
+
+# LATEST semantic-layer spec: the semantic model is INLINE on dim_customers (`semantic_model:` +
+# entity/dimension on columns). Supported by dbt Core 1.12+ and 2.0/Fusion; 1.11 silently ignores it
+# (which is why 1.11 uses the legacy standalone resource instead). No standalone _semantic_models
+# file is staged for this engine — the inline block is the only definition.
+models:
+  # Outbound boundary node that satisfies every outbound obligation:
+  #   MD-02 enforced contract, MD-11 exposure, MD-12 semantic model (inline, below).
+  - name: dim_customers
+    description: "Customer dimension — one row per customer. Fully governed outbound node."
+    config:
+      contract:
+        enforced: true
+    semantic_model:
+      enabled: true
+    columns:
+      - name: customer_id
+        description: "Customer key."
+        data_type: integer
+        constraints:
+          - type: not_null
+        tests:
+          - not_null
+        entity:
+          type: primary
+          name: customer
+      - name: order_count
+        description: "Number of orders for the customer."
+        data_type: integer
+      - name: created_at
+        description: "Most recent order timestamp for the customer."
+        data_type: timestamp
+        dimension:
+          type: time
+        granularity: day
+
+  # Outbound boundary node missing a semantic model (violates MD-12), no description (docscov gap)
+  # and no tests (testcov gap). Keeps an enforced contract (MD-02 ok) + exposure (MD-11 ok).
+  - name: fct_orders
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: order_id
+        data_type: integer
+      - name: customer_id
+        data_type: integer
+      - name: order_total
+        data_type: double
+      - name: created_at
+        data_type: timestamp
