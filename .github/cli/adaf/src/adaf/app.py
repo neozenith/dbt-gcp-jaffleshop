@@ -36,12 +36,14 @@ from dotenv import load_dotenv
 
 from adaf import config
 from adaf.dbt import selection
+from adaf.dbt.scope import UNBOUNDED
 from adaf.utils import style
 from adaf.commands import checks, coverage, dataproducts, deprecations, taxonomy
 from adaf.commands import report as report_cmd
 from adaf.commands import review as review_cmd
 from adaf.commands import rules as rules_cmd
 from adaf.commands import sqlfluff as sqlfluff_cmd
+from adaf.commands.defer import cmd_defer_diff, cmd_defer_state
 from adaf.utils.formatting import render_from_args
 from adaf.utils.logging_setup import configure_logging
 
@@ -49,7 +51,8 @@ log = logging.getLogger(__name__)
 
 _ROLES = ("entity", "dimension", "measure", "time", "model")
 _DETECTIONS = ("deterministic", "hybrid", "llm")
-_NEEDS_PROJECT = ("check", "products", "review", "report")  # groups that operate on a dbt project
+# groups/commands that operate on a dbt project (lazy root discovery + profiles pinning in main())
+_NEEDS_PROJECT = ("check", "products", "review", "report", "defer-diff", "defer-state", "list", "ls")
 
 
 def _help(p: argparse.ArgumentParser):
@@ -171,6 +174,79 @@ def _add_sdag_output(p: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_target(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--target",
+        default=None,
+        help="dbt --target (e.g. dev/test) for the live `dbt ls` (default: dbt's profile default)",
+    )
+
+
+def _add_defer_target(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--defer-target",
+        dest="defer_target",
+        default=None,
+        help="dbt --target for the defer-target parse, when it differs from --target "
+        "(e.g. --target dev --defer-target nonprod). Defaults to --target's value.",
+    )
+
+
+def _add_scope(p: argparse.ArgumentParser) -> None:
+    """Product-scope flags shared by the workflow commands (list / defer-diff): changed/all +
+    base-ref + a REQUIRED named --selector + optional defer + lineage-hop expansion + targets.
+
+    Distinct from ``_add_selection`` (the catalogue ``check`` gates' changed/all + inline
+    --select/--exclude) — here the scope is always bounded to ONE named data product."""
+    scope_grp = p.add_mutually_exclusive_group()
+    scope_grp.add_argument("--changed-only", action="store_true", help="Only models changed vs --base-ref (default)")
+    scope_grp.add_argument("--all", action="store_true", dest="all_models", help="All in-scope models, not only changed")
+    p.add_argument(
+        "--base-ref",
+        default=config.DEFAULT_BASE_REF,
+        help="Git ref the changed-only scope diffs against (default: %(default)s)",
+    )
+    p.add_argument(
+        "--selector",
+        required=True,
+        help="Named dbt selector (from selectors.yml) bounding the scope (REQUIRED — be explicit)",
+    )
+    p.add_argument(
+        "--defer",
+        action="store_true",
+        help="Defer unchanged refs to a baseline manifest parsed from --defer-ref (built + cached in tmp/)",
+    )
+    p.add_argument(
+        "--defer-ref",
+        dest="defer_ref",
+        default="main",
+        metavar="REF",
+        help="Git ref (branch/tag/sha) whose parsed manifest is the defer target (default: %(default)s)",
+    )
+    # Lineage expansion: nargs="?" so bare --upstream (const=UNBOUNDED ⇒ all hops) and --upstream N
+    # (type=int ⇒ that many hops) both parse; absent ⇒ default None (no expansion).
+    p.add_argument(
+        "--upstream",
+        nargs="?",
+        type=int,
+        const=UNBOUNDED,
+        default=None,
+        metavar="N",
+        help="Grow the scope with N ancestor hops (bare --upstream = all ancestors; default: no expansion)",
+    )
+    p.add_argument(
+        "--downstream",
+        nargs="?",
+        type=int,
+        const=UNBOUNDED,
+        default=None,
+        metavar="N",
+        help="Grow the scope with N descendant hops (bare --downstream = all descendants; default: no expansion)",
+    )
+    _add_target(p)
+    _add_defer_target(p)
+
+
 # ─── parser construction ─────────────────────────────────────────────────────
 
 
@@ -200,8 +276,63 @@ def build_parser() -> argparse.ArgumentParser:
     _add_products_group(sub, common)
     _add_review_group(sub, common)
     _add_report_group(sub, common)
+    _add_defer_group(sub, common)
 
     return parser
+
+
+def _add_defer_group(sub, common: argparse.ArgumentParser) -> None:
+    """``adaf defer-diff`` + ``adaf defer-state`` — the dbt --defer / state workflow commands.
+
+    Top-level (not under ``check``) because they are CI plumbing, not catalogue gates: ``defer-state``
+    builds + caches a baseline manifest from a git ref and prints its --state dir; ``defer-diff``
+    shows which models in a selector's scope would be BUILT vs DEFERRED against that baseline.
+    """
+    dd = sub.add_parser(
+        "defer-diff",
+        parents=[common],
+        help="Show built vs deferred models under a selector (vs a --defer-ref baseline)",
+        description=(
+            "Show which models in scope would be BUILT (differ from the --defer-ref baseline) vs DEFERRED "
+            "(resolved to it), with deepdiff explaining why each built model changed. --selector bounds the "
+            "product, default reports only changed models, --all the whole product, --upstream / --downstream "
+            "grow the scope along the lineage. --details adds a git-diff-style field-level diff per built model."
+        ),
+        epilog="Examples:\n  adaf defer-diff --selector demand --defer-ref main\n"
+        "  adaf defer-diff --all --selector demand --upstream 1 --details",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_scope(dd)
+    _add_manifest(dd)
+    dd.add_argument(
+        "--details",
+        action="store_true",
+        help="Under each BUILT model, show a colourised git-diff-style unified diff of the changed node facets",
+    )
+    dd.set_defaults(func=cmd_defer_diff)
+
+    ds = sub.add_parser(
+        "defer-state",
+        parents=[common],
+        help="Build (or reuse) the defer-target state for a ref and print its --state dir (for CI)",
+        description=(
+            "Check out a git worktree to build the defer-target manifest for a git ref and print its --state "
+            "directory on stdout — the plumbing behind --defer, for CI to feed `dbt build --state`."
+        ),
+        epilog="Examples:\n  STATE=$(adaf defer-state --defer-ref main --target dev --defer-target nonprod)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ds.add_argument(
+        "--defer-ref",
+        dest="defer_ref",
+        default="main",
+        metavar="REF",
+        help="Git ref whose parsed manifest is the defer-target baseline (default: %(default)s)",
+    )
+    ds.add_argument("--force", action="store_true", help="Rebuild even if a cached state dir exists for this sha")
+    _add_target(ds)
+    _add_defer_target(ds)
+    ds.set_defaults(func=cmd_defer_state)
 
 
 def _add_report_group(sub, common: argparse.ArgumentParser) -> None:

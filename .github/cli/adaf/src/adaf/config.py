@@ -39,9 +39,20 @@ DEFAULT_MANIFEST = Path("target") / "manifest.json"
 DEFAULT_CATALOG = Path("target") / "catalog.json"
 DEFAULT_SELECTORS = Path("selectors.yml")  # dbt hardcodes this filename (never .yaml)
 DEFAULT_SDAG_OUTPUT = Path("tmp") / "sdag"
+DEFAULT_WORKFLOWS_DIR = Path(".github") / "workflows"  # where `gha create` writes adaf-<product>.yml
 
 # Pathspec for "what is a model file" — kept identical to the Makefile's CHANGED_MODELS.
 MODEL_GLOB = "models/*.sql"
+
+
+def project_root() -> Path:
+    """The discovered dbt project root (an accessor over the module global ``PROJECT_ROOT``).
+
+    A function form so call sites read the *current* root even if ``set_project_root`` runs after
+    import; several modules ported from the sibling CLI call ``config.project_root()`` rather than
+    reaching for the ``PROJECT_ROOT`` global directly.
+    """
+    return PROJECT_ROOT
 
 
 def resolve_project_root(override: str | os.PathLike | None = None) -> Path:
