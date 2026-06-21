@@ -1,25 +1,24 @@
 """The sdag viewer engine — builds the Cytoscape.js assets and serves them.
 
 This is the *visualisation* half of the data-product tooling (the analysis half is graph.py +
-commands/dataproducts.py). Given the full dbt manifest and the resolved named selectors, it emits two
+commands/dataproducts.py). Given the full dbt manifest and the resolved named selectors, it emits
 Cytoscape-compatible JSON files next to a templated HTML+JS viewer:
 
 * ``full_graph.json``  — every entity (model/test/seed/snapshot/source/...) and every lineage edge,
                          each entity placed inside a compound parent for its primary matching selector
-                         (all memberships recorded on ``data.selectors``).
+                         (all memberships recorded on ``data.selectors``), plus governance signals and
+                         the per-product compliance the cache was enriched with.
 * ``super_graph.json`` — one super-node per selector, internal edges collapsed, inter-selector edges
-                         aggregated and weighted with ``count``.
+                         aggregated and weighted with ``count``; each super-node carries its selector
+                         definition.
 
-Ported from the standalone ``sdag.py`` script, with two adaptations for this package:
-
-* **No networkx.** sdag used ``nx.DiGraph`` purely as a node/edge container; here the builders take a
-  plain ``nodes`` dict + ``edges`` list (see ``load_full_manifest``), so no dependency is added.
-* **The full manifest, not the data-node graph.** Unlike ``graph.Graph`` (which filters to data nodes
-  for boundary classification), the viewer shows *everything* — tests and semantic models included — so
-  it reads its own un-filtered view of the manifest.
+No networkx: the builders take a plain ``nodes`` dict + ``edges`` list (see ``display_graph``). The
+viewer shows the FULL manifest (tests + semantic models included), unlike ``graph.Graph`` which
+filters to data nodes for boundary classification.
 
 The HTML/JS templates live in ``adaf/assets/`` and carry two tokens substituted at write time:
 ``{{BUILD_ID}}`` (cache-bust + banner) and ``{{SOURCE}}`` (the manifest the graph was read from).
+``design-tokens.json`` ships verbatim (palette/fonts/RAG thresholds the JS fetches at runtime).
 """
 
 # Standard Library
@@ -29,9 +28,14 @@ import json
 import logging
 import math
 import socketserver
+import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
+
+# Local
+from adaf.dbt import cache
+from adaf.dbt.manifest_view import ManifestView
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +47,15 @@ FULL_GRAPH_JSON = "full_graph.json"
 SUPER_GRAPH_JSON = "super_graph.json"
 SDAG_HTML = "sdag.html"
 SDAG_JS = "sdag.js"
+# Externalised design tokens — the canvas palette/fonts/RAG thresholds sdag.js fetches at runtime.
+# Shipped verbatim (not templated) alongside the other assets; embedded on window.__SDAG_TOKENS__
+# for --inline.
+DESIGN_TOKENS_JSON = "design-tokens.json"
+
+# Every file a generated viewer may emit. ``write_archive`` bundles whichever of these are present
+# in the output dir — a multi-file build carries all five; an ``--inline`` build carries only the
+# one self-contained ``sdag.html``.
+VIEWER_FILES: tuple[str, ...] = (SDAG_HTML, SDAG_JS, FULL_GRAPH_JSON, SUPER_GRAPH_JSON, DESIGN_TOKENS_JSON)
 
 UNMATCHED_ID = "__unmatched__"
 
@@ -60,47 +73,118 @@ NODE_COLOURS: dict[str, str] = {
 }
 
 
+# ─── Governance facts per node (docs / tests / semantic backing) ─────────────
+
+
+def node_governance(view: ManifestView) -> dict[str, dict[str, Any]]:
+    """Per-node governance facts the viewer surfaces on selection/hover.
+
+    For every data node compute three at-a-glance signals straight from the manifest the viewer
+    already parsed — no extra I/O, no dbt:
+
+    * ``has_description`` — does the node carry a non-empty ``description`` (doc coverage)?
+    * ``test_count`` / ``test_types`` — how many ``test`` nodes target it, and the distinct kinds
+      (``not_null`` / ``unique`` / ``relationships`` / … from ``test_metadata.name``; singular/custom
+      tests bucket as ``singular``). A test is attributed to its ``attached_node`` when dbt records
+      one, else to every model in its ``depends_on.nodes``.
+    * ``semantic_backed`` — does a ``semantic_models`` entry build on this node?
+    """
+    test_count: dict[str, int] = defaultdict(int)
+    test_types: dict[str, set[str]] = defaultdict(set)
+    for rec in view.of_type("test").values():
+        meta = rec.raw.get("test_metadata") or {}
+        tname = meta.get("name") or "singular"
+        attached = rec.raw.get("attached_node")
+        targets = [attached] if attached else (rec.raw.get("depends_on") or {}).get("nodes", [])
+        for uid in targets:
+            if not uid:
+                continue
+            test_count[uid] += 1
+            test_types[uid].add(str(tname))
+
+    semantic_backed: set[str] = set()
+    for sem in view.section("semantic_models").values():
+        for uid in (sem.get("depends_on") or {}).get("nodes", []):
+            semantic_backed.add(uid)
+
+    gov: dict[str, dict[str, Any]] = {}
+    for uid, rec in view.records().items():
+        gov[uid] = {
+            "has_description": bool((rec.raw.get("description") or "").strip()),
+            "test_count": test_count.get(uid, 0),
+            "test_types": sorted(test_types.get(uid, set())),
+            "semantic_backed": uid in semantic_backed,
+        }
+    return gov
+
+
+# ─── Per-selector compliance (read back the cache the annotations step enriched) ─
+
+
+def load_selector_compliance(root: Path, names: list[str]) -> dict[str, dict[str, Any]]:
+    """Read each named selector's compliance rollup + per-node annotations from its cache file.
+
+    ``adaf.annotations.enrich_all`` runs in the generate flow BEFORE this, writing the ``compliance``
+    rollup and per boundary-node ``annotations`` into each selector's cache file. This reads them
+    straight back so the viewer can embed them in ``full_graph.json`` — the page renders a product's
+    compliance with no extra fetch. A cache file with neither key is omitted from the map.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for name in names:
+        path = cache.selector_cache_path(root, name)
+        if not path.exists():
+            continue
+        blob = json.loads(path.read_text(encoding="utf-8"))
+        compliance = blob.get("compliance")
+        annotations = blob.get("annotations")
+        if compliance is None and annotations is None:
+            continue
+        out[name] = {"compliance": compliance or {}, "annotations": annotations or {}}
+    return out
+
+
 # ─── Full-manifest load (everything, not just data nodes) ────────────────────
 
 
-def load_full_manifest(path: Path | str) -> tuple[dict[str, dict[str, Any]], list[tuple[str, str]]]:
-    """Read manifest.json into ``(nodes, edges)`` over EVERY resource type (for the viewer).
+def display_graph(view: ManifestView) -> tuple[dict[str, dict[str, Any]], list[tuple[str, str]]]:
+    """Project a :class:`ManifestView` into the viewer's ``(nodes, edges)`` over EVERY data section.
 
-    ``nodes`` maps unique_id → display attrs; ``edges`` is the ``parent_map`` flattened to
-    ``(parent, child)`` and filtered to edges whose both endpoints are present (drops references to
-    disabled/deferred/external resources).
+    ``nodes`` maps unique_id → display attrs (incl. governance signals); ``edges`` are the view's
+    ``parent_map`` edges filtered to present endpoints. Unlike ``graph.Graph``, NO resource-type
+    filtering happens — the viewer shows everything (tests, semantic models, …).
     """
-    manifest_path = Path(path)
-    if not manifest_path.exists():
-        raise FileNotFoundError(f"dbt manifest not found at '{manifest_path}'. Run `dbt parse` or pass --parse.")
-    data = json.loads(manifest_path.read_text(encoding="utf-8"))
-
+    governance = node_governance(view)
     nodes: dict[str, dict[str, Any]] = {}
-    for section in ("nodes", "sources"):
-        for uid, node in (data.get(section) or {}).items():
-            tags = node.get("tags") if isinstance(node.get("tags"), list) else []
-            fqn = node.get("fqn") if isinstance(node.get("fqn"), list) else []
-            nodes[uid] = {
-                "unique_id": uid,
-                "resource_type": node.get("resource_type") or ("source" if section == "sources" else ""),
-                "name": node.get("name") or uid.rsplit(".", 1)[-1],
-                "fqn": [str(p) for p in fqn],
-                "tags": [str(t) for t in tags],
-                "materialized": (node.get("config") or {}).get("materialized"),
-                "schema": node.get("schema"),
-            }
+    for uid, rec in view.records().items():
+        node = rec.raw
+        raw_tags = node.get("tags")
+        raw_fqn = node.get("fqn")
+        tags: list[Any] = raw_tags if isinstance(raw_tags, list) else []
+        fqn: list[Any] = raw_fqn if isinstance(raw_fqn, list) else []
+        gov = governance.get(uid, {})
+        nodes[uid] = {
+            "unique_id": uid,
+            "resource_type": rec.resource_type,
+            "name": node.get("name") or uid.rsplit(".", 1)[-1],
+            "fqn": [str(p) for p in fqn],
+            "tags": [str(t) for t in tags],
+            "materialized": (node.get("config") or {}).get("materialized"),
+            "schema": node.get("schema"),
+            # Governance signals — surfaced on node selection/hover in the viewer.
+            "has_description": gov.get("has_description", False),
+            "test_count": gov.get("test_count", 0),
+            "test_types": gov.get("test_types", []),
+            "semantic_backed": gov.get("semantic_backed", False),
+        }
 
-    parent_map = data.get("parent_map") or {}
-    edges_all = [(p, c) for c, parents in parent_map.items() for p in (parents or [])]
-    known = set(nodes)
-    edges = [(p, c) for p, c in edges_all if p in known and c in known]
-    log.debug(
-        "viewer manifest: %d nodes, %d edges (%d cross-package refs dropped)",
-        len(nodes),
-        len(edges),
-        len(edges_all) - len(edges),
-    )
+    edges = view.parent_edges()
+    log.debug("viewer manifest: %d nodes, %d edges", len(nodes), len(edges))
     return nodes, edges
+
+
+def load_full_manifest(path: Path | str) -> tuple[dict[str, dict[str, Any]], list[tuple[str, str]]]:
+    """Read manifest.json into the viewer's ``(nodes, edges)`` (wrapper over :func:`display_graph`)."""
+    return display_graph(ManifestView.load(path))
 
 
 # ─── Cytoscape JSON builders (pure) ──────────────────────────────────────────
@@ -113,32 +197,17 @@ def _primary_selector(memberships: list[str], sel_size: dict[str, int]) -> str |
     return min(memberships, key=lambda s: (sel_size.get(s, 0), s))
 
 
-def build_full_graph_json(
-    nodes: dict[str, dict[str, Any]],
-    edges: list[tuple[str, str]],
+def _full_selector_compounds(
     resolved: dict[str, set[str]],
-) -> dict[str, Any]:
-    """Cytoscape JSON: every entity + every edge, grouped by compound selector nodes.
-
-    A node matching multiple selectors is placed inside the smallest (most specific) one as its
-    ``parent``; the full membership list is also stored on ``data.selectors`` so the viewer can
-    highlight every containing selector when the node is tapped.
-    """
-    node_to_selectors: dict[str, list[str]] = defaultdict(list)
-    for sel_name, members in resolved.items():
-        for uid in members:
-            if uid in nodes:
-                node_to_selectors[uid].append(sel_name)
-
-    sel_size = {name: len(members) for name, members in resolved.items()}
-    elements: list[dict[str, Any]] = []
-
-    # 1. One compound parent node per non-empty selector.
+    nodes: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """One compound parent node per non-empty selector (selectors with no present member skipped)."""
+    compounds: list[dict[str, Any]] = []
     for sel_name, members in resolved.items():
         present = [uid for uid in members if uid in nodes]
         if not present:
             continue
-        elements.append(
+        compounds.append(
             {
                 "data": {
                     "id": f"sel::{sel_name}",
@@ -150,30 +219,40 @@ def build_full_graph_json(
                 "classes": "selector-compound",
             }
         )
+    return compounds
 
-    # 2. Catch-all compound for nodes matched by no selector.
-    unmatched_uids = [uid for uid in nodes if uid not in node_to_selectors]
-    if unmatched_uids:
-        elements.append(
-            {
-                "data": {
-                    "id": f"sel::{UNMATCHED_ID}",
-                    "label": "NO SELECTOR",
-                    "kind": "selector_compound",
-                    "selector": UNMATCHED_ID,
-                    "n_members": len(unmatched_uids),
-                },
-                "classes": "selector-compound unmatched",
-            }
-        )
 
-    # 3. Leaf entity nodes.
+def _full_unmatched_compound(unmatched_uids: list[str]) -> list[dict[str, Any]]:
+    """Catch-all compound for nodes matched by no selector (empty list when none are unmatched)."""
+    if not unmatched_uids:
+        return []
+    return [
+        {
+            "data": {
+                "id": f"sel::{UNMATCHED_ID}",
+                "label": "NO SELECTOR",
+                "kind": "selector_compound",
+                "selector": UNMATCHED_ID,
+                "n_members": len(unmatched_uids),
+            },
+            "classes": "selector-compound unmatched",
+        }
+    ]
+
+
+def _full_entity_nodes(
+    nodes: dict[str, dict[str, Any]],
+    node_to_selectors: dict[str, list[str]],
+    sel_size: dict[str, int],
+) -> list[dict[str, Any]]:
+    """Leaf entity nodes, each parented to its primary (smallest) selector or the catch-all."""
+    entities: list[dict[str, Any]] = []
     for uid, attrs in nodes.items():
         memberships = node_to_selectors.get(uid, [])
         primary = _primary_selector(memberships, sel_size)
         parent_id = f"sel::{primary}" if primary else f"sel::{UNMATCHED_ID}"
         rt = attrs.get("resource_type") or ""
-        elements.append(
+        entities.append(
             {
                 "data": {
                     "id": uid,
@@ -188,24 +267,63 @@ def build_full_graph_json(
                     "selectors": memberships,
                     "primary_selector": primary,
                     "colour": NODE_COLOURS.get(rt, "#94a3b8"),
+                    # Governance signals carried onto the leaf node so the viewer can render
+                    # docs/tests/semantic backing on selection + hover without a second lookup.
+                    "has_description": attrs.get("has_description", False),
+                    "test_count": attrs.get("test_count", 0),
+                    "test_types": attrs.get("test_types") or [],
+                    "semantic_backed": attrs.get("semantic_backed", False),
                 },
                 "classes": f"entity entity-{rt}",
             }
         )
+    return entities
 
-    # 4. Lineage edges.
-    for parent_uid, child_uid in edges:
-        elements.append(
-            {
-                "data": {
-                    "id": f"e::{parent_uid}->{child_uid}",
-                    "source": parent_uid,
-                    "target": child_uid,
-                    "kind": "lineage",
-                },
-                "classes": "edge-lineage",
-            }
-        )
+
+def _full_lineage_edges(edges: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    """Lineage edge elements, one per manifest ``(parent, child)`` edge."""
+    return [
+        {
+            "data": {
+                "id": f"e::{parent_uid}->{child_uid}",
+                "source": parent_uid,
+                "target": child_uid,
+                "kind": "lineage",
+            },
+            "classes": "edge-lineage",
+        }
+        for parent_uid, child_uid in edges
+    ]
+
+
+def build_full_graph_json(
+    nodes: dict[str, dict[str, Any]],
+    edges: list[tuple[str, str]],
+    resolved: dict[str, set[str]],
+    compliance: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Cytoscape JSON: every entity + every edge, grouped by compound selector nodes.
+
+    A node matching multiple selectors is placed inside the smallest (most specific) one as its
+    ``parent``; the full membership list is also stored on ``data.selectors``. ``compliance`` (when
+    given) is the per-selector rollup + per-node annotations from :func:`load_selector_compliance`;
+    it is embedded under ``metadata.compliance`` so the viewer renders a product's compliance panel +
+    per-node pass/fail badges straight from this one payload.
+    """
+    node_to_selectors: dict[str, list[str]] = defaultdict(list)
+    for sel_name, members in resolved.items():
+        for uid in members:
+            if uid in nodes:
+                node_to_selectors[uid].append(sel_name)
+
+    sel_size = {name: len(members) for name, members in resolved.items()}
+    unmatched_uids = [uid for uid in nodes if uid not in node_to_selectors]
+
+    elements: list[dict[str, Any]] = []
+    elements.extend(_full_selector_compounds(resolved, nodes))
+    elements.extend(_full_unmatched_compound(unmatched_uids))
+    elements.extend(_full_entity_nodes(nodes, node_to_selectors, sel_size))
+    elements.extend(_full_lineage_edges(edges))
 
     return {
         "elements": elements,
@@ -214,23 +332,16 @@ def build_full_graph_json(
             "n_edges": len(edges),
             "n_selectors": sum(1 for members in resolved.values() if any(uid in nodes for uid in members)),
             "n_unmatched_nodes": len(unmatched_uids),
+            "compliance": compliance or {},
         },
     }
 
 
-def build_super_graph_json(
+def _super_membership_maps(
     nodes: dict[str, dict[str, Any]],
-    edges: list[tuple[str, str]],
     resolved: dict[str, set[str]],
-) -> dict[str, Any]:
-    """Collapse each selector into a super-node; aggregate cross-selector edges.
-
-    A unique_id may belong to multiple selectors — every membership contributes to that selector's
-    super-node, and each manifest edge fans out across the cross-product of (source-memberships ×
-    target-memberships). Identical ``(src_super, tgt_super, kind)`` triples collapse to one edge with a
-    ``count``. Edges that stay inside one super (or inside the intersection of two overlapping supers)
-    are dropped as internal and tallied in metadata.
-    """
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Build ``uid -> supers`` (selectors + catch-all) and its inverse ``super -> member uids``."""
     uid_to_supers: dict[str, list[str]] = defaultdict(list)
     for sel_name, members in resolved.items():
         for uid in members:
@@ -245,6 +356,19 @@ def build_super_graph_json(
         for s in supers:
             super_members[s].append(uid)
 
+    return uid_to_supers, super_members
+
+
+def _super_node_elements(
+    nodes: dict[str, dict[str, Any]],
+    super_members: dict[str, list[str]],
+    definitions: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """One super-node per selector, with a resource_type breakdown Counter and log1p sizing.
+
+    ``definitions[sname]`` (a selector's resolution rule, e.g. ``tag:demand``) is embedded on the
+    super-node so the viewer sidebar can explain why nodes belong to the product."""
+    defs = definitions or {}
     elements: list[dict[str, Any]] = []
     for sname, member_uids in super_members.items():
         breakdown = Counter((nodes[uid].get("resource_type") or "unknown") for uid in member_uids if uid in nodes)
@@ -260,14 +384,26 @@ def build_super_graph_json(
                     "log_members": round(math.log1p(n_members), 4),
                     "breakdown": dict(breakdown),
                     "is_unmatched": sname == UNMATCHED_ID,
+                    # The selector's resolution rule (empty for the synthetic unmatched bucket).
+                    "definition": defs.get(sname, ""),
                 },
                 "classes": "super" + (" unmatched" if sname == UNMATCHED_ID else ""),
             }
         )
+    return elements
 
-    # Aggregate cross-super edges. An edge (parent, child) contributes to super-edge (ps, cs) iff
-    # ps != cs AND the edge is not internal to BOTH ps and cs (the latter prevents phantom edges
-    # between overlapping selectors). internal_edges tallies manifest edges that crossed nothing.
+
+def _super_edge_counts(
+    edges: list[tuple[str, str]],
+    uid_to_supers: dict[str, list[str]],
+    super_members: dict[str, list[str]],
+) -> tuple[Counter[tuple[str, str, str]], int]:
+    """Aggregate cross-super edges and tally fully-internal ones.
+
+    An edge (parent, child) contributes to super-edge (ps, cs) iff ps != cs AND the edge is not
+    internal to BOTH ps and cs (the latter prevents phantom edges between overlapping selectors).
+    The returned ``internal_edges`` counts manifest edges that crossed nothing.
+    """
     edge_counts: Counter[tuple[str, str, str]] = Counter()
     internal_edges = 0
     super_uid_sets: dict[str, set[str]] = {s: set(uids) for s, uids in super_members.items()}
@@ -285,21 +421,48 @@ def build_super_graph_json(
                 contributed = True
         if not contributed:
             internal_edges += 1
+    return edge_counts, internal_edges
 
-    for (src, tgt, kind), count in edge_counts.items():
-        elements.append(
-            {
-                "data": {
-                    "id": f"se::{src}->{tgt}::{kind}",
-                    "source": src,
-                    "target": tgt,
-                    "kind": kind,
-                    "count": count,
-                    "log_count": round(math.log1p(count), 4),
-                },
-                "classes": f"edge-{kind}",
-            }
-        )
+
+def _super_edge_elements(edge_counts: Counter[tuple[str, str, str]]) -> list[dict[str, Any]]:
+    """Cross-super edge elements with ``count`` and log1p-weighted ``log_count``."""
+    return [
+        {
+            "data": {
+                "id": f"se::{src}->{tgt}::{kind}",
+                "source": src,
+                "target": tgt,
+                "kind": kind,
+                "count": count,
+                "log_count": round(math.log1p(count), 4),
+            },
+            "classes": f"edge-{kind}",
+        }
+        for (src, tgt, kind), count in edge_counts.items()
+    ]
+
+
+def build_super_graph_json(
+    nodes: dict[str, dict[str, Any]],
+    edges: list[tuple[str, str]],
+    resolved: dict[str, set[str]],
+    definitions: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Collapse each selector into a super-node; aggregate cross-selector edges.
+
+    A unique_id may belong to multiple selectors — every membership contributes to that selector's
+    super-node, and each manifest edge fans out across the cross-product of (source-memberships ×
+    target-memberships). Identical ``(src_super, tgt_super, kind)`` triples collapse to one edge with a
+    ``count``. Edges that stay inside one super (or inside the intersection of two overlapping supers)
+    are dropped as internal and tallied in metadata.
+    """
+    uid_to_supers, super_members = _super_membership_maps(nodes, resolved)
+
+    edge_counts, internal_edges = _super_edge_counts(edges, uid_to_supers, super_members)
+
+    elements: list[dict[str, Any]] = []
+    elements.extend(_super_node_elements(nodes, super_members, definitions))
+    elements.extend(_super_edge_elements(edge_counts))
 
     return {
         "elements": elements,
@@ -335,7 +498,8 @@ def write_outputs(
     """Write both JSON files plus the templated HTML + JS viewer into ``output_dir``; return build id."""
     html_tpl = assets_dir / SDAG_HTML
     js_tpl = assets_dir / SDAG_JS
-    for template in (html_tpl, js_tpl):
+    tokens_src = assets_dir / DESIGN_TOKENS_JSON
+    for template in (html_tpl, js_tpl, tokens_src):
         if not template.exists():
             raise FileNotFoundError(f"viewer template missing at {template}")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -347,6 +511,8 @@ def write_outputs(
 
     (output_dir / FULL_GRAPH_JSON).write_text(json.dumps(full_graph, indent=2), encoding="utf-8")
     (output_dir / SUPER_GRAPH_JSON).write_text(json.dumps(super_graph, indent=2), encoding="utf-8")
+    # Ship the design tokens verbatim — they are NOT templated (no build-id swap).
+    (output_dir / DESIGN_TOKENS_JSON).write_text(tokens_src.read_text(encoding="utf-8"), encoding="utf-8")
     (output_dir / SDAG_HTML).write_text(
         _apply_tokens(html_tpl.read_text(encoding="utf-8"), build_id=build_id, source_label=source_label),
         encoding="utf-8",
@@ -355,16 +521,88 @@ def write_outputs(
         _apply_tokens(js_tpl.read_text(encoding="utf-8"), build_id=build_id, source_label=source_label),
         encoding="utf-8",
     )
-    log.info(
-        "wrote %s, %s, %s, %s into %s (build_id=%s)",
-        FULL_GRAPH_JSON,
-        SUPER_GRAPH_JSON,
-        SDAG_HTML,
-        SDAG_JS,
-        output_dir,
-        build_id,
-    )
+    log.info("wrote viewer assets into %s (build_id=%s)", output_dir, build_id)
     return build_id
+
+
+# The HTML line that pulls in the external JS; replaced wholesale in inline mode.
+_JS_INCLUDE = '<script src="sdag.js?v={{BUILD_ID}}" defer></script>'
+
+
+def write_inline(
+    output_dir: Path,
+    full_graph: dict[str, Any],
+    super_graph: dict[str, Any],
+    *,
+    source_label: str,
+    assets_dir: Path = ASSETS_DIR,
+) -> str:
+    """Write ONE standalone ``sdag.html`` with the JS and both graphs inlined; return build id.
+
+    The graphs are embedded on ``window.__SDAG_DATA__`` (which ``fetchView`` prefers over a
+    network fetch), and the external ``<script src="sdag.js">`` include is replaced by the JS
+    inline. The result opens directly over ``file://`` with no sidecar files or web server.
+    """
+    html_tpl = assets_dir / SDAG_HTML
+    js_tpl = assets_dir / SDAG_JS
+    tokens_src = assets_dir / DESIGN_TOKENS_JSON
+    for template in (html_tpl, js_tpl, tokens_src):
+        if not template.exists():
+            raise FileNotFoundError(f"viewer template missing at {template}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    build_id = _build_id()
+    for graph in (full_graph, super_graph):
+        graph["metadata"]["build_id"] = build_id
+        graph["metadata"]["source"] = source_label
+
+    # Embed both graphs as a JS global. Escape `</` so a stray "</script>" inside any string
+    # value (node names, tags) can't terminate the inline <script> early.
+    data_json = json.dumps({"full": full_graph, "super": super_graph}).replace("</", "<\\/")
+    data_script = f"<script>window.__SDAG_DATA__ = {data_json};</script>"
+    # Embed the design tokens too so loadTokens() prefers the global over a (file://) fetch.
+    tokens_json = tokens_src.read_text(encoding="utf-8").replace("</", "<\\/")
+    tokens_script = f"<script>window.__SDAG_TOKENS__ = {tokens_json};</script>"
+    inline_js = "<script>\n" + js_tpl.read_text(encoding="utf-8") + "\n</script>"
+
+    html = html_tpl.read_text(encoding="utf-8")
+    if _JS_INCLUDE not in html:
+        raise RuntimeError(f"sdag.html template is missing the expected JS include line: {_JS_INCLUDE!r}")
+    html = html.replace(_JS_INCLUDE, f"{tokens_script}\n{data_script}\n{inline_js}")
+    html = _apply_tokens(html, build_id=build_id, source_label=source_label)
+
+    out = output_dir / SDAG_HTML
+    out.write_text(html, encoding="utf-8")
+    log.info("wrote standalone %s (%d KiB, build_id=%s)", out, len(html) // 1024, build_id)
+    return build_id
+
+
+def write_archive(output_dir: Path, zip_path: Path) -> list[str]:
+    """Bundle the generated viewer in ``output_dir`` into a portable ``.zip`` at ``zip_path``.
+
+    Zips every viewer asset present in ``output_dir`` at the archive root, preserving the flat layout
+    the page fetches so a recipient can unzip and serve it standalone. The per-selector compliance is
+    already embedded in ``full_graph.json``, so no sidecar cache files are required. Pair with
+    ``--inline`` for the most portable archive (one self-contained ``sdag.html``). Returns the sorted
+    archive entry names. Fails loud if ``output_dir`` is missing or holds no viewer assets.
+    """
+    if not output_dir.is_dir():
+        raise FileNotFoundError(f"sdag output dir does not exist: {output_dir} — generate the viewer first")
+    present = [name for name in VIEWER_FILES if (output_dir / name).is_file()]
+    if not present:
+        raise FileNotFoundError(f"no sdag viewer assets found in {output_dir} — nothing to archive")
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for name in present:
+            zf.write(output_dir / name, arcname=name)
+    log.info(
+        "wrote sdag archive %s (%d entr%s: %s)",
+        zip_path,
+        len(present),
+        "y" if len(present) == 1 else "ies",
+        ", ".join(present),
+    )
+    return sorted(present)
 
 
 def serve(output_dir: Path, port: int) -> None:

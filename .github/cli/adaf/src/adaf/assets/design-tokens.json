@@ -1,0 +1,119 @@
+{
+  "$schema": "./design-tokens.schema (see README.md)",
+  "version": 1,
+  "description": "Design tokens for the adaf sdag viewer. Source of truth for the canvas palette; sdag.js fetches this at runtime and builds RESOURCE_COLOURS / THEMES / the RAG thresholds / the canvas fonts from it.",
+
+  "resourceColours": {
+    "model": "#3b82f6",
+    "test": "#a855f7",
+    "seed": "#10b981",
+    "snapshot": "#f59e0b",
+    "source": "#6b7280",
+    "analysis": "#ec4899",
+    "exposure": "#ef4444",
+    "metric": "#14b8a6"
+  },
+
+  "fonts": {
+    "mono": "ui-monospace, monospace",
+    "sizes": {
+      "node": 9,
+      "test": 7,
+      "compound": 11,
+      "super": 15,
+      "superEdge": 16
+    }
+  },
+
+  "rag": {
+    "thresholds": {
+      "ok": 80,
+      "warn": 50
+    }
+  },
+
+  "themes": {
+    "dark": {
+      "name": "dark",
+      "toggleLabel": "☽ Dark",
+      "nodeOutline": "#242C30",
+      "nodeLabel": "#ffffff",
+      "nodeLabelOutline": "#242C30",
+      "compoundBg": "#2D373D",
+      "compoundBgOpacity": 0.35,
+      "compoundBorder": "#A5C84D",
+      "compoundLabel": "#ffffff",
+      "compoundLabelOutline": "#242C30",
+      "compoundUnmatchedBorder": "#4B5C65",
+      "compoundUnmatchedLabel": "#9AA4A8",
+      "superBg": "#3A474E",
+      "superBorder": "#A5C84D",
+      "superLabel": "#ffffff",
+      "superLabelOutline": "#242C30",
+      "superUnmatchedBg": "#46555D",
+      "superUnmatchedBorder": "#2D373D",
+      "edge": "#6B7C85",
+      "superEdge": "#A5C84D",
+      "superEdgeLabel": "#C4DD7F",
+      "superEdgeLabelBg": "#242C30",
+      "selected": "#A5C84D",
+      "boundaryInbound": { "bg": "#10b981", "border": "#6ee7b7" },
+      "boundaryOutbound": { "bg": "#f59e0b", "border": "#fcd34d" },
+      "boundaryBoth": { "bg": "#f43f5e", "border": "#fb7185" },
+      "haloUpstream": { "bg": "#334155", "border": "#64748b" },
+      "haloDownstream": { "bg": "#3b3651", "border": "#6b5fa3" },
+      "haloEdge": "#64748b",
+      "haloCompoundBorder": "#475569",
+      "haloCompoundLabel": "#94a3b8",
+      "complianceFailRing": "#fca5a5",
+      "compliancePassRing": "#86efac",
+      "complianceGlow": "#ef4444",
+      "superRagOk": "#6ee7b7",
+      "superRagWarn": "#fcd34d",
+      "superRagFail": "#fca5a5",
+      "superRagFailGlow": "#ef4444",
+      "superRagNeutral": "#8896a0"
+    },
+    "light": {
+      "name": "light",
+      "toggleLabel": "☼ Light",
+      "nodeOutline": "#FFFFFF",
+      "nodeLabel": "#ffffff",
+      "nodeLabelOutline": "#1B2125",
+      "compoundBg": "#FFFFFF",
+      "compoundBgOpacity": 0.5,
+      "compoundBorder": "#6E8F26",
+      "compoundLabel": "#1B2125",
+      "compoundLabelOutline": "#FFFFFF",
+      "compoundUnmatchedBorder": "#C2C8CB",
+      "compoundUnmatchedLabel": "#56656D",
+      "superBg": "#4B5C65",
+      "superBorder": "#6E8F26",
+      "superLabel": "#ffffff",
+      "superLabelOutline": "#1B2125",
+      "superUnmatchedBg": "#9AA4A8",
+      "superUnmatchedBorder": "#C2C8CB",
+      "edge": "#8A99A1",
+      "superEdge": "#6E8F26",
+      "superEdgeLabel": "#3F560C",
+      "superEdgeLabelBg": "#FFFFFF",
+      "selected": "#6E8F26",
+      "boundaryInbound": { "bg": "#059669", "border": "#065f46" },
+      "boundaryOutbound": { "bg": "#d97706", "border": "#92400e" },
+      "boundaryBoth": { "bg": "#e11d48", "border": "#9f1239" },
+      "haloUpstream": { "bg": "#cbd5e1", "border": "#64748b" },
+      "haloDownstream": { "bg": "#d6ccf0", "border": "#6b5fa3" },
+      "haloEdge": "#94a3b8",
+      "haloCompoundBorder": "#94a3b8",
+      "haloCompoundLabel": "#56656D",
+      "complianceFailRing": "#991b1b",
+      "compliancePassRing": "#166534",
+      "complianceGlow": "#dc2626",
+      "superRagOk": "#34d399",
+      "superRagWarn": "#fbbf24",
+      "superRagFail": "#fb7185",
+      "superRagFailGlow": "#dc2626",
+      "superRagNeutral": "#b6c0c6"
+    }
+  }
+}

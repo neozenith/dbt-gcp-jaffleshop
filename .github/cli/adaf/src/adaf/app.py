@@ -672,19 +672,50 @@ def _add_products_group(sub, common: argparse.ArgumentParser) -> None:
     generate = products_sub.add_parser(
         "generate", parents=[common], help="Build the sdag Cytoscape JSON + HTML viewer assets"
     )
-    _add_manifest(generate)
-    _add_dataproduct_scope(generate)
-    _add_sdag_output(generate)
+    _add_sdag_viewer_args(generate)
     generate.set_defaults(func=dataproducts.cmd_generate)
 
     serve = products_sub.add_parser(
         "serve", parents=[common], help="Generate the sdag assets, then host them over HTTP"
     )
-    _add_manifest(serve)
-    _add_dataproduct_scope(serve)
-    _add_sdag_output(serve)
+    _add_sdag_viewer_args(serve)
     serve.add_argument("-p", "--port", type=int, default=8088, help="HTTP port (default: %(default)s)")
     serve.set_defaults(func=dataproducts.cmd_serve)
+
+
+def _add_sdag_viewer_args(p: argparse.ArgumentParser) -> None:
+    """Args for ``products generate`` / ``serve``: manifest (default-on freshness-aware parse),
+    data-product scope, output dir, plus --inline (one standalone HTML) and --archive (portable zip)."""
+    p.add_argument(
+        "--manifest",
+        type=Path,
+        default=config.DEFAULT_MANIFEST,
+        help="Path to dbt manifest.json (default: <project>/%(default)s)",
+    )
+    # Default ON (matches dbt's --no-* convention): the viewer reflects the live graph, so it reparses
+    # unless --no-parse is given (and even then only when a source is newer than the manifest).
+    p.add_argument(
+        "--parse",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run `dbt parse` first to refresh the manifest when stale (default: on; --no-parse to skip)",
+    )
+    _add_dataproduct_scope(p)
+    _add_sdag_output(p)
+    p.add_argument(
+        "--inline",
+        action="store_true",
+        help="Emit a single standalone sdag.html with the JS + graph JSON inlined (no sidecar files)",
+    )
+    p.add_argument(
+        "--archive",
+        nargs="?",
+        const=dataproducts.ARCHIVE_DEFAULT,
+        default=None,
+        metavar="PATH",
+        help="Bundle the generated viewer into a portable .zip (bare: <output>/sdag.zip; or --archive PATH). "
+        "Pair with --inline for a single-file archive.",
+    )
 
 
 def _add_review_group(sub, common: argparse.ArgumentParser) -> None:

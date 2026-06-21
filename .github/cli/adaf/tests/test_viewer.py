@@ -53,7 +53,8 @@ def test_full_graph_primary_selector_is_the_smallest_membership():
 
 def test_full_graph_metadata_counts():
     meta = viewer.build_full_graph_json(_NODES, _EDGES, _RESOLVED)["metadata"]
-    assert meta == {"n_nodes": 4, "n_edges": 3, "n_selectors": 1, "n_unmatched_nodes": 1}
+    # compliance defaults to an empty dict when no per-selector compliance is supplied.
+    assert meta == {"n_nodes": 4, "n_edges": 3, "n_selectors": 1, "n_unmatched_nodes": 1, "compliance": {}}
 
 
 # ─── super graph ─────────────────────────────────────────────────────────────

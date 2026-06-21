@@ -14,14 +14,19 @@ both — or internal. The result dataclasses live in ``adaf.reports.dataproducts
 # Standard Library
 import json
 import logging
+import os
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 # Third Party
 import yaml
 
 # Local
-from adaf import config, viewer
-from adaf.dbt import ls, runner
+from adaf import annotations, config, viewer
+from adaf.dbt import cache, ls, runner
+from adaf.dbt.manifest_view import ManifestView
+from adaf.dbt.selectors import load_selectors
 from adaf.graph import Graph, classify_boundary
 from adaf.reports.dataproducts import (
     BoundaryReport,
@@ -34,6 +39,14 @@ from adaf.taxonomy import NodeFacts, load_node_facts
 from adaf.utils.formatting import render_from_args
 
 log = logging.getLogger(__name__)
+
+# Sentinel for a bare ``--archive`` (no path): write the zip next to the assets as
+# ``<output>/sdag.zip``. argparse stores this when the flag is given with no value (``const=``).
+ARCHIVE_DEFAULT = "<output>/sdag.zip"
+
+# `dbt ls` spawns a full dbt parse per call; cap concurrency so resolving many selectors doesn't
+# exhaust memory. IO/subprocess-bound, so a small pool still wins big.
+_MAX_LS_WORKERS = min(12, (os.cpu_count() or 4))
 
 __all__ = [
     "BoundaryReport",
@@ -300,24 +313,109 @@ def cmd_check(args) -> int:
 # ─── products generate / serve: the interactive sdag viewer ──────────────────
 
 
+def _maybe_parse(args) -> None:
+    """`dbt parse` only when warranted: never with --no-parse; otherwise only if the manifest is
+    stale (a source file is newer than it). Avoids the slow reparse on a clean tree."""
+    if not getattr(args, "parse", True):  # --no-parse: trust the existing manifest
+        log.debug("sdag: --no-parse — using the existing manifest as-is")
+        return
+    if cache.manifest_is_fresh(args.manifest, config.project_root()):
+        log.info("sdag: manifest is fresh (no source newer than it) — skipping `dbt parse`")
+        return
+    log.info("sdag: manifest stale or missing — running `dbt parse`")
+    dbt_parse()
+
+
+def _resolve_all(static: list[tuple[str, str]], args, view: ManifestView) -> dict[str, set[str]]:
+    """Resolve every static selector to its member ids — cache hits skip ``dbt ls``; the misses are
+    resolved in parallel (bounded pool), with per-selector progress logging.
+
+    On a miss, each selector's members are classified against the lineage graph and the membership +
+    boundary annotation is persisted to that selector's own cache file."""
+    root = config.project_root()
+    resolved: dict[str, set[str]] = {}
+    todo: list[str] = []
+    for name, _desc in static:
+        entry = cache.load_selector(root, args.manifest, args.selectors, name)
+        if entry is not None:
+            resolved[name] = entry.members
+        else:
+            todo.append(name)
+    log.info(
+        "sdag: %d/%d selector(s) served from cache; resolving %d via `dbt ls`", len(resolved), len(static), len(todo)
+    )
+    if todo:
+        graph = Graph.from_view(view)  # the lineage graph is needed only for the misses
+        done = 0
+        with ThreadPoolExecutor(max_workers=min(_MAX_LS_WORKERS, len(todo))) as pool:
+            futures = {pool.submit(ls.ls_member_ids, name): name for name in todo}
+            for future in as_completed(futures):
+                name = futures[future]
+                members = future.result()  # propagates a failed `dbt ls` (fail loud)
+                resolved[name] = members
+                boundaries = graph.classify(members)
+                cache.save_selector(
+                    root, args.manifest, args.selectors, name, cache.SelectorCacheEntry(members, boundaries)
+                )
+                done += 1
+                log.info("sdag: [%d/%d] resolved selector %s (%d members)", done, len(todo), name, len(members))
+    return resolved
+
+
 def _build_viewer_graphs(args) -> tuple[dict, dict, str]:
-    """Resolve selectors, read the full manifest, and build the two Cytoscape JSON payloads."""
-    if getattr(args, "parse", False):
-        dbt_parse()
-    nodes, edges = viewer.load_full_manifest(args.manifest)
-    named_selectors = _filter_named(load_selector_names(args.selectors), list(args.product or []), args.selectors)
-    resolved = {name: resolve_members(name) for name, _desc in named_selectors}
-    full_json = viewer.build_full_graph_json(nodes, edges, resolved)
-    super_json = viewer.build_super_graph_json(nodes, edges, resolved)
-    source_label = str(args.manifest)
-    return full_json, super_json, source_label
+    """Resolve every (static, --product-filtered) named selector, read the full manifest, and build
+    the two Cytoscape JSON payloads — enriching each selector's cache with sdag-check compliance so
+    the viewer can render per-product compliance + per-node governance straight from the payload."""
+    _maybe_parse(args)
+    view = ManifestView.load(args.manifest)  # parse once; the viewer + boundary classify share it
+    nodes, edges = viewer.display_graph(view)
+    # A state:modified selector is a PR-diff selector, not a static data product — `dbt ls` errors on
+    # it without --state — so the viewer can only render the static selectors.
+    selectors = load_selectors(args.selectors)
+    wanted = list(getattr(args, "product", None) or [])
+    static = [
+        (name, desc) for name, desc, uses_state, _def in selectors if not uses_state and (not wanted or name in wanted)
+    ]
+    skipped = [name for name, _desc, uses_state, _def in selectors if uses_state]
+    definitions = {name: definition for name, _desc, uses_state, definition in selectors if not uses_state}
+    if skipped:
+        log.warning("sdag: skipping %d state-based selector(s) not renderable without --state: %s",
+                    len(skipped), ", ".join(skipped))
+    resolved = _resolve_all(static, args, view)
+    root = config.project_root()
+    annotations.enrich_all(root, view, resolved)  # adds compliance rollup + per-node annotations to the cache
+    compliance = viewer.load_selector_compliance(root, list(resolved))
+    full_json = viewer.build_full_graph_json(nodes, edges, resolved, compliance)
+    super_json = viewer.build_super_graph_json(nodes, edges, resolved, definitions=definitions)
+    log.info("sdag: built graphs — %d nodes / %d edges across %d selector(s)", len(nodes), len(edges), len(resolved))
+    return full_json, super_json, str(args.manifest)
+
+
+def _archive_path(args) -> Path | None:
+    """Resolve ``--archive`` to a zip path, or ``None`` when not requested. Bare ``--archive`` →
+    ``<output>/sdag.zip``; ``--archive PATH`` → ``PATH``."""
+    archive = getattr(args, "archive", None)
+    if archive is None:
+        return None
+    return args.output / "sdag.zip" if archive == ARCHIVE_DEFAULT else Path(archive)
 
 
 def cmd_generate(args) -> int:
     full_json, super_json, source_label = _build_viewer_graphs(args)
-    build_id = viewer.write_outputs(args.output, full_json, super_json, source_label=source_label)
-    log.info("sdag assets written to %s (build_id=%s)", args.output, build_id)
-    log.info("open %s/%s in a browser, or run `products serve` to host it", args.output, viewer.SDAG_HTML)
+    if getattr(args, "inline", False):
+        build_id = viewer.write_inline(args.output, full_json, super_json, source_label=source_label)
+        target = args.output / viewer.SDAG_HTML
+        print(f"sdag standalone written to {target} (build_id={build_id})", file=sys.stderr)
+        print(f"open {target} directly in a browser — no server needed (inline)", file=sys.stderr)
+    else:
+        build_id = viewer.write_outputs(args.output, full_json, super_json, source_label=source_label)
+        print(f"sdag assets written to {args.output} (build_id={build_id})", file=sys.stderr)
+        print("run `adaf products serve` to host it (the multi-file viewer needs a server, not file://)",
+              file=sys.stderr)
+    zip_path = _archive_path(args)
+    if zip_path is not None:
+        entries = viewer.write_archive(args.output, zip_path)
+        print(f"sdag archive written to {zip_path} ({len(entries)} entries: {', '.join(entries)})", file=sys.stderr)
     return 0
 
 
