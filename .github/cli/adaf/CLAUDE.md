@@ -3,12 +3,23 @@
 Guidance for anyone (human or agent) changing this tool. Read `README.md` first
 for what it does; this file is rationale and invariants only.
 
-> **Status:** mid-build-out. In place: the `rules` group + catalogue (SSoT); the
-> `check`/`products` groups (migrated from `dbt-jaffleshop/cicd_cli/`, byte-identical parity);
-> and the `review` group (migrated from `.github/actions/dbt-testing-taxonomy-review/`, with
-> the `rule_code` enum injected from the catalogue). Still to land: the deterministic taxonomy
-> detectors (`check taxonomy`), the extended boundary checks, and the suppression layer — per
+> **Status:** in place: the `rules` group + catalogue (SSoT); the `check`/`products` groups;
+> the `review` group (GitHub Models, `rule_code` enum injected from the catalogue); the
+> deterministic taxonomy detectors (`check taxonomy`) + suppression layer — per
 > [ADR-0005](../../../docs/arch/adr-0005-adaf-automated-data-assurance-framework.md).
+>
+> **Backported from the sibling `dbt_cartology_cdip/.github/cli/adaf` (the dbt-engineering
+> specialist):** the `run_dbt`/`ManifestView`/artifact seam (parse the manifest once; `[fusion]`
+> parquet reader for dbt v2.0); the **`defer-diff`/`defer-state`** workflow commands (built-vs-deferred
+> split via a cached worktree-parsed baseline + deepdiff); the **`list`/`ls`** scope preview
+> (hop-walks, `--macros`, `--paths`, `--commands` on the gates); the **`gha`** workflow generator
+> (paths derived from `dbt ls`, three glob algorithms + false-positive audit); the **`sdag check`**
+> boundary-obligation lint (catalogue rule IDs MD-02/11/12, TM-AU-01, MD-07); the **selector cache**
+> (fingerprint-keyed, parallel resolution) + **viewer enrichment** (compliance RAG rings, governance,
+> inline/archive); and the **`tests/multiversion/`** Docker matrix (dbt 1.11/1.12/2.0, off `make ci`).
+> These ride on a SECOND, product-scoped selection (`dbt/scope.py`, required `--selector` + hop-walks),
+> parallel to the catalogue checks' changed/all + `--select`/`--exclude` (`dbt/selection.py`) — the two
+> coexist by design; a workflow command is product-scoped, a `check` gate is changed-file-scoped.
 
 ## The one idea that holds it together: the catalogue is the only source of truth
 
@@ -36,33 +47,46 @@ second place. Add a rule by editing `catalog.json` only; `adaf rules validate`
 ├── src/adaf/
 │   ├── app.py              # argparse wiring + main(). NO business logic. Lazy project discovery.
 │   ├── __main__.py         # `python -m adaf` entry
-│   ├── config.py           # PROJECT_ROOT discovery (dbt_project.yml walk-up), default paths
-│   ├── gitutil.py          # changed-file detection (merge-base vs --base-ref)
-│   ├── graph.py            # data-node lineage DAG + classify_boundary() — pure
+│   ├── config.py           # PROJECT_ROOT discovery (dbt_project.yml walk-up), default paths, project_root()
+│   ├── gitutil.py          # changed-file detection + git WORKTREE lifecycle (resolve_sha/add/remove)
+│   ├── graph.py            # data-node lineage DAG + classify_boundary() / Graph.classify() — pure
+│   ├── report.py           # shared colourised Finding/headline/table substrate (list, defer-diff, gha, sdaglint)
+│   ├── annotations.py      # per-product compliance rollup (reuses sdaglint RULES) → enriches the selector cache
 │   ├── dbt/                # dbt primitives, grouped: thin readers/resolvers over dbt's artifacts
+│   │   ├── runner.py       #   THE single dbt subprocess seam: run_dbt / dbt_parse / dbt_deps
+│   │   ├── ls.py           #   THE single `dbt ls` home: select/exclude + named-selector paths/member-ids
+│   │   ├── manifest_view.py#   ManifestView — parse manifest.json ONCE; every projection builds from_view
+│   │   ├── artifact.py     #   JsonManifestArtifact + ParquetManifestArtifact (dbt v2.0 Fusion; [fusion] extra)
 │   │   ├── manifest.py     #   manifest.json → ModelDoc (description, declared columns, test_count)
 │   │   ├── catalog.py      #   catalog.json → RESOLVED warehouse columns per model
-│   │   └── selection.py    #   --changed-only/--all/--select/--exclude → list[Path] (dbt ls + git)
+│   │   ├── selectors.py    #   selectors.yml → named selectors (+ state: detection) for the viewer/gha
+│   │   ├── cache.py        #   fingerprint-keyed per-selector membership+boundary cache (sdag viewer)
+│   │   ├── defer.py        #   defer_state_dir — worktree-parse a git ref's manifest, cache per (sha,target)
+│   │   ├── selection.py    #   CHECK-gate scope: --changed-only/--all/--select/--exclude → list[Path]
+│   │   └── scope.py        #   PRODUCT scope: required --selector + --upstream/--downstream/--defer (list, defer, sdag check)
 │   ├── taxonomy.py         # NodeFacts + the deterministic detectors (DETECTORS registry)
 │   ├── suppression.py      # adaf.yml + inline `-- adaf-disable` parsing
-│   ├── viewer.py + assets/ # sdag Cytoscape viewer (products generate/serve)
+│   ├── viewer.py + assets/ # sdag Cytoscape viewer (governance + compliance RAG + inline/archive + design-tokens)
+│   ├── gha/                # `adaf gha create/update/analyse` — per-product workflow generator + glob collapse
 │   ├── utils/              # cross-cutting infra, grouped: logging_setup · formatting · style · toollog
-│   ├── reports/            # the result DATACLASSES, grouped (one module per domain): coverage ·
-│   │                       #   dataproducts · deprecations · sqlfluff · taxonomy. Render-only; the
-│   │                       #   evaluation that builds them lives in commands/ (which re-export them).
+│   ├── reports/            # the result DATACLASSES, grouped (one module per domain). Render-only.
 │   ├── rules/              # the SSoT: catalog.json + catalog.schema.json + review-output.schema.json + loader
 │   └── commands/           # evaluation logic + handlers (NO report dataclasses — those live in reports/)
 │       ├── rules.py        # `adaf rules list/show/validate/explain`
 │       ├── coverage.py     # check docs / tests / doc-columns
-│       ├── deprecations.py # check deprecations (dbt-autofix)
-│       ├── sqlfluff.py     # check lint / format
+│       ├── deprecations.py # check deprecations (dbt-autofix); --commands prints the argv
+│       ├── sqlfluff.py     # check lint / format; --commands prints the argv
 │       ├── taxonomy.py     # check taxonomy (deterministic detectors)
-│       ├── dataproducts.py # check system-boundaries + products boundaries/generate/serve
+│       ├── dataproducts.py # check system-boundaries + products boundaries/generate/serve (cache+parallel)
+│       ├── defer.py        # `adaf defer-diff` / `defer-state` — built-vs-deferred + the CI --state plumbing
+│       ├── targets.py      # `adaf list` (ls) — scope preview, hop groups, --macros/--paths/--bare
+│       ├── sdaglint.py     # `adaf sdag check` — boundary-obligation lint (catalogue rule IDs)
 │       ├── review.py       # `adaf review` — LLM review via GitHub Models (keyless); --post for PR comments
 │       ├── report.py       # `adaf report` — per-model markdown + LLM-vs-deterministic reconciliation
 │       └── checks.py       # check all (aggregator)
 ├── evals/                  # deepeval harness over the broken fixture (eval dep-group)
 └── tests/                  # catalogue-integrity + ported unit suite
+    └── multiversion/       # Docker dbt 1.11/1.12/2.0 matrix (off `make ci`; `make adaf-multiversion-ci`)
 ```
 
 **Runtime-env note:** the shell-out checks (lint→sqlfluff, format, deprecations→dbt-autofix,
