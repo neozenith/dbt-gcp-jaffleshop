@@ -52,10 +52,16 @@ permissions:
   contents: read
   id-token: write          # required for WIF (google-github-actions/auth)
 
-# Serialize per-ref so two prod-bound pushes don't deploy in parallel.
-# cancel-in-progress: false lets in-flight builds finish.
+# Serialize ALL prod deploys into ONE group — NOT per-ref. Every deploy (tag push,
+# main dispatch, the thread sweep) runs `dbt run -s elementary` / `dbt build`, which
+# writes the Elementary incremental models in the shared ELEMENTARY dataset using
+# fixed-name temp tables (e.g. dbt_sources__dbt_tmp). A per-ref group let a tag deploy
+# and a main dispatch run concurrently; they collided on that temp table and one run
+# 404'd ("Not found: ELEMENTARY.dbt_sources__dbt_tmp"). A single ref-independent group
+# makes them queue instead. cancel-in-progress: false lets the in-flight deploy finish
+# (never kill a half-written prod build).
 concurrency:
-  group: dbt-deploy-prod-${{ github.ref }}
+  group: dbt-deploy-prod
   cancel-in-progress: false
 
 defaults:
