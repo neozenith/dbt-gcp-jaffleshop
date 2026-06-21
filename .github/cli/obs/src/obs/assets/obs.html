@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>obs — dbt run telemetry</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- Poppins — geometric-sans display face (Cartology design system). -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+<!-- Tailwind via CDN (v3) — LAYOUT utilities only; every colour is a CSS variable driven by [data-theme]. -->
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<!-- Plotly for the overview scatter. Pinned — bump deliberately, not silently. -->
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+
+<!-- ── Theme bootstrap (runs before paint to avoid a flash of the wrong theme) ──
+     Resolves: localStorage choice → prefers-color-scheme → dark default, and stamps
+     it on <html data-theme>. obs.js reads/writes the same key. -->
+<script>
+  (function () {
+    var KEY = "obs-theme";
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+    var theme = saved === "light" || saved === "dark" ? saved : (prefersLight ? "light" : "dark");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+
+<style>
+  /* ── Theme provider: every chrome colour is a CSS variable so one [data-theme]
+       flip re-themes the UI. Plotly + the SVG Gantt can't read CSS vars, so obs.js
+       carries a parallel JS palette (design-tokens.json) for those canvases. ──── */
+  :root[data-theme="dark"] {
+    --canvas:#242C30; --app-bg:#242C30; --sidebar-bg:#2D373D; --panel-bg:#3A474E;
+    --panel-hover:#4B5C65; --border:#4B5C65; --border-soft:#3A474E;
+    --text-strong:#F1F3F3; --text:#E3E6E7; --text-secondary:#C7CDD0; --text-muted:#ACB5B9;
+    --accent:#A5C84D; --accent-text:#B8D666; --on-accent:#1B2125;
+    --ok-text:#6EE7B7; --warn-text:#FCD34D; --fail-text:#FCA5A5;
+    --tooltip-bg:rgba(20,26,29,0.96); --shadow:rgba(0,0,0,0.45);
+  }
+  :root[data-theme="light"] {
+    --canvas:#EDEFF0; --app-bg:#E4E7E8; --sidebar-bg:#FFFFFF; --panel-bg:#F1F3F4;
+    --panel-hover:#E2E5E7; --border:#C2C8CB; --border-soft:#DDE0E2;
+    --text-strong:#1B2125; --text:#28323A; --text-secondary:#3A474E; --text-muted:#56656D;
+    --accent:#A5C84D; --accent-text:#46630F; --on-accent:#1B2125;
+    --ok-text:#0D6B30; --warn-text:#B45309; --fail-text:#C2151B;
+    --tooltip-bg:rgba(255,255,255,0.97); --shadow:rgba(60,72,80,0.22);
+  }
+
+  html, body { height:100%; width:100%; margin:0; padding:0; }
+  body { font-family:"Poppins", ui-sans-serif, system-ui, sans-serif; background:var(--sidebar-bg); color:var(--text); }
+  .canvas-surface { background:var(--canvas); transition:background 0.15s ease; }
+
+  /* Semantic chrome classes (replace baked Tailwind colour utilities). */
+  .app-sidebar { background:var(--app-bg); border-color:var(--border); }
+  .panel-title { color:var(--accent-text); }
+  .text-sub    { color:var(--text-muted); }
+  .text-body   { color:var(--text); }
+  .text-label  { color:var(--text-muted); }
+  .rule-accent { background:var(--accent); }
+  .mono { font-family:ui-monospace, monospace; }
+
+  .ctl { background:var(--panel-bg); color:var(--text); border:1px solid var(--border-soft);
+         transition:background 0.12s ease, color 0.12s ease; }
+  .ctl:hover { background:var(--panel-hover); }
+  .ctl-group { border:1px solid var(--border); }
+  select.ctl:focus { border-color:var(--accent); }
+  .view-btn.is-active { background:var(--accent); color:var(--on-accent); font-weight:600; }
+  button:focus-visible, select:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+
+  .swatch { width:0.75rem; height:0.75rem; border-radius:0.2rem; display:inline-block; flex-shrink:0; }
+  .legend-item { display:flex; align-items:center; gap:0.5rem; font-size:0.72rem; color:var(--text-muted); }
+  #metadata-body, #detail-body, #overview-stats { color:var(--text-secondary); }
+
+  /* View routing: body[data-view] toggles which sidebar panel + main section shows. */
+  body[data-view="overview"] .only-detail { display:none; }
+  body[data-view="detail"]   .only-overview { display:none; }
+  body[data-view="overview"] #detail   { display:none; }
+  body[data-view="detail"]   #overview { display:none; }
+
+  /* Tooltip for Gantt bars. */
+  #tooltip { position:fixed; pointer-events:none; z-index:50; display:none;
+    background:var(--tooltip-bg); color:var(--text); border:1px solid var(--border);
+    font-family:ui-monospace, monospace; font-size:11px; line-height:1.4;
+    padding:7px 9px; border-radius:7px; max-width:26rem; white-space:pre; box-shadow:0 4px 14px var(--shadow); }
+
+  /* Collapsible sidebar — floating chevron over the canvas (carto T39 pattern). */
+  #app-root.sidebar-collapsed .app-sidebar { display:none; }
+  #btn-sidebar-toggle { position:absolute; top:8px; left:8px; z-index:20; line-height:1; font-family:ui-monospace, monospace; }
+
+  #scatter { width:100%; height:100%; }
+  #chart { width:100%; }
+  main { overflow:auto; }
+</style>
+</head>
+<body data-view="overview">
+
+<div id="app-root" class="flex h-screen w-screen overflow-hidden">
+
+  <!-- ── Sidebar ───────────────────────────────────────────────────────── -->
+  <aside class="app-sidebar w-80 shrink-0 border-r p-4 overflow-y-auto">
+
+    <div class="flex items-start justify-between">
+      <div>
+        <h1 id="brand-name" class="panel-title text-lg font-semibold mb-1 tracking-tight">obs</h1>
+        <p id="brand-tagline" class="text-sub text-xs mb-1">dbt run telemetry</p>
+      </div>
+      <button id="btn-theme" class="ctl px-2 py-1 rounded text-xs font-medium shrink-0"
+              title="Toggle light / dark theme" aria-label="Toggle theme">☽ Dark</button>
+    </div>
+
+    <p id="build-banner" class="text-sub text-[10px] mono mb-3 leading-tight"></p>
+    <div class="rule-accent h-0.5 w-10 rounded-full mb-4"></div>
+
+    <!-- Primary nav -->
+    <div class="space-y-2 mb-4">
+      <div class="ctl-group flex rounded overflow-hidden">
+        <button id="nav-overview" class="view-btn ctl flex-1 px-2 py-1 text-xs">Overview</button>
+        <button id="nav-detail" class="view-btn ctl flex-1 px-2 py-1 text-xs">Run detail</button>
+      </div>
+    </div>
+
+    <!-- ── Overview-only panels ─────────────────────────────────────────── -->
+    <div class="only-overview">
+      <div class="text-xs text-body space-y-0.5 mb-4">
+        <div class="text-label uppercase tracking-wider mb-1">Window</div>
+        <div id="overview-stats" class="mono whitespace-pre"></div>
+      </div>
+      <div class="space-y-1 text-xs mb-4">
+        <div class="text-label uppercase tracking-wider mb-1">Legend</div>
+        <div class="legend-item"><span class="swatch" id="lg-pass"></span><span>passed</span></div>
+        <div class="legend-item"><span class="swatch" id="lg-fail"></span><span>has failures</span></div>
+        <p class="text-sub text-[10px] leading-tight mt-1">Click a point to open that run's Gantt.</p>
+      </div>
+    </div>
+
+    <!-- ── Detail-only panels ───────────────────────────────────────────── -->
+    <div class="only-detail">
+      <div class="space-y-1 mb-4">
+        <label class="text-label block text-xs uppercase tracking-wider" for="run-picker">Run</label>
+        <select id="run-picker" class="ctl w-full px-2 py-1 text-xs rounded mono"></select>
+        <p id="run-meta" class="mono text-[11px] leading-relaxed mt-1" style="color:var(--text-muted)"></p>
+      </div>
+
+      <div class="space-y-2 mb-4">
+        <label class="text-label block text-xs uppercase tracking-wider">Zoom (px / second)</label>
+        <div class="flex items-center gap-2">
+          <button id="btn-zoom-out" class="ctl px-2 py-1 rounded text-xs">−</button>
+          <input id="zoom" type="range" min="2" max="60" step="1" value="14" style="flex:1" />
+          <button id="btn-zoom-in" class="ctl px-2 py-1 rounded text-xs">+</button>
+        </div>
+      </div>
+
+      <div class="space-y-2 mb-4">
+        <label class="text-label block text-xs uppercase tracking-wider">Colour by</label>
+        <div class="ctl-group flex rounded overflow-hidden" id="colour-seg">
+          <button class="view-btn ctl flex-1 px-2 py-1 text-xs" data-mode="resource">resource_type</button>
+          <button class="view-btn ctl flex-1 px-2 py-1 text-xs" data-mode="status">status</button>
+        </div>
+        <label class="legend-item mt-1" style="cursor:pointer"><input id="chk-labels" type="checkbox" /> label bars</label>
+      </div>
+
+      <div class="space-y-1 text-xs mb-4">
+        <div class="text-label uppercase tracking-wider mb-1">Legend</div>
+        <div id="legend-body" class="space-y-1"></div>
+      </div>
+
+      <div class="text-xs text-body space-y-0.5 mb-4">
+        <div class="text-label uppercase tracking-wider mb-1">Stats</div>
+        <div id="metadata-body" class="mono whitespace-pre text-[11px] leading-relaxed"></div>
+      </div>
+
+      <div class="text-xs">
+        <div class="text-label uppercase tracking-wider mb-1">Longest nodes</div>
+        <div id="detail-body" class="mono whitespace-pre text-[11px] leading-relaxed"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ─────────────────────────────────────────────────────────── -->
+  <main class="canvas-surface flex-1 relative">
+    <button id="btn-sidebar-toggle" class="ctl px-2 py-1 rounded text-xs font-medium"
+            title="Collapse sidebar" aria-label="Toggle sidebar">⟨</button>
+    <div id="status" class="ctl absolute top-2 right-2 text-xs px-2 py-1 rounded">loading…</div>
+
+    <!-- Overview: Plotly scatter (time × duration, coloured by pass/fail) -->
+    <section id="overview" class="absolute inset-0 p-2"><div id="scatter"></div></section>
+
+    <!-- Detail: SVG Gantt for the selected run -->
+    <section id="detail" class="absolute inset-0"><div id="chart"></div></section>
+  </main>
+</div>
+
+<div id="tooltip"></div>
+
+<script src="obs.js?v={{BUILD_ID}}" defer></script>
+</body>
+</html>

@@ -1,65 +1,83 @@
 {
-  "_about": "Single source of truth for obs viewer branding. Curate colours/fonts here; gantt.js reads this at runtime and projects each theme onto CSS custom properties (--obs-*). No rebuild needed — edit, re-serve, refresh.",
+  "_about": "Single source of truth for obs viewer branding (Cartology design system). obs.html carries the CHROME palette as CSS variables per [data-theme]; obs.js fetches THIS file at runtime to colour the CANVAS surfaces that can't read CSS vars — the Plotly overview scatter and the SVG Gantt. Curate colours/fonts here; re-serve, refresh. No rebuild.",
+  "version": 1,
+  "defaultTheme": "system",
   "brand": {
     "name": "obs",
     "tagline": "dbt run telemetry"
   },
   "fonts": {
-    "mono": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-    "sans": "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+    "sans": "\"Poppins\", ui-sans-serif, system-ui, -apple-system, sans-serif",
+    "mono": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
   },
-  "defaultTheme": "system",
   "resourceColours": {
-    "_note": "Theme-independent — chosen to read on both light and dark lanes (Okabe-Ito, colour-blind-safe).",
-    "model": "#0072B2",
-    "test": "#E69F00",
-    "unit_test": "#CC79A7",
-    "seed": "#009E73",
-    "snapshot": "#D55E00",
-    "source": "#56B4E9",
-    "exposure": "#F0E442",
-    "saved_query": "#8C66CC",
-    "operation": "#999999",
-    "_fallback": "#94A3B8"
+    "_note": "Gantt bar fill by resource_type (Cartology canvas palette, extended for obs node kinds).",
+    "model": "#3b82f6",
+    "test": "#a855f7",
+    "unit_test": "#ec4899",
+    "seed": "#10b981",
+    "snapshot": "#f59e0b",
+    "source": "#6b7280",
+    "exposure": "#ef4444",
+    "saved_query": "#14b8a6",
+    "operation": "#8a99a1",
+    "_fallback": "#94a3b8"
   },
   "statusColours": {
-    "success": "#10B981",
-    "pass": "#10B981",
-    "error": "#EF4444",
-    "fail": "#EF4444",
-    "failed": "#EF4444",
-    "warn": "#F59E0B",
-    "skipped": "#64748B",
-    "_fallback": "#94A3B8"
+    "_note": "Pass/fail semantics shared by the Gantt bar stroke and the overview scatter marks.",
+    "pass": "#10b981",
+    "success": "#10b981",
+    "fail": "#ef4444",
+    "failed": "#ef4444",
+    "error": "#ef4444",
+    "warn": "#f59e0b",
+    "skipped": "#6b7280",
+    "_fallback": "#94a3b8"
   },
   "themes": {
     "dark": {
-      "bg": "#0F172A",
-      "surface": "#020617",
-      "surfaceAlt": "#1E293B",
-      "text": "#F1F5F9",
-      "textMuted": "#94A3B8",
-      "textFaint": "#64748B",
-      "border": "#334155",
-      "accent": "#38BDF8",
-      "grid": "#1E293B",
-      "laneBandA": "#0F172A",
-      "laneBandB": "#0B1220",
-      "barStroke": "rgba(0,0,0,0.35)"
+      "name": "dark",
+      "toggleLabel": "☽ Dark",
+      "laneBandA": "#242C30",
+      "laneBandB": "#2D373D",
+      "grid": "#3A474E",
+      "axisText": "#ACB5B9",
+      "barStroke": "rgba(0,0,0,0.40)",
+      "plotly": {
+        "paper": "#242C30",
+        "plot": "#2D373D",
+        "font": "#E3E6E7",
+        "grid": "#3A474E",
+        "axisLine": "#4B5C65",
+        "markerPass": "#6EE7B7",
+        "markerFail": "#FCA5A5",
+        "markerLine": "#242C30",
+        "hoverBg": "#1B2125",
+        "hoverBorder": "#4B5C65",
+        "accent": "#A5C84D"
+      }
     },
     "light": {
-      "bg": "#FFFFFF",
-      "surface": "#F8FAFC",
-      "surfaceAlt": "#E2E8F0",
-      "text": "#0F172A",
-      "textMuted": "#475569",
-      "textFaint": "#94A3B8",
-      "border": "#CBD5E1",
-      "accent": "#0284C7",
-      "grid": "#E2E8F0",
+      "name": "light",
+      "toggleLabel": "☼ Light",
       "laneBandA": "#FFFFFF",
-      "laneBandB": "#F1F5F9",
-      "barStroke": "rgba(15,23,42,0.18)"
+      "laneBandB": "#F1F3F4",
+      "grid": "#DDE0E2",
+      "axisText": "#56656D",
+      "barStroke": "rgba(27,33,37,0.18)",
+      "plotly": {
+        "paper": "#FFFFFF",
+        "plot": "#F1F3F4",
+        "font": "#28323A",
+        "grid": "#DDE0E2",
+        "axisLine": "#C2C8CB",
+        "markerPass": "#0D6B30",
+        "markerFail": "#C2151B",
+        "markerLine": "#FFFFFF",
+        "hoverBg": "#FFFFFF",
+        "hoverBorder": "#C2C8CB",
+        "accent": "#46630F"
+      }
     }
   }
 }

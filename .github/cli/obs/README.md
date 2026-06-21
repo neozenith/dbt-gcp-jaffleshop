@@ -34,22 +34,29 @@ joins `dbt_invocations` for the run picker's command + thread metadata:
 
 ## Viewer
 
-A vanilla-JS SVG Gantt (no build step), with:
+A vanilla-JS single-page app (no build step) with two URL-routed views:
 
-- **Run picker** — every run in the window, grouped by day, showing command / threads /
-  node count / speed-up; lazy-loads each run's payload on selection.
-- **Light / dark / system theme** — a theme provider that projects
-  [`design-tokens.json`](src/obs/assets/design-tokens.json) onto CSS variables;
-  preference persists in `localStorage`.
-- **Collapsible sidebar**, zoom, colour-by `resource_type`/`status`, hover tooltips.
+- **Overview** (`obs.html`) — a **Plotly scatter** of every run: x = run start, y = wall
+  duration, colour = pass/fail, marker size = thread count. Click any point to open that
+  run's detail. Built on the Cartology design system (Poppins, lime accent, CSS-variable
+  chrome) borrowed from `adaf`'s sdag viewer.
+- **Detail** (`obs.html?run=<id>`) — that run's thread-grouped **SVG Gantt**, plus a run
+  picker, zoom, colour-by `resource_type`/`status`, and hover tooltips.
+
+Navigation is **deep-linkable**: the URL updates (`?run=<id>`) as you move, Back/Forward
+work, and a `?run=` link opens straight into a run's Gantt. **Light/dark theme** is a
+provider that flips a `data-theme` attribute (CSS variables re-theme the chrome) *and*
+re-renders the Plotly + Gantt canvases from a parallel JS palette (canvases can't read CSS
+vars). The sidebar collapses; theme/zoom/collapse persist in `localStorage`.
 
 ### Design tokens (brand curate point)
 
-All viewer colours and fonts live in **one file**,
-[`src/obs/assets/design-tokens.json`](src/obs/assets/design-tokens.json): light + dark
-palettes, the `resource_type`/`status` colour scales, and font stacks. Edit it, re-run
-`obs generate` (or just re-serve — it's copied verbatim into the output), refresh. No
-code change, no rebuild.
+Canvas colours and fonts live in **one file**,
+[`src/obs/assets/design-tokens.json`](src/obs/assets/design-tokens.json): per-theme Plotly
+palette (paper/plot/font/grid/pass/fail), the Gantt lane/grid/bar colours, the
+`resource_type`/`status` scales, and font stacks. The chrome palette lives as CSS variables
+in `obs.html` (`:root[data-theme]`). Edit either, re-serve (`design-tokens.json` is copied
+verbatim into the output), refresh. No code change, no rebuild.
 
 ## Auth — read-only, no keyfiles
 
@@ -93,20 +100,20 @@ layout the viewer lazy-loads:
 
 ```
 tmp/obs/
-├── index.json           # run-picker summaries (one row per run) + bundle metadata
+├── index.json           # run-picker + overview-scatter summaries (one row per run) + metadata
 ├── runs/<id>.json       # one per-run Gantt payload, fetched on selection
-├── design-tokens.json   # brand/theme tokens (copied from assets — the curate point)
-├── gantt.html           # the viewer shell
-└── gantt.js             # the renderer (theme provider + run picker + SVG Gantt)
+├── design-tokens.json   # canvas/brand tokens (copied from assets — the curate point)
+├── obs.html             # the SPA shell (overview scatter + run-detail Gantt)
+└── obs.js               # the SPA engine (router + Plotly overview + Gantt + theming)
 ```
 
-Open `gantt.html` via `serve` (file:// URLs are blocked by browsers, and the viewer
+Open `obs.html` via `serve` (file:// URLs are blocked by browsers, and the viewer
 fetches `index.json`/`runs/` relatively).
 
 ## Published on GitHub Pages
 
 The `dbt-docs` workflow publishes the viewer as a sibling surface at
-`<pages-url>/obs/gantt.html`, alongside the dbt docs, the sdag lineage viewer, and the
+`<pages-url>/obs/obs.html`, alongside the dbt docs, the sdag lineage viewer, and the
 Elementary report. That job runs as the `dbt-prod` SA (WIF), so it builds with
 `obs generate --no-impersonate`. Locally, `make -C dbt-jaffleshop gha-docs` reproduces
 the whole Pages site (obs included) for eyeballing before a release.
@@ -114,13 +121,19 @@ the whole Pages site (obs included) for eyeballing before a release.
 ## Dev
 
 ```bash
-make -C .github/cli/obs ci        # lint + typecheck + test  (no warehouse, $0)
+make -C .github/cli/obs ci        # lint + typecheck + test  (no warehouse, no browser, $0)
 make -C .github/cli/obs fix       # format + ruff --fix      (inner loop)
 make -C .github/cli/obs test      # pure transform tests over tests/fixtures/
+make -C .github/cli/obs test-e2e  # Playwright e2e over the generated static SPA
 ```
 
-`ci` never touches BigQuery — the transform (`gantt.build_gantt_payload`) is pure
-and tested against a seeded fixture; only `generate`/`serve` hit the warehouse.
+`ci` never touches BigQuery or a browser — the transforms (`gantt.build_gantt_payload`,
+`build_bundle`) are pure and tested against a seeded fixture; only `generate`/`serve` hit
+the warehouse. `test-e2e` is separate (it installs chromium and needs network for the
+Plotly/Tailwind CDNs): it builds a fixture bundle, serves it over a stdlib HTTP server, and
+drives headless chromium to assert the overview renders, a mark click deep-links into the
+Gantt (URL + view), the theme toggle flips, deep links open detail, Back returns to
+overview, and the sidebar collapses.
 
 ## Module map
 
@@ -133,10 +146,11 @@ and tested against a seeded fixture; only `generate`/`serve` hit the warehouse.
 │   ├── elementary.py       # BigQuery client (impersonate OR direct ADC) + window queries → list[dict]
 │   ├── gantt.py            # PURE transforms (build_gantt_payload, build_bundle) + write_bundle
 │   ├── viewer.py           # serve() the bundle over HTTP (no-store)
-│   ├── assets/             # gantt.html + gantt.js + design-tokens.json (vanilla viewer; {{BUILD_ID}}/{{SOURCE}})
+│   ├── assets/             # obs.html + obs.js + design-tokens.json (vanilla SPA; {{BUILD_ID}}/{{SOURCE}})
 │   ├── commands/gantt.py   # generate/serve handlers
 │   └── utils/              # logging_setup
-└── tests/                  # pure-transform unit tests (payload + bundle) + seeded fixture
+├── tests/                  # pure-transform unit tests (payload + bundle) + seeded fixture
+└── e2e/                    # Playwright suite over the served static SPA (test-e2e; not in ci)
 ```
 
 ## Roadmap

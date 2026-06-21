@@ -2,7 +2,7 @@
 # Dev command-and-control. Run via `make -C .github/cli/obs <target>` from the repo root
 # (no cd needed), or `make <target>` from this directory.
 
-.PHONY: help fix ci sync format lint typecheck test generate serve
+.PHONY: help fix ci sync format lint typecheck test test-e2e generate serve
 
 help:
 	@echo "obs dev targets:"
@@ -30,6 +30,13 @@ typecheck:
 
 test:
 	uv run pytest -q
+
+# Browser-driving e2e over the generated static SPA. NOT part of `ci` (needs a browser
+# binary + network for the Plotly/Tailwind CDNs). Installs chromium, then drives it
+# against a locally-served fixture bundle (no warehouse).
+test-e2e:
+	uv run --group e2e playwright install chromium
+	uv run --group e2e pytest e2e/ -q
 
 # Live targets — need ADC + tokenCreator on the dbt-dev-elementary SA (see README).
 generate:
