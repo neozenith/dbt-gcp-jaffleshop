@@ -14,6 +14,7 @@
 #   ADAF_INSTALL_SPEC  adaf install target: /opt/adaf_pkg  or  /opt/adaf_pkg[fusion]
 #   SELECTOR           adaf selector name the gates run under (matrix_demo)
 #   PIP_PRERELEASE     uv --prerelease value: disallow | allow (allow for the beta/alpha pins)
+#   ENGINE_KIND        pip (dbt-core+adapter venv) | fusion (Rust binary from the public CDN installer)
 FROM python:3.12-slim
 
 ARG ENGINE_NAME
@@ -23,6 +24,7 @@ ARG PARSE_FLAGS=""
 ARG ADAF_INSTALL_SPEC=/opt/adaf_pkg
 ARG SELECTOR=matrix_demo
 ARG PIP_PRERELEASE=disallow
+ARG ENGINE_KIND=pip
 
 # uv (pinned) builds both venvs. (curl/ca-certs no longer needed: every engine installs from PyPI.)
 COPY --from=ghcr.io/astral-sh/uv:0.11.13 /uv /uvx /usr/local/bin/
@@ -35,10 +37,23 @@ COPY adaf_pkg /opt/adaf_pkg
 RUN uv venv --python 3.12 /opt/adaf-venv \
  && uv pip install --python /opt/adaf-venv/bin/python "${ADAF_INSTALL_SPEC}"
 
-# The dbt engine — a dbt-core + adapter venv at /opt/dbt-venv. PIP_PRERELEASE=allow lets the beta/alpha
-# pins resolve; a bad pin fails the build loudly (escalators-not-stairs: no silent skip, no fallback).
-RUN uv venv --python 3.12 /opt/dbt-venv \
- && uv pip install --python /opt/dbt-venv/bin/python --prerelease="${PIP_PRERELEASE}" ${DBT_CORE_SPEC} ${DBT_ADAPTER_SPEC}
+# The dbt engine. Two kinds, ONE invariant output: the `dbt` binary at /opt/dbt-venv/bin/dbt (so
+# harness.py's DBT_BIN is constant). A bad pin / missing binary fails the build loudly
+# (escalators-not-stairs: no silent skip, no fallback).
+#  * pip    — a dbt-core + adapter venv. PIP_PRERELEASE=allow lets the beta/alpha pins resolve.
+#  * fusion — the Rust engine from the public CDN installer (NOT on PyPI). The installer lands the
+#    binary at /root/.local/bin/dbt and exits non-zero only on its cosmetic "couldn't edit shell rc"
+#    step, so we tolerate that and then ASSERT the binary exists, symlinking it to the invariant path.
+RUN if [ "$ENGINE_KIND" = "fusion" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+     && rm -rf /var/lib/apt/lists/* \
+     && ( curl -fsSL https://public.cdn.getdbt.com/fs/install/install.sh | sh || true ) \
+     && test -x /root/.local/bin/dbt \
+     && mkdir -p /opt/dbt-venv/bin && ln -sf /root/.local/bin/dbt /opt/dbt-venv/bin/dbt ; \
+    else \
+        uv venv --python 3.12 /opt/dbt-venv \
+     && uv pip install --python /opt/dbt-venv/bin/python --prerelease="${PIP_PRERELEASE}" ${DBT_CORE_SPEC} ${DBT_ADAPTER_SPEC} ; \
+    fi
 
 COPY fixture /fixture
 COPY harness.py /harness.py
@@ -47,6 +62,7 @@ COPY harness.py /harness.py
 # pip dbt-core+adapter venv), so they are baked directly rather than derived per engine. ADAF_PY is
 # always the 3.12 adaf venv.
 ENV ENGINE_NAME=${ENGINE_NAME} \
+    ENGINE_KIND=${ENGINE_KIND} \
     DBT_BIN=/opt/dbt-venv/bin/dbt \
     ADAF_PY=/opt/adaf-venv/bin/python \
     PARSE_FLAGS=${PARSE_FLAGS} \

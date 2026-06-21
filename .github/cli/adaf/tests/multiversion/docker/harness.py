@@ -32,11 +32,17 @@ FIXTURE = Path("/fixture")
 TARGET = FIXTURE / "target"
 
 ENGINE = os.environ["ENGINE_NAME"]
+ENGINE_KIND = os.environ.get("ENGINE_KIND", "pip")  # "pip" (dbt-core venv) | "fusion" (Rust binary)
 DBT_BIN = os.environ["DBT_BIN"]
 ADAF_PY = os.environ["ADAF_PY"]
 SELECTOR = os.environ.get("SELECTOR", "matrix_demo")
 PARSE_FLAGS = os.environ.get("PARSE_FLAGS", "").split()
 VERSION_PKGS = [p for p in os.environ.get("VERSION_PKGS", "").split(",") if p]
+
+# Where the Fusion engine writes its parquet metadata artifact set under the target dir (verified
+# against `dbt parse --write-index`; see src/adaf/dbt/artifact.py). Its presence is how a Fusion run is
+# distinguished from a dbt-core run (which writes only manifest.json) — Fusion writes BOTH.
+FUSION_NODES_REL = Path("metadata") / "parse" / "nodes" / "v1_0.parquet"
 
 
 def _log(msg: str) -> None:
@@ -61,8 +67,18 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def _versions() -> dict[str, str]:
-    """Resolve deterministic version strings for the golden header: the installed version of each
-    ``VERSION_PKGS`` distribution, read via the dbt venv's own interpreter (``importlib.metadata``)."""
+    """Resolve deterministic version strings for the golden header.
+
+    pip engines: the installed version of each ``VERSION_PKGS`` distribution, read via the dbt venv's
+    own interpreter (``importlib.metadata``). Fusion is a single Rust binary with no venv/distribution
+    metadata, so its version is read from ``dbt --version`` (e.g. ``dbt-fusion 2.0.0-preview.190``)."""
+    if ENGINE_KIND == "fusion":
+        proc = subprocess.run([DBT_BIN, "--version"], capture_output=True, text=True, check=True, env=_env())
+        first = next((ln for ln in proc.stdout.splitlines() if ln.strip()), "dbt-fusion unknown")
+        parts = first.split()
+        name = parts[0] if parts else "dbt-fusion"
+        ver = parts[1] if len(parts) > 1 else "unknown"
+        return {name: ver}
     dbt_py = Path(DBT_BIN).parent / "python"
     code = "import importlib.metadata as m,json,sys;print(json.dumps({n:m.version(n) for n in sys.argv[1:]}))"
     proc = subprocess.run([str(dbt_py), "-c", code, *VERSION_PKGS], capture_output=True, text=True, check=True)
@@ -89,12 +105,16 @@ def _parse() -> dict[str, object]:
 
 def _detect_manifest() -> tuple[str, str]:
     """Return (manifest_kind, manifest_arg) — the artifact format and the value to pass adaf's
-    ``--manifest``. JSON → the ``manifest.json`` file; parquet → the target DIRECTORY (adaf's
-    ``load_artifact`` detects a ``*.parquet`` dir as a v2.0 engine's artifact set)."""
+    ``--manifest``.
+
+    The Fusion parquet set is probed FIRST: a Fusion run writes BOTH the parquet metadata set AND a
+    (v12-schema) ``manifest.json``, and we want this row to exercise the NEW parquet path, so its
+    presence wins. The arg is then the target DIRECTORY (adaf's ``load_artifact`` finds the node table
+    under it). A dbt-core run writes only ``manifest.json`` → JSON path, arg = the file itself."""
+    if (TARGET / FUSION_NODES_REL).exists():
+        return "parquet", str(TARGET)
     if (TARGET / "manifest.json").exists():
         return "json", str(TARGET / "manifest.json")
-    if list(TARGET.glob("*.parquet")):
-        return "parquet", str(TARGET)
     return "missing", str(TARGET / "manifest.json")
 
 

@@ -30,7 +30,7 @@ typecheck:
 	uvx mypy --ignore-missing-imports src
 
 test:
-	uv run pytest -q
+	uv run --extra fusion pytest -q   # --extra fusion ⇒ duckdb present so the parquet-reader tests RUN (not skip)
 
 evals:
 	uv run --group eval pytest evals/ -p no:cacheprovider -o addopts=""
