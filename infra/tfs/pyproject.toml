@@ -7,6 +7,10 @@ requires-python = ">=3.12"
 dependencies = [
     "jinja2>=3.1.5",
     "ruamel-yaml>=0.18.10",
+    # `tfs diagram` renders its own SVG from vendored draw.io stencils, then
+    # rasterizes to PNG via cairosvg. cairosvg needs the system cairo library at
+    # render time: brew install cairo / apt-get install libcairo2.
+    "cairosvg>=2.9.0",
 ]
 
 [project.scripts]
@@ -25,4 +29,43 @@ packages = ["src/tfs"]
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "mypy>=1.11",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=src --cov-report=term-missing"
+
+[tool.coverage.run]
+# No whole-file omits — every module is measured. Genuine IO seams (subprocess/
+# cairo/gh call sites that can't run without live terraform/gcloud/cairo) are marked
+# inline with `# pragma: no cover` at the seam, never hidden behind a config exclude.
+# The diagrams package is unit-tested at ~97-100%. The older command modules
+# (create/validate/gha) predate this suite and are not yet unit-tested here, so there
+# is intentionally NO project-wide `fail_under` gate — coverage is reported, not gated,
+# until those modules get their own tests (backported separately from whimsyhollow).
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = ["pragma: no cover", "raise NotImplementedError", "if TYPE_CHECKING:"]
+
+[tool.mypy]
+strict = true
+files = ["src"]
+mypy_path = ["src"]
+
+# Untyped third-party libs.
+[[tool.mypy.overrides]]
+module = ["cairosvg.*", "ruamel.*", "jinja2.*"]
+ignore_missing_imports = true
+
+# cmd_* handlers read argparse.Namespace attributes (dynamically typed), so strict
+# attribute checks are relaxed for those thin handler modules only. Everything else —
+# including the pure publish/terraform/_terraform logic — is strict-typed.
+[[tool.mypy.overrides]]
+module = ["tfs.diagrams.command", "tfs.commands.terraform"]
+ignore_errors = true
