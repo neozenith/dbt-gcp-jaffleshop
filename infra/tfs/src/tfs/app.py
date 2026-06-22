@@ -7,18 +7,20 @@ set_defaults(func=...), and main() dispatching args.func(args) unconditionally."
 
 import argparse
 import logging
+from collections.abc import Callable
 
 from tfs.commands.create import cmd_create
 from tfs.commands.gha import cmd_gha_check
 from tfs.commands.terraform import make_tf_handler
 from tfs.commands.validate import cmd_validate
 from tfs.config import VALID_ENVS
+from tfs.diagrams.command import cmd_diagram, cmd_diagram_comment
 from tfs.logging_setup import configure_logging
 
 log = logging.getLogger(__name__)
 
 
-def _help(p: argparse.ArgumentParser):
+def _help(p: argparse.ArgumentParser) -> Callable[[argparse.Namespace], None]:
     """Return a handler that prints help for parser p (used as the default func)."""
 
     def _print_help(_: argparse.Namespace) -> None:
@@ -82,8 +84,65 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_gha.set_defaults(func=cmd_gha_check)
 
+    p_diagram = sub.add_parser(
+        "diagram",
+        parents=[common],
+        help="Render a GCP architecture diagram from terraform state or a delta plan",
+    )
+    p_diagram.add_argument("stack", help="Stack name")
+    p_diagram.add_argument(
+        "env",
+        nargs="?",
+        choices=VALID_ENVS,
+        default=None,
+        help="Target environment (required unless --readme, which defaults to prod)",
+    )
+    p_diagram.add_argument(
+        "--mode",
+        choices=["state", "plan"],
+        default="state",
+        help="'state' = live infra (default); 'plan' = the delta, coloured by action",
+    )
+    p_diagram.add_argument(
+        "--iam",
+        choices=["edges", "nodes"],
+        default="edges",
+        help="Render IAM grants as role-labelled edges (default) or as boxes",
+    )
+    p_diagram.add_argument(
+        "--out-dir",
+        default=None,
+        help="Output directory for the .svg/.png (default: <infra-root>/diagrams)",
+    )
+    p_diagram.add_argument(
+        "--readme",
+        action="store_true",
+        help="Embed the architecture (prod state, SVG-only) in stacks/<stack>/README.md instead",
+    )
+    p_diagram.add_argument(
+        "--check",
+        action="store_true",
+        help="With --readme: fail if the committed README diagram is stale (don't write)",
+    )
+    p_diagram.set_defaults(func=cmd_diagram)
+
+    # CI-only companion: link an uploaded diagram artifact into a sticky PR comment.
+    # The image files come from `tfs diagram` + actions/upload-artifact; this only
+    # posts/updates the comment, so it needs no terraform/cloud access.
+    p_comment = sub.add_parser(
+        "diagram-comment",
+        parents=[common],
+        help="Post/update the sticky PR comment linking an uploaded diagram artifact (CI only)",
+    )
+    p_comment.add_argument("stack", help="Stack name")
+    p_comment.add_argument("env", choices=VALID_ENVS, help="Target environment")
+    p_comment.add_argument("--mode", choices=["state", "plan"], default="plan", help="Diagram mode label")
+    p_comment.add_argument("--png-artifact-id", required=True, help="artifact-id output of the PNG upload-artifact step")
+    p_comment.add_argument("--svg-artifact-id", required=True, help="artifact-id output of the SVG upload-artifact step")
+    p_comment.set_defaults(func=cmd_diagram_comment)
+
     # ---- Terraform passthroughs: <command> <stack> <env> [extra...] ----
-    def _add_tf(name: str, *, help: str, extra=None) -> None:
+    def _add_tf(name: str, *, help: str, extra: Callable[[argparse.ArgumentParser], object] | None = None) -> None:
         p = sub.add_parser(name, parents=[common], help=help)
         p.add_argument("stack", help="Stack name")
         p.add_argument("env", choices=VALID_ENVS, help="Target environment")

@@ -258,6 +258,10 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+# Generated architecture diagrams (regenerate with `tfs diagram`). Anchored to
+# infra/diagrams/ (the render output) — NOT the tfs source pkg infra/tfs/src/tfs/diagrams/.
+/infra/diagrams/
+
 tmp/
 
 .env

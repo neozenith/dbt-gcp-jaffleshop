@@ -1,0 +1,52 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.10.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        { "address": "google_project_service.run", "mode": "managed", "type": "google_project_service", "name": "run", "values": {} },
+        { "address": "google_artifact_registry_repository.app", "mode": "managed", "type": "google_artifact_registry_repository", "name": "app", "values": {} },
+        { "address": "google_service_account.runtime", "mode": "managed", "type": "google_service_account", "name": "runtime", "values": {} },
+        { "address": "google_cloud_run_v2_service.app", "mode": "managed", "type": "google_cloud_run_v2_service", "name": "app", "values": {} },
+        { "address": "google_storage_bucket.assets", "mode": "managed", "type": "google_storage_bucket", "name": "assets", "values": {} },
+        { "address": "google_bigquery_dataset.app", "mode": "managed", "type": "google_bigquery_dataset", "name": "app", "values": {} },
+        { "address": "google_bigquery_table.asset_metadata", "mode": "managed", "type": "google_bigquery_table", "name": "asset_metadata", "values": {} },
+        { "address": "google_firestore_database.app", "mode": "managed", "type": "google_firestore_database", "name": "app", "values": {} },
+        { "address": "terraform_data.image", "mode": "managed", "type": "terraform_data", "name": "image", "values": {} },
+        { "address": "google_storage_bucket_iam_member.runtime_object_admin", "mode": "managed", "type": "google_storage_bucket_iam_member", "name": "runtime_object_admin", "values": { "role": "roles/storage.objectAdmin" } },
+        { "address": "google_project_iam_member.runtime_datastore_user", "mode": "managed", "type": "google_project_iam_member", "name": "runtime_datastore_user", "values": { "role": "roles/datastore.user" } },
+        { "address": "data.google_project.this", "mode": "data", "type": "google_project", "name": "this", "values": {} }
+      ]
+    }
+  },
+  "resource_changes": [
+    { "address": "google_artifact_registry_repository.app", "mode": "managed", "type": "google_artifact_registry_repository", "name": "app", "change": { "actions": ["create"], "after": {} } },
+    { "address": "google_service_account.runtime", "mode": "managed", "type": "google_service_account", "name": "runtime", "change": { "actions": ["create"], "after": {} } },
+    { "address": "google_cloud_run_v2_service.app", "mode": "managed", "type": "google_cloud_run_v2_service", "name": "app", "change": { "actions": ["update"], "after": {} } },
+    { "address": "google_storage_bucket.assets", "mode": "managed", "type": "google_storage_bucket", "name": "assets", "change": { "actions": ["no-op"], "after": {} } },
+    { "address": "google_bigquery_dataset.app", "mode": "managed", "type": "google_bigquery_dataset", "name": "app", "change": { "actions": ["create"], "after": {} } },
+    { "address": "google_bigquery_table.asset_metadata", "mode": "managed", "type": "google_bigquery_table", "name": "asset_metadata", "change": { "actions": ["create"], "after": {} } },
+    { "address": "google_firestore_database.app", "mode": "managed", "type": "google_firestore_database", "name": "app", "change": { "actions": ["create", "delete"], "after": {} } },
+    { "address": "terraform_data.image", "mode": "managed", "type": "terraform_data", "name": "image", "change": { "actions": ["create"], "after": {} } },
+    { "address": "google_storage_bucket_iam_member.runtime_object_admin", "mode": "managed", "type": "google_storage_bucket_iam_member", "name": "runtime_object_admin", "change": { "actions": ["create"], "after": { "role": "roles/storage.objectAdmin" } } },
+    { "address": "google_project_iam_member.runtime_datastore_user", "mode": "managed", "type": "google_project_iam_member", "name": "runtime_datastore_user", "change": { "actions": ["create"], "after": { "role": "roles/datastore.user" } } },
+    { "address": "google_project_service.run", "mode": "managed", "type": "google_project_service", "name": "run", "change": { "actions": ["create"], "after": {} } }
+  ],
+  "configuration": {
+    "root_module": {
+      "resources": [
+        { "address": "google_project_service.run", "type": "google_project_service", "name": "run", "expressions": {} },
+        { "address": "google_service_account.runtime", "type": "google_service_account", "name": "runtime", "expressions": {} },
+        { "address": "google_storage_bucket.assets", "type": "google_storage_bucket", "name": "assets", "expressions": {} },
+        { "address": "google_bigquery_dataset.app", "type": "google_bigquery_dataset", "name": "app", "expressions": {} },
+        { "address": "google_firestore_database.app", "type": "google_firestore_database", "name": "app", "expressions": {} },
+        { "address": "google_artifact_registry_repository.app", "type": "google_artifact_registry_repository", "name": "app", "expressions": { "depends_on": { "references": ["google_project_service.run"] } } },
+        { "address": "google_cloud_run_v2_service.app", "type": "google_cloud_run_v2_service", "name": "app", "expressions": { "template": { "references": ["google_service_account.runtime.email", "google_service_account.runtime"] }, "depends_on": { "references": ["terraform_data.image"] } } },
+        { "address": "terraform_data.image", "type": "terraform_data", "name": "image", "expressions": { "depends_on": { "references": ["google_artifact_registry_repository.app"] } } },
+        { "address": "google_bigquery_table.asset_metadata", "type": "google_bigquery_table", "name": "asset_metadata", "expressions": { "dataset_id": { "references": ["google_bigquery_dataset.app.dataset_id", "google_bigquery_dataset.app"] } } },
+        { "address": "google_storage_bucket_iam_member.runtime_object_admin", "type": "google_storage_bucket_iam_member", "name": "runtime_object_admin", "expressions": { "bucket": { "references": ["google_storage_bucket.assets.name", "google_storage_bucket.assets"] }, "member": { "references": ["google_service_account.runtime.email", "google_service_account.runtime"] } } },
+        { "address": "google_project_iam_member.runtime_datastore_user", "type": "google_project_iam_member", "name": "runtime_datastore_user", "expressions": { "member": { "references": ["google_service_account.runtime.email", "google_service_account.runtime"] } } }
+      ]
+    }
+  }
+}

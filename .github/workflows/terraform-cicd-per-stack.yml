@@ -82,6 +82,74 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.TF_SA }}
 
+  # PR only — render the plan-delta architecture diagram and post it as a sticky
+  # comment linking to the uploaded PNG. Informational; does NOT gate applies.
+  diagram:
+    name: diagram (plan delta)
+    needs: ci
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      contents: read         # no branch push — the diagram is an uploaded artifact
+      id-token: write        # WIF auth for the terraform plan
+      pull-requests: write   # post/update the sticky comment
+    env:
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform.d/plugin-cache
+      # `tfs diagram-comment` reads these to create/update the sticky PR comment that
+      # links the uploaded artifact (GITHUB_REPOSITORY / GITHUB_SHA are provided by
+      # Actions automatically).
+      GH_TOKEN: ${{ github.token }}
+      TFS_PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install cairo (cairosvg rasterizes the rendered SVG to PNG)
+        run: sudo apt-get update && sudo apt-get install -y libcairo2
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.TF_SA }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: '1.10.0'
+      - run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
+      - uses: actions/cache@v5
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: ${{ runner.os }}-tf-plugins-${{ hashFiles(format('infra/stacks/{0}/.terraform.lock.hcl', inputs.stack)) }}
+          restore-keys: |
+            ${{ runner.os }}-tf-plugins-
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/tfs/uv.lock"
+      # Render the dev plan-delta diagram, upload the PNG and SVG as SEPARATE,
+      # RAW (un-archived) artifacts — `archive: false` hosts the file directly so its
+      # URL embeds inline in the PR comment (no zip, no ci-diagrams branch).
+      - name: Render plan-delta diagram (dev)
+        run: uv run --frozen --directory infra/tfs tfs diagram ${{ inputs.stack }} dev --mode plan
+      - id: png
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.stack }}-dev-plan-png
+          path: infra/diagrams/${{ inputs.stack }}-dev-plan.png
+          archive: false
+          if-no-files-found: error
+      - id: svg
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.stack }}-dev-plan-svg
+          path: infra/diagrams/${{ inputs.stack }}-dev-plan.svg
+          archive: false
+          if-no-files-found: error
+      - name: Comment diagram (inline PNG) on PR
+        run: >
+          uv run --frozen --directory infra/tfs
+          tfs diagram-comment ${{ inputs.stack }} dev --mode plan
+          --png-artifact-id "${{ steps.png.outputs.artifact-id }}"
+          --svg-artifact-id "${{ steps.svg.outputs.artifact-id }}"
+
   # Ready-for-review PR — apply dev only (smoke test before merge to main).
   apply-dev:
     name: apply / dev

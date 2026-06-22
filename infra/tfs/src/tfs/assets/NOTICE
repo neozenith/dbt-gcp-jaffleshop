@@ -1,0 +1,21 @@
+Vendored diagram stencils
+==========================
+
+`stencils.json` in this directory contains shape geometry extracted from the
+draw.io / diagrams.net stencil libraries (`stencils.min.js`).
+
+  draw.io (diagrams.net) — https://github.com/jgraph/drawio
+  Licensed under the Apache License, Version 2.0.
+  Copyright (c) JGraph Ltd.
+
+The shapes are decoded from their base64/DEFLATE form and transcribed to SVG
+path data + re-encoded `shape=stencil(...)` payloads by
+`infra/tfs/scripts/extract_stencils.py`. The full provider palettes are vendored
+(Google Cloud `gcp2`, AWS `aws4`, Azure `mscae`/`azure`, Kubernetes) so the
+registry can map to any shape without re-running against the draw.io source;
+adjust `SELECT_LIBS_*` in that script to add/trim libraries.
+
+The icons depict third-party cloud-provider products and incorporate those
+providers' trademarks (e.g. Google Cloud product icons). They are reproduced
+solely to label the corresponding resources in architecture diagrams; all
+trademarks remain the property of their respective owners.

@@ -3,6 +3,7 @@ and stack enumeration. Everything here is a pure function of the infra root."""
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import ruamel.yaml
 
@@ -12,9 +13,10 @@ VALID_ENVS = ["dev", "test", "prod"]
 TF_COMMANDS = ["init", "plan", "apply", "force-unlock", "output", "import"]
 
 
-def load_config(infra_root: Path) -> dict:
+def load_config(infra_root: Path) -> dict[str, Any]:
     yaml = ruamel.yaml.YAML()
-    return yaml.load((infra_root / "config.yml").read_text())
+    result: dict[str, Any] = yaml.load((infra_root / "config.yml").read_text())
+    return result
 
 
 def expected_prefix(stack_name: str) -> str:
