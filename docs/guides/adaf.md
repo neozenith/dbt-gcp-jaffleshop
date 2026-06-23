@@ -33,9 +33,8 @@ flowchart LR
 
     CHECK --> CIGATE["dbt-cicd-checks.yml<br/>PR gate"]:::ci
     REVIEW --> CICOMMENT["taxonomy-review action<br/>PR coverage matrices"]:::ci
-    RULES --> SKILL["adaf-taxonomy-gaps<br/>dev skill (plugin)"]:::skill
-    CHECK --> SKILL
     CAT --> VIG["docs/guides/testing_taxonomy<br/>1 vignette per rule"]:::doc
+    VIG --> SKILL["adaf-testing-guide<br/>dev skill (plugin)"]:::skill
     SUPP["adaf.yml + -- adaf-disable"]:::supp --> CHECK
     SUPP --> REVIEW
 
@@ -58,7 +57,7 @@ test (every `deterministic`-tagged rule must have a detector).
 |---------|-----|------|
 | **Local CLI** | `uv run --directory dbt-jaffleshop adaf …` | `rules` (inspect the catalogue), `check` (deterministic gates), `review` (LLM), `products` (lineage/boundaries + viewer) |
 | **CI** | [`dbt-cicd-checks.yml`](../../.github/workflows/dbt-cicd-checks.yml) runs `adaf check all`; the [`testing-taxonomy-review`](../../.github/workflows/testing-taxonomy-review.yml) workflow runs `adaf review --post` | A sticky PR comment with the check summary, plus two coverage-matrix comments |
-| **Agent skill** | `/adaf:adaf-taxonomy-gaps` (the [plugin](../../plugins/adaf/)) | A developer drives the same CLI to detect, explain (with DAMA dimension + how to suppress), and git-reversibly close gaps |
+| **Agent skill** | `/adaf:adaf-testing-guide` (the [plugin](../../plugins/adaf/)) | A developer is guided to the right testing-taxonomy vignette for a scope of models — which tests to apply, why (DAMA dimension + cost class), which package — with the implementation grounded in current practice via web search. Reference-driven; does not invoke the CLI |
 
 ## Deterministic vs. LLM
 

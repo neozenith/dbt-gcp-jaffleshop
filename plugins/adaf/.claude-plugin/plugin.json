@@ -2,7 +2,7 @@
   "name": "adaf",
   "displayName": "ADAF — Automated Data Assurance Framework",
   "version": "0.1.0",
-  "description": "Agent skills over the ADAF testing-taxonomy catalogue: find data-quality test gaps in dbt models, explain each with its DAMA-UK6 dimension and how to suppress false positives, and apply git-reversible fixes.",
+  "description": "Agent skills over the ADAF testing-taxonomy catalogue: help a developer decide which data-quality tests a scope of dbt models should have, explain each with its DAMA-UK6 dimension and cost class, and ground the implementation in current practice via web search.",
   "author": {
     "name": "Josh Peak"
   },

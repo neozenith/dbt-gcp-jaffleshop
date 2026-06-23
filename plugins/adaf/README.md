@@ -1,6 +1,6 @@
 # ADAF plugin
 
-Agent skills over the **Automated Data Assurance Framework** ([`.github/cli/adaf`](../../.github/cli/adaf/)).
+Agent skills over the **Automated Data Assurance Framework**.
 This repository is both the [marketplace](../../.claude-plugin/marketplace.json) and the plugin host.
 
 ## Install
@@ -14,7 +14,8 @@ This repository is both the [marketplace](../../.claude-plugin/marketplace.json)
 
 | Skill | Invoke | What it does |
 |-------|--------|--------------|
-| [`adaf-taxonomy-gaps`](skills/adaf-taxonomy-gaps/SKILL.md) | `/adaf:adaf-taxonomy-gaps` | Detect dbt testing-taxonomy / data-quality test gaps, explain each with its DAMA-UK6 dimension and how to suppress false positives, and (on request) apply **git-reversible** fixes. |
+| [`adaf-testing-guide`](skills/adaf-testing-guide/SKILL.md) | `/adaf:adaf-testing-guide` | Help a developer decide which data-quality tests a scope of dbt models should have and implement them correctly. Navigates the testing-taxonomy vignettes in `references/`, explains each test (why it matters, which package, DAMA-UK6 dimension, cost class), and grounds the implementation in current practice via web search. |
 
-The skills drive the `adaf` CLI (`adaf check taxonomy`, `adaf review`, `adaf rules`) — the catalogue
-of 33 rules is the single source of truth, so the skill, the CLI, and CI all agree on what a gap is.
+The `adaf-testing-guide` skill is **reference-driven**: it reads the testing-taxonomy vignettes bundled
+under its own [`references/`](skills/adaf-testing-guide/references/testing_taxonomy/) and uses web search
+to confirm current syntax.
