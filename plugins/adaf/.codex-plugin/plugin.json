@@ -1,11 +1,15 @@
 {
   "name": "adaf",
   "displayName": "ADAF — Automated Data Assurance Framework",
+  "shortDescription": "Pick and implement the right dbt data-quality tests for a scope of models.",
   "version": "0.1.0",
   "description": "Agent skills over the ADAF testing-taxonomy catalogue: help a developer decide which data-quality tests a scope of dbt models should have, explain each with its DAMA-UK6 dimension and cost class, and ground the implementation in current practice via web search.",
   "author": {
     "name": "Josh Peak"
   },
+  "homepage": "https://github.com/neozenith/dbt-gcp-jaffleshop",
+  "repository": "https://github.com/neozenith/dbt-gcp-jaffleshop",
   "keywords": ["dbt", "data-quality", "testing", "dama", "data-assurance", "analytics-engineering", "taxonomy"],
-  "license": "MIT"
+  "license": "MIT",
+  "skills": "./skills/"
 }

@@ -232,6 +232,9 @@ __marimo__/
 !.agents/skills/
 .agents/skills/*
 !.agents/skills/dbt-agent-skills.VENDORED.md
+# First-party ADAF skill exposed here as a symlink → plugins/adaf/skills/adaf-testing-guide so that
+# GitHub Copilot and OpenAI Codex (which scan .agents/skills/ but not plugin dirs) discover it.
+!.agents/skills/adaf-testing-guide
 !.agents/skills/using-dbt-for-analytics-engineering/
 !.agents/skills/building-dbt-semantic-layer/
 !.agents/skills/working-with-dbt-mesh/
