@@ -7,8 +7,15 @@ description: >-
   or wants to close test coverage on staging/marts before a PR. Walks the testing-taxonomy decision
   tree in references/, opens the matching vignette (the worked pattern + why it matters + which dbt
   package to reach for), and grounds the final implementation in current practice with a web search
-  because vignette code samples and package recommendations date.
-allowed-tools: Read, Grep, Glob, WebSearch, WebFetch
+  because vignette code samples and package recommendations date. This is the decide-and-justify
+  guide for specific models — not a whole-project coverage scorer and not a unit-test YAML generator.
+compatibility: >-
+  Tool-agnostic advisory skill (Claude Code, GitHub Copilot, OpenAI Codex). Reads only its bundled
+  references/. Step 5 wants web access (docs.getdbt.com etc.) to confirm current syntax; if web search
+  is unavailable, the skill still works but must say its package/syntax guidance is unverified.
+allowed-tools: Read Grep Glob WebSearch WebFetch
+metadata:
+  short-description: Pick and implement the right dbt tests for a scope of models
 ---
 
 # ADAF testing guide
@@ -116,11 +123,23 @@ uses `data_tests:`, not `tests:`; `data-tests/` dir for singular tests), the pac
 config to scope or ramp severity (`where:`, `severity: warn`, `store_failures_as: view`), and a link to
 the doc you grounded against.
 
+**If web search is unavailable** (offline / sandboxed / tool not permitted), do not silently fall back
+to the vignette as if it were current. Proceed with the vignette's pattern, but **state loudly** that
+the package choice and syntax are *unverified against current docs* and flag the dated maintenance notes
+(e.g. the `dbt_expectations` 2026-05 flag) as the specific things the developer must confirm before
+merging. The grounding step is a requirement that degraded, not one that was skipped.
+
 ### 6. Hand back a short coverage summary
 
-Close with a compact table the developer can act on: **model · column / concern · recommended test
-(rule code) · package · DAMA dimension · cost class · status (add / already present / N/A with reason)**.
-Order by grain-first, then blockers (entity/key integrity) before nice-to-haves (anomaly monitors).
+Close with a compact table the developer can act on. Order by grain-first, then blockers (entity / key
+integrity) before nice-to-haves (anomaly monitors). For example, for a `fct_order_items` model:
+
+| Model | Column / concern | Test (rule) | Package | DAMA | Cost | Status |
+|---|---|---|---|---|---|---|
+| `fct_order_items` | grain `(order_id, line_number)` | `unique_combination_of_columns` (MD-01) | dbt-utils | Uniqueness | scan-bound | **add** |
+| `fct_order_items` | `order_id` → `dim_orders` | `relationships` (EN-03) | dbt core | Consistency | cheap | **add** |
+| `fct_order_items` | `quantity` | `accepted_range` ≥ 0 (MS-01) | dbt-utils | Validity | cheap | already present |
+| `fct_order_items` | `status` | `accepted_values` (DM-01) | dbt core | Validity | cheap | N/A — free-text by design |
 
 ## Guardrails
 
