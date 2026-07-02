@@ -20,7 +20,7 @@ from pathlib import Path
 # Local
 from adaf import config
 from adaf.dbt.runner import dbt_deps, dbt_parse
-from adaf.git.gitutil import add_worktree, remove_worktree, resolve_sha
+from adaf.git.gitutil import add_worktree, remove_worktree, repo_toplevel, resolve_sha
 
 log = logging.getLogger(__name__)
 
@@ -54,16 +54,20 @@ def defer_state_dir(ref: str, *, root: Path | None = None, force: bool = False, 
     )
     wt = root / _WT_ROOT / sha
     add_worktree(wt, sha, cwd=root)
+    # A worktree checks out the WHOLE repo, so the dbt project sits at the same path within it as
+    # it does in the repo (``.`` when the project IS the repo root; ``dbt-jaffleshop`` for a subdir
+    # project). Target that inner dir, not the worktree root, so dbt finds dbt_project.yml.
+    wt_project = wt / root.relative_to(repo_toplevel(cwd=root))
     try:
         # Install THIS ref's own packages — never symlink the working tree's dbt_packages,
         # since packages.yml / package-lock can differ between commits (a wrong dep graph
         # would silently distort the defer target).
         log.info("defer: installing packages for %s (dbt deps in the worktree)…", sha[:10])
-        dbt_deps(project_dir=wt, cwd=root)
+        dbt_deps(project_dir=wt_project, cwd=root)
         state_dir.mkdir(parents=True, exist_ok=True)
         dbt_parse(
             cwd=root,
-            project_dir=wt,
+            project_dir=wt_project,
             profiles_dir=root,
             target=target,
             target_path=state_dir,

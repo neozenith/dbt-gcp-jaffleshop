@@ -54,6 +54,16 @@ def resolve_sha(ref: str, *, cwd: Path) -> str:
     return run_git(["rev-parse", f"{ref}^{{commit}}"], cwd=cwd).strip()
 
 
+def repo_toplevel(*, cwd: Path) -> Path:
+    """Absolute path of the git repo root ``cwd`` belongs to.
+
+    Lets the defer builder locate the dbt project *within* a fresh worktree checkout: for a
+    dbt project nested in a subdir (``<repo>/dbt-jaffleshop``) the worktree mirrors the whole
+    repo, so the project lives at ``<worktree>/<project-rel-to-toplevel>``, not the worktree root.
+    """
+    return Path(run_git(["rev-parse", "--show-toplevel"], cwd=cwd).strip())
+
+
 def add_worktree(wt: Path, sha: str, *, cwd: Path) -> None:
     """Add a detached worktree at ``wt`` checked out to ``sha`` (replacing any stale one)."""
     if wt.exists():
