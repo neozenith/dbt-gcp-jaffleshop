@@ -1,485 +1,227 @@
-"""``adaf report`` — a per-model markdown review of the testing taxonomy, generated mechanically.
+"""`adaf report` — summarise the checks + the dbt build into ONE sticky PR comment with TWO sections.
 
-Every deterministic verdict is produced by running the SAME detectors CI runs
-(``adaf.taxonomy.DETECTORS``) over the manifest (+ optional ``catalog.json`` for warehouse-resolved
-column types). Nothing is hand-authored, so there is nothing to hallucinate: a rule's
-**applicability** is "the detector returned a result", its **verdict** is the detector's status, and its
-**evidence** is the exact manifest/catalog fact. Each row cites the detector function and the rule's
-catalogue entry (DAMA-UK6 + ``applies_when``).
+The comment is split into two marker-delimited sections that update **independently** (ADR-0029):
 
-With ``--review <adaf review --json>``, the report also **reconciles the LLM's findings against the
-deterministic ground truth** and flags every disagreement — the false-positive / false-negative
-worklist. A rule with a detector is the yardstick; a rule without one is shown as the LLM asserted it,
-explicitly marked *unverified*.
+* ``findings`` — the per-check quality-gate findings (the ``--json-out`` artifacts). Posted by a job
+  that needs only the checks, so it lands fast — NOT blocked on the (slower) dbt build.
+* ``build`` — the dbt run-results summary + the EDR report link. Posted by the build job once it has
+  ``run_results.json``.
+
+Each invocation renders + upserts ONE section (``--section findings|build``), splicing it into the
+existing comment without clobbering the other section (see :func:`adaf.github.upsert_section`); the
+first job to run creates the comment from a skeleton carrying both sections. ``--section all``
+(default) renders the whole comment in one shot (used by ``--dry-run`` / local preview). Manifest
+node lookups reuse :class:`adaf.dbt.manifest_view.ManifestView`; run-results come from the
+:mod:`adaf.dbt.runresults` seam (JSON or Fusion parquet).
 """
 
+# Standard Library
+import argparse
 import json
 import logging
-from argparse import Namespace
-from collections import Counter, defaultdict
-from datetime import datetime, timezone
-from itertools import groupby
+import os
+from collections import Counter
 from pathlib import Path
+from typing import Any
 
-from adaf import config
-from adaf.dbt import selection
-from adaf.rules import all_rules, get_rule, load_catalog
-from adaf.suppression import Suppressions
-from adaf.taxonomy import DETECTORS, NOT_APPLICABLE, PRESENT, NodeFacts, load_node_facts
+# First Party
+from adaf import github
+from adaf.dbt import runresults
+from adaf.dbt.manifest_view import ManifestView, NodeRecord
 
 log = logging.getLogger(__name__)
 
-_SEVERITY = {"deterministic": "blocker", "hybrid": "warning"}
-# adaf review status -> a comparable verdict token.
-_LLM_MAP = {"applicable_present": "present", "applicable_missing": "gap", "not_applicable": "n/a"}
+DEFAULT_MARKER = "adaf-report"
+SECTIONS = ("findings", "build")
 
 
-# ─── facts ────────────────────────────────────────────────────────────────────
+def _load_findings(findings_dir: Path) -> list[dict[str, Any]]:
+    """Read every ``*.json`` findings artifact under ``findings_dir`` (sorted by filename)."""
+    results: list[dict[str, Any]] = []
+    for path in sorted(findings_dir.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and "check" in data:
+            results.append(data)
+    return results
 
 
-def _tests_str(n: NodeFacts) -> str:
-    items = []
-    for t in n.tests:
-        prefix = f"{t.namespace}." if t.namespace else ""
-        items.append(f"`{prefix}{t.name}{f'({t.column})' if t.column else ''}`")
-    return ", ".join(sorted(set(items))) or "none"
+def _load_records(manifest_path: Path) -> dict[str, NodeRecord]:
+    """Node records keyed by ``unique_id`` from the manifest seam, or ``{}`` if the manifest is absent."""
+    if not manifest_path.exists():
+        return {}
+    return ManifestView.load(manifest_path).records()
 
 
-def _columns_line(n: NodeFacts) -> str:
-    if n.resolved_columns:
-        shown = ", ".join(f"`{c}`:{t}" for c, t in list(n.resolved_columns.items())[:24])
-        note = "" if n.columns else "  ⚠️ (0 declared in YAML — a documentation gap; these are warehouse-resolved)"
-        return f"- Columns ({len(n.resolved_columns)} warehouse-resolved from `catalog.json`): {shown}{note}"
-    return f"- Columns ({len(n.columns)} YAML-declared; no catalog): {', '.join(f'`{c}`' for c in n.columns) or '—'}"
+def _node_label(records: dict[str, NodeRecord], uid: str) -> tuple[str, str]:
+    """``(name, file_path)`` for ``uid`` from the manifest records (falling back to the uid / ``-``)."""
+    rec = records.get(uid)
+    if rec is None:
+        return uid, "-"
+    raw = rec.raw
+    name = raw.get("name") or uid
+    file_path = raw.get("original_file_path") or raw.get("path") or "-"
+    return str(name), str(file_path)
 
 
-def _facts_block(n: NodeFacts) -> list[str]:
-    lines = [
-        "**Facts** (the source of every deterministic verdict below — from `manifest.json` + `catalog.json`):",
-        "",
-        _columns_line(n),
-        f"- Tests present: {_tests_str(n)}",
-    ]
-    if n.resource_type == "model":
-        lines.append(f"- Contract enforced: `{n.contract_enforced}`")
-        lines.append(f"- Inferred PK: {f'`{n.pk_column()}`' if n.pk_column() else '(none identifiable)'}")
-        fks = [c for c in n.id_columns() if c != n.pk_column()]
-        lines.append(f"- Key (`*_id`/`*_uuid`) columns beyond the PK: {', '.join(f'`{c}`' for c in fks) or 'none'}")
-        tz = n.tz_sensitive_columns()
-        if tz:
-            lines.append(f"- TZ-sensitive (TIMESTAMP/DATETIME) columns: {', '.join(f'`{c}`' for c in tz)}")
-        # Inferred structural properties (deterministic facts that scope the rules — not verdicts).
-        inferred = [
-            (label, cols)
-            for label, cols in (
-                ("temporal", n.temporal_columns()),
-                ("monetary", n.monetary_columns()),
-                ("numeric", n.numeric_columns()),
-                ("boolean", n.boolean_columns()),
-                ("categorical-candidate", n.categorical_candidates()),
-            )
-            if cols
-        ]
-        if inferred:
-            lines.append("- Inferred column roles: " + " · ".join(f"{lbl} ({len(cols)})" for lbl, cols in inferred))
-        if not n.resolved_columns and not n.columns:
-            lines.append("- ⚠️ **No columns known** (no YAML and no catalog) — key/time rules below report _n/a_.")
-    else:
-        lines.append(f"- Declares a freshness SLA: `{n.has_freshness}`")
-    return lines
+def _md_cell(text: object) -> str:
+    """Escape a value for a markdown table cell (pipes + newlines), truncating runaway messages."""
+    cell = str(text).replace("\r", " ").replace("\n", " ").replace("|", "\\|").strip()
+    return cell[:217] + "..." if len(cell) > 220 else cell
 
 
-# ─── deterministic verdicts ───────────────────────────────────────────────────
+def _render_gates(check_results: list[dict[str, Any]]) -> str:
+    if not check_results:
+        return "_No check artifacts found._"
+    lines = ["| Check | Result | Findings |", "|---|---|---:|"]
+    for result in check_results:
+        findings = result.get("findings") or []
+        n = len(findings) if isinstance(findings, list) else 0
+        passed = int(result.get("exit_code", 0) or 0) == 0
+        lines.append(f"| {result.get('check', '?')} | {'✅ pass' if passed else '❌ fail'} | {'—' if n == 0 else n} |")
+    return "\n".join(lines)
 
 
-def _det_verdict(n: NodeFacts, code: str, suppressions: Suppressions) -> tuple[str, str]:
-    """(token, evidence) for a rule on a node. token ∈ pass | gap | n/a | suppressed | no-detector."""
-    if code not in DETECTORS:
-        return "no-detector", ""
-    result = DETECTORS[code](n)
-    if result is None or result[0] == NOT_APPLICABLE:
-        return "n/a", "detector matched no role/precondition on this node"
-    status, detail = result
-    if suppressions.reason_for(code, n.original_file_path) is not None:
-        return "suppressed", detail
-    return ("pass" if status == PRESENT else "gap"), detail
-
-
-def _det_display(token: str, rule: dict) -> str:
-    return {
-        "pass": "✅ pass",
-        "gap": "❌ " + _SEVERITY.get(rule.get("detection", "hybrid"), "warning"),
-        "n/a": "— n/a",
-        "suppressed": "🟡 suppressed",
-        "no-detector": "_(no detector)_",
-    }[token]
-
-
-# ─── LLM reconciliation ───────────────────────────────────────────────────────
-
-
-def llm_index(review: dict) -> dict[str, dict[str, str]]:
-    """{model_name: {rule_code: comparable_verdict}} from `adaf review --json` output."""
-    result = review.get("result", review)
-    out: dict[str, dict[str, str]] = {}
-    for m in result.get("models", []):
-        verdicts: dict[str, str] = {}
-        for f in m.get("findings", []):
-            code = f.get("rule_code")
-            if code:
-                status = str(f.get("status") or "?")
-                verdicts[code] = _LLM_MAP.get(status, status)
-        out[m.get("model", "")] = verdicts
-    return out
-
-
-def _flag(det: str, llm: str | None) -> str:
-    """Reconcile a deterministic token vs an LLM verdict → a reviewer-facing assessment."""
-    if llm is None:
-        return "·"  # the LLM emitted nothing for this (rule, model)
-    table = {
-        ("pass", "present"): "✅ agree (present)",
-        ("gap", "gap"): "✅ agree (gap)",
-        ("n/a", "n/a"): "✅ agree (n/a)",
-        ("suppressed", "n/a"): "✅ suppressed / LLM n/a",
-        ("pass", "gap"): "🔴 **LLM FALSE POSITIVE** — flagged a gap, but the test exists",
-        ("gap", "present"): "🔴 **LLM FALSE NEGATIVE** — missed a real gap (claimed covered)",
-        ("n/a", "present"): "🟠 applicability — LLM says present; deterministic finds the rule n/a here",
-        ("n/a", "gap"): "🟠 applicability — LLM flags a gap; deterministic finds the rule n/a here",
-        ("pass", "n/a"): "🟠 applicability — LLM marked n/a; deterministic says it applies (and passes)",
-        ("gap", "n/a"): "🟠 applicability — LLM marked n/a; deterministic says it applies (and is a gap)",
-        ("suppressed", "gap"): "🟡 suppressed deterministically; LLM still flags it (review the suppression)",
-        ("suppressed", "present"): "🟡 suppressed deterministically; LLM marks present",
-        ("no-detector", "present"): "⚪ unverified — no deterministic detector; LLM judgement only",
-        ("no-detector", "gap"): "⚪ unverified — no deterministic detector; LLM judgement only",
-        ("no-detector", "n/a"): "· unverified n/a (no detector)",
-    }
-    return table.get((det, llm), f"? {det} vs {llm}")
-
-
-def _reconcile_rows(n: NodeFacts, suppressions: Suppressions, llm: dict[str, str]) -> list[tuple[int, str]]:
-    """(sort_rank, row) reconciliation rows for this model. Lower rank = more urgent (FP/FN first)."""
-    codes = list(DETECTORS) + [c for c in llm if c not in DETECTORS and llm[c] in ("present", "gap")]
-    rank = {"🔴": 0, "🟠": 1, "🟡": 2, "⚪": 3}
-    rows: list[tuple[int, str]] = []
-    for code in dict.fromkeys(codes):
-        rule = get_rule(code) or {}
-        det_token, evidence = _det_verdict(n, code, suppressions)
-        llm_v = llm.get(code)
-        assessment = _flag(det_token, llm_v)
-        r = next((v for k, v in rank.items() if assessment.startswith(k)), 9)
-        det_cell = _det_display(det_token, rule) + (
-            f" — {evidence}" if evidence and det_token in ("gap", "pass") else ""
+def _render_findings_details(check_results: list[dict[str, Any]]) -> str:
+    """One collapsible ``<details>`` PER CHECK that has findings (empty string if nothing has findings)."""
+    blocks: list[str] = []
+    for result in check_results:
+        findings = result.get("findings")
+        if not isinstance(findings, list) or not findings:
+            continue
+        rows = ["| Severity | Location | Code | Message |", "|---|---|---|---|"]
+        for f in findings:
+            if not isinstance(f, dict):
+                continue
+            loc = str(f.get("path", ""))
+            if f.get("line") is not None:
+                loc += f":{f['line']}"
+            cells = (f.get("severity", ""), loc, f.get("code") or "", f.get("message", ""))
+            rows.append("| " + " | ".join(_md_cell(c) for c in cells) + " |")
+        check = result.get("check", "?")
+        blocks.append(
+            f"<details><summary><code>{check}</code> — {len(findings)} finding(s)</summary>\n\n"
+            + "\n".join(rows)
+            + "\n\n</details>"
         )
-        llm_cell = llm_v or "_(not emitted)_"
-        rows.append(
-            (r, f"| {_rule(code)} | {'/'.join(rule.get('dama', []))} | {det_cell} | {llm_cell} | {assessment} |")
-        )
-    return sorted(rows, key=lambda t: (t[0], t[1]))
+    return "\n\n".join(blocks)
 
 
-# ─── reconciliation records + categories ─────────────────────────────────────
-
-# (node, code, det_token, evidence, llm_verdict, category)
-_Record = tuple[NodeFacts, str, str, str, "str | None", str]
-_BADGE = {"pass": "✅", "gap": "❌", "suppressed": "🟡", "n/a": "—", "no-detector": "—"}
-
-
-def _category(det: str, llm: str | None) -> str:
-    if det == "pass" and llm == "gap":
-        return "fp"  # false positive — LLM flagged a covered rule
-    if det == "gap" and llm == "present":
-        return "fn"  # false negative — LLM claimed a real gap was covered
-    if det == "gap" and llm in (None, "n/a"):
-        return "missed"  # real gap the LLM did not raise
-    if det == "n/a" and llm in ("present", "gap"):
-        return "appl"  # applicability — detector can't decide
-    if det == "suppressed" and llm in ("present", "gap"):
-        return "supp"
-    if det == "no-detector" and llm == "gap":
-        return "unverified"  # LLM-only finding
-    return "agree"
+def render_findings_section(check_results: list[dict[str, Any]]) -> str:
+    """The inner markdown of the ``findings`` section (quality-gate table + collapsible detail)."""
+    parts = ["### Quality gates", _render_gates(check_results)]
+    details = _render_findings_details(check_results)
+    if details:
+        parts.append(details)
+    return "\n\n".join(parts)
 
 
-def _records(nodes: list[NodeFacts], suppressions: Suppressions, llm_idx: dict[str, dict[str, str]]) -> list[_Record]:
-    recs: list[_Record] = []
-    for n in nodes:
-        llm = llm_idx.get(n.name, {})
-        for code in dict.fromkeys(list(DETECTORS) + list(llm)):
-            det, ev = _det_verdict(n, code, suppressions)
-            llm_v = llm.get(code)
-            recs.append((n, code, det, ev, llm_v, _category(det, llm_v)))
-    return recs
-
-
-def _rule(code: str) -> str:
-    """A rule's compact label: its code + short slug, e.g. ``​`EN-01` unique-key``."""
-    return f"`{code}` {(get_rule(code) or {}).get('slug', '')}".rstrip()
-
-
-def _names(recs: list[_Record]) -> str:
-    return ", ".join(f"`{r[0].name}`" for r in recs)
-
-
-# ─── narrative sections ───────────────────────────────────────────────────────
-
-
-def _glance(models: list, sources: list, recs: list[_Record], review: dict | None, has_catalog: bool) -> list[str]:
-    c = Counter(r[5] for r in recs)
-    det_gaps = sum(1 for r in recs if r[2] == "gap")
-    usage = (review or {}).get("usage", {})
-    return [
-        "## At a glance",
-        "",
-        f"Deterministic detectors evaluated **{len(DETECTORS)} rules** across **{len(models)} models** and "
-        f"**{len(sources)} sources** (columns {'warehouse-resolved' if has_catalog else 'YAML-declared'}), "
-        f"reconciled against the LLM review ({usage.get('calls', '?')} calls, {usage.get('total_tokens', '?')} tokens). "
-        "The disagreements to review:",
-        "",
-        f"- 🔴 **{c['fp']} false positives** — the LLM flagged a gap a test already covers",
-        f"- 🔴 **{c['fn'] + c['missed']} false negatives** — a real gap the LLM marked covered or never raised",
-        f"- 🟠 **{c['appl']} applicability calls** — the detector can't decide; you adjudicate",
-        f"- ⚪ **{c['unverified']} LLM-only findings** — no deterministic check exists",
-        f"- 🟡 **{c['supp']} suppressed-but-flagged** · ✅ **{c['agree']} agreements**",
-        "",
-        f"> Independently of the LLM, the deterministic checks found **{det_gaps} real gaps** — the actual to-do list.",
-        "",
-    ]
-
-
-def _decisions(recs: list[_Record]) -> list[str]:
-    by: dict[str, list[_Record]] = defaultdict(list)
-    for r in recs:
-        by[r[5]].append(r)
-    out = ["## Decisions to make", ""]
-
-    out += ["### 🔴 False negatives — a real gap the LLM did **not** flag", ""]
-    fn = sorted(by["fn"] + by["missed"], key=lambda r: (r[1], r[0].name))
-    if not fn:
-        out += ["_None — the LLM raised every gap the detectors found._", ""]
-    for code, g in groupby(fn, key=lambda r: r[1]):
-        grp = list(g)
-        active = [r for r in grp if r[4] == "present"]
-        ev = f" ({grp[0][3]})" if len(grp) == 1 and grp[0][3] else ""
-        tail = f" — _LLM marked present on {_names(active)}_" if active else " — _LLM never raised it_"
-        out.append(f"- {_rule(code)} on {_names(grp)}{ev}{tail}")
-    out.append("")
-
-    out += ["### 🔴 False positives — the LLM flagged a gap a test already covers", ""]
-    fp = sorted(by["fp"], key=lambda r: (r[1], r[0].name))
-    if not fp:
-        out += ["_None._", ""]
-    for code, g in groupby(fp, key=lambda r: r[1]):
-        grp = list(g)
-        out.append(f"- {_rule(code)} — a test exists on {_names(grp)}, but the LLM flagged it missing.")
-    out.append("")
-
-    out += ["### 🟠 Applicability — the detector can't decide; you adjudicate", ""]
-    ap = sorted(by["appl"], key=lambda r: (r[1], r[0].name))
-    if not ap:
-        out += ["_None._", ""]
-    for code, g in groupby(ap, key=lambda r: r[1]):
-        grp = list(g)
-        out.append(f"- {_rule(code)} on {_names(grp)} — deterministic n/a (see caveats); LLM asserts it applies.")
-    out.append("")
-
-    out += ["### ⚪ LLM-only findings — no deterministic check (judgement call)", ""]
-    unv: dict[str, list[str]] = defaultdict(list)
-    for r in by["unverified"]:
-        unv[r[0].name].append(r[1])
-    if not unv:
-        out += ["_None._", ""]
-    for m in sorted(unv):
-        out.append(f"- `{m}` — {', '.join(_rule(c) for c in sorted(unv[m]))}")
-    out.append("")
-
-    if by["supp"]:
-        out += ["### 🟡 Suppressed but LLM-flagged", ""]
-        out += [
-            f"- `{r[0].name}` · `{r[1]}` — suppressed in `adaf.yml`, but the LLM still raised it." for r in by["supp"]
-        ]
-        out.append("")
-    return out
-
-
-def _status_badges(n: NodeFacts, suppressions: Suppressions) -> str:
-    if n.resource_type != "model":
-        return f"`TM-AU-01` freshness {'✅' if n.has_freshness else '❌'}"
-    parts = [f"`MD-01` grain {_BADGE[_det_verdict(n, 'MD-01', suppressions)[0]]}"]
-    md02 = _det_verdict(n, "MD-02", suppressions)[0]
-    if md02 != "n/a":
-        parts.append(f"`MD-02` contract {_BADGE[md02]}")
-    declared = len(n.columns)
-    parts.append(f"{len(n.effective_columns())} cols ({declared} documented{' ⚠️' if declared == 0 else ''})")
-    return " · ".join(parts)
-
-
-def _model_block(n: NodeFacts, suppressions: Suppressions, llm_idx: dict[str, dict[str, str]] | None) -> list[str]:
-    out = [
-        f"### `{n.name}` · {n.resource_type}" + (f" · `{n.layer}`" if n.layer else ""),
-        "",
-        _status_badges(n, suppressions),
-        "",
-    ]
-
-    gaps = [_rule(code) for code in DETECTORS if _det_verdict(n, code, suppressions)[0] == "gap"]
-    if gaps:
-        out += ["**Gaps:** " + " · ".join(gaps), ""]
-
-    if llm_idx is not None:
-        llm = llm_idx.get(n.name, {})
-        mark = {"fp": "🔴 FP", "fn": "🔴 FN", "missed": "🔴 FN", "appl": "🟠", "supp": "🟡"}
-        diss = [
-            f"{mark[cat]} {_rule(code)}"
-            for code in dict.fromkeys(list(DETECTORS) + list(llm))
-            for cat in [_category(_det_verdict(n, code, suppressions)[0], llm.get(code))]
-            if cat in mark
-        ]
-        if diss:
-            out += ["**LLM disagreements:** " + " · ".join(diss), ""]
-
-    # Exhaustive evidence, tucked away.
-    out += ["<details><summary>facts · all rules · LLM reconciliation</summary>", ""]
-    out += _facts_block(n)
-    out += [
-        "",
-        "| Rule | Applies? | Verdict | Evidence (fact) | Detector |",
-        "|---|---|---|---|---|",
-    ]
-    for code in DETECTORS:
-        det, ev = _det_verdict(n, code, suppressions)
-        if det == "suppressed":
-            ev = f"{ev} — suppressed: {suppressions.reason_for(code, n.original_file_path)}"
-        out.append(
-            f"| {_rule(code)} | {'no' if det == 'n/a' else 'yes'} | {_det_display(det, get_rule(code) or {})} "
-            f"| {ev or '—'} | `{DETECTORS[code].__name__}` |"
-        )
-    if llm_idx is not None:
-        out += [
-            "",
-            "_LLM reconciliation:_",
-            "",
-            "| Rule | Deterministic | LLM | Assessment |",
-            "|---|---|---|---|",
-            *[row for _r, row in _reconcile_rows(n, suppressions, llm_idx.get(n.name, {}))],
-        ]
-    out += ["", "</details>", ""]
-    return out
-
-
-def _appendix() -> list[str]:
-    out = [
-        "## Appendix",
-        "",
-        "<details><summary><b>Detector caveats — how to read a 🔴 / 🟠</b></summary>",
-        "",
-        "The detectors are deterministic but heuristic about *which column plays which role*:",
-        "",
-        "- **MD-01** counts a model-level `unique` **or** `dbt_utils.unique_combination_of_columns` as a grain test. "
-        "So an MD-01 false positive means *a uniqueness test exists* — if the LLM wanted an explicit "
-        "`unique_combination_of_columns`, that is a stricter style, not a hallucinated fact.",
-        "- **EN-01** infers the PK as `<model>_id` or the **sole** `*_id`/`*_uuid` column; a model with several key "
-        "columns yields *no identifiable PK* → n/a (a detector limit, hence 🟠 — not an LLM error).",
-        "- **EN-03** treats every non-PK `*_id`/`*_uuid` as a FK needing `relationships`; it may over-include a key "
-        "when the PK isn't identified.",
-        "- **TM-SC-03** needs `catalog.json` (a build) to see column types; without it, n/a.",
-        "- Columns are warehouse-resolved from `catalog.json` when present, else YAML-declared.",
-        "",
-        "</details>",
-        "",
-        "<details><summary><b>Rules with no deterministic detector (LLM-judgement only)</b></summary>",
-        "",
-        "| Rule | DAMA-UK6 | detection | Applies when |",
-        "|---|---|---|---|",
-    ]
-    coded = set(DETECTORS)
-    out += [
-        f"| {_rule(r['code'])} | {'/'.join(r['dama'])} | {r['detection']} | {r['applies_when']} |"
-        for r in all_rules()
-        if r["code"] not in coded
-    ]
-    return out + ["", "</details>", ""]
-
-
-def build_markdown(
-    nodes: list[NodeFacts],
-    in_scope_models: set[str],
-    suppressions: Suppressions,
-    scope: str,
-    review: dict | None = None,
+def render_build_section(
+    run_results: runresults.RunResults | None,
+    records: dict[str, NodeRecord],
+    *,
+    edr_url: str | None,
+    sdag_url: str | None = None,
+    docs_url: str | None = None,
 ) -> str:
-    cat = load_catalog()
-    models = sorted(
-        (n for n in nodes if n.resource_type == "model" and n.original_file_path in in_scope_models),
-        key=lambda n: (n.layer, n.name),
-    )
-    sources = sorted((n for n in nodes if n.resource_type == "source"), key=lambda n: n.name)
-    llm_idx = llm_index(review) if review is not None else None
-    has_catalog = any(n.resolved_columns for n in nodes)
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    usage = (review or {}).get("usage", {})
+    """The inner markdown of the ``build`` section (dbt run-results summary + EDR / sdag / dbt-docs links)."""
+    parts = ["### dbt build"]
+    if run_results is None:
+        parts.append("_No `run_results.json` — dbt build did not produce results._")
+    else:
+        counts: Counter[str] = Counter(runresults.status_str(r.status) for r in run_results.results)
+        count_rows = ["| Status | Count |", "|---|---:|", *(f"| {s} | {counts[s]} |" for s in sorted(counts))]
+        bad = runresults.ERROR_STATUSES | runresults.WARNING_STATUSES
+        problems = [r for r in run_results.results if runresults.status_str(r.status) in bad]
+        if problems:
+            prob_rows = ["| Status | Node | File | Details |", "|---|---|---|---|"]
+            for r in problems:
+                name, file_path = _node_label(records, r.unique_id)
+                cells = (runresults.status_str(r.status), name, file_path, runresults.result_message(r))
+                prob_rows.append("| " + " | ".join(_md_cell(c) for c in cells) + " |")
+            problem_table = "\n".join(prob_rows)
+        else:
+            problem_table = "No warnings or failures detected."
+        header = (
+            f"**{len(run_results.results)} result(s)** · generated {run_results.generated_at or 'unknown'} "
+            f"· {run_results.elapsed_time:.1f}s"
+        )
+        parts.append(f"{header}\n\n" + "\n".join(count_rows) + f"\n\n{problem_table}")
+    links = []
+    if edr_url:
+        links.append(f"📊 [Download `edr-report` artifact]({edr_url})")
+    if sdag_url:
+        links.append(f"🕸️ [Download `sdag-viewer` artifact]({sdag_url})")
+    if docs_url:
+        links.append(f"📚 [Download `dbt-docs` artifact]({docs_url})")
+    if links:
+        parts.append(" · ".join(links))
+    return "\n\n".join(parts)
 
-    prov = (
-        f"Catalogue `v{cat['version']}` ({len(cat['rules'])} rules) · {len(DETECTORS)} deterministic detectors · "
-        f"scope: {scope} · columns {'warehouse-resolved' if has_catalog else 'YAML-declared'}"
-    )
-    if llm_idx is not None:
-        prov += f" · LLM `adaf review` {usage.get('calls', '?')} calls / {usage.get('total_tokens', '?')} tok"
-    prov += f" · generated {ts}"
 
-    out = [
-        "# Testing-taxonomy review — dbt-jaffleshop",
-        "",
-        "Where the LLM taxonomy review (`adaf review`) agrees and disagrees with the deterministic checks "
-        "(`adaf check taxonomy`). The deterministic verdicts are generated by detectors over the dbt manifest + "
-        "catalog — **not hand-authored** — so the disagreements below are the real false-positive / false-negative "
-        "surface to review. Every per-model `<details>` carries the full lineage (rule → detector → fact).",
-        "",
-        f"_{prov}_",
-        "",
+def render_skeleton(title: str, marker: str) -> str:
+    """The full comment with BOTH sections as 'pending' placeholders — used to CREATE the comment
+    when neither job has posted yet. Each job then splices its own section in."""
+    return _assemble(title, marker, {"findings": "_Quality gates pending…_", "build": "_dbt build pending…_"})
+
+
+def _assemble(title: str, marker: str, sections: dict[str, str]) -> str:
+    body = [github.marker_html(marker), f"## 🛡️ ADAF checks — {title}"]
+    for name in SECTIONS:
+        body.append(github.wrap_section(name, sections[name]))
+    body.append("<sub>Each section updates independently as its job finishes.</sub>")
+    return "\n\n".join(body) + "\n"
+
+
+def _resolve_pr(args: argparse.Namespace) -> int | None:
+    if args.pr is not None:
+        return int(args.pr)
+    for env in ("DBT_PR_NUMBER", "PR_NUMBER"):
+        val = os.getenv(env, "").strip()
+        if val.isdigit():
+            return int(val)
+    parts = os.getenv("GITHUB_REF", "").split("/")  # refs/pull/<n>/merge
+    if len(parts) >= 3 and parts[1] == "pull" and parts[2].isdigit():
+        return int(parts[2])
+    return None
+
+
+def _render_section(section: str, args: argparse.Namespace) -> str:
+    """Render the inner markdown for one section from its inputs."""
+    if section == "findings":
+        return render_findings_section(_load_findings(args.findings_dir))
+    run_results = runresults.load_run_results(args.run_results)
+    records = _load_records(args.manifest)
+    edr_url = (args.edr_url or os.getenv("EDR_REPORT_URL", "")).strip() or None
+    sdag_url = (args.sdag_url or os.getenv("SDAG_VIEWER_URL", "")).strip() or None
+    docs_url = (args.docs_url or os.getenv("DBT_DOCS_URL", "")).strip() or None
+    return render_build_section(run_results, records, edr_url=edr_url, sdag_url=sdag_url, docs_url=docs_url)
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    """Render the requested section(s) and upsert them into the sticky PR comment (or print on --dry-run)."""
+    title = args.selector or os.getenv("DBT_SELECTOR", "") or "this PR"
+    wanted = list(SECTIONS) if args.section == "all" else [args.section]
+
+    if args.dry_run:  # local preview: render the whole comment with the wanted sections filled
+        filled = {name: (_render_section(name, args) if name in wanted else f"_{name} pending…_") for name in SECTIONS}
+        print(_assemble(title, args.marker, filled))
+        return 0
+
+    repo = args.repo or os.getenv("GITHUB_REPOSITORY", "")
+    token = args.token or os.getenv("GITHUB_TOKEN", "")
+    pr = _resolve_pr(args)
+    missing = [
+        n for n, v in (("--repo/GITHUB_REPOSITORY", repo), ("--token/GITHUB_TOKEN", token), ("--pr", pr)) if not v
     ]
-    if llm_idx is None:
-        out += [
-            "> No `--review` was supplied: this run shows deterministic findings only. Pass "
-            "`--review <adaf review --json>` for the false-positive / false-negative view.",
-            "",
-        ]
-        recs: list[_Record] = []
-    else:
-        recs = _records(models + sources, suppressions, llm_idx)
-        out += _glance(models, sources, recs, review, has_catalog)
-        out += _decisions(recs)
+    if missing:
+        raise SystemExit(f"adaf report: missing required context: {', '.join(missing)} (use --dry-run to preview)")
+    assert pr is not None  # narrowed by the `missing` guard above
 
-    out += ["## Per model", ""]
-    for n in models:
-        out += _model_block(n, suppressions, llm_idx)
-    out += ["## Sources", ""]
-    for n in sources:
-        out += _model_block(n, suppressions, llm_idx)
-    out += _appendix()
-    return "\n".join(out)
-
-
-def cmd(args: Namespace) -> int:
-    sel = selection.from_args(args)
-    files = selection.resolve_model_files(sel)
-    in_scope = {str(f) for f in files}
-    manifest = config.under_root(args.manifest)
-    if manifest is None or not manifest.exists():
-        raise FileNotFoundError(f"dbt manifest not found at '{manifest}'. Run `dbt parse` or pass --parse.")
-    catalog = config.under_root(getattr(args, "catalog", None))
-    nodes = load_node_facts(manifest, catalog if catalog and catalog.exists() else None)
-    review = None
-    review_path = config.under_root(getattr(args, "review", None))
-    if review_path:
-        if not Path(review_path).exists():
-            raise FileNotFoundError(f"--review file not found: {review_path}")
-        review = json.loads(Path(review_path).read_text(encoding="utf-8"))
-    md = build_markdown(nodes, in_scope, Suppressions.load(config.PROJECT_ROOT), selection.describe(sel), review)
-    out = config.under_root(args.output) if getattr(args, "output", None) else None
-    if out:
-        Path(out).write_text(md, encoding="utf-8")
-        log.info("wrote per-model taxonomy review to %s", out)
-    else:
-        print(md)
+    skeleton = render_skeleton(title, args.marker)
+    for section in wanted:
+        content = _render_section(section, args)
+        action = github.upsert_section(
+            repo, pr, marker=args.marker, section=section, content=content, skeleton=skeleton, token=token
+        )
+        log.info("adaf report: %s '%s' section on %s#%d", action, section, repo, pr)
     return 0

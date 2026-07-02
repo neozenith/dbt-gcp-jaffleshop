@@ -25,8 +25,8 @@ models:
         description: "Most recent order timestamp for the customer."
         data_type: timestamp
 
-  # Outbound boundary node missing a semantic model (violates MD-12), no description (check docs gap)
-  # and no tests (check tests gap). Keeps an enforced contract (MD-02 ok) + exposure (MD-11 ok).
+  # Outbound boundary node missing a semantic model (violates MD-12), no description (docscov gap)
+  # and no tests (testcov gap). Keeps an enforced contract (MD-02 ok) + exposure (MD-11 ok).
   - name: fct_orders
     config:
       contract:

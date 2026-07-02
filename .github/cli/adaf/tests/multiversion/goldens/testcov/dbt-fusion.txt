@@ -1,0 +1,8 @@
+## gate: adaf testcov --all --selector matrix_demo --manifest /fixture/target
+--- exit: 1
+--- stdout:
+models/marts/_marts.yml:40: [warn] TESTCOV no tests
+--- stderr:
+# testcov — test coverage — all models that are also in selector:matrix_demo
+testcov: 1 of 3 model(s) untested:
+testcov: to fix, add `data_tests:` (or `tests:`) under the model or its columns in the schema YAML — https://docs.getdbt.com/reference/resource-properties/data-tests

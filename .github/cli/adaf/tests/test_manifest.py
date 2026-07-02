@@ -1,39 +1,45 @@
-# Local
+"""Unit tests for the manifest view — pure (synthetic manifest dict, no dbt)."""
+
+# First Party
 from adaf.dbt.manifest import Manifest
 
-from conftest import MANIFEST_DATA
 
-
-def test_only_model_nodes_are_indexed(manifest: Manifest):
-    # The seed and test nodes must not appear as models.
-    assert set(manifest.by_path()) == {
-        "models/marts/documented.sql",
-        "models/staging/partial_cols.sql",
-        "models/marts/no_desc.sql",
+def _manifest() -> dict:
+    return {
+        "nodes": {
+            "model.p.a": {
+                "resource_type": "model",
+                "name": "a",
+                "original_file_path": "models/a.sql",
+                "description": "the a model",
+                "columns": {"id": {"description": "pk"}, "x": {"description": ""}},
+            },
+            "model.p.b": {
+                "resource_type": "model",
+                "name": "b",
+                "original_file_path": "models/b.sql",
+                "description": "",
+                "columns": {},
+            },
+            "test.p.t1": {"resource_type": "test", "depends_on": {"nodes": ["model.p.a"]}},
+            "test.p.t2": {"resource_type": "test", "depends_on": {"nodes": ["model.p.a"]}},
+        }
     }
 
 
-def test_test_nodes_are_tallied_onto_their_models(manifest: Manifest):
-    by_path = manifest.by_path()
-    assert by_path["models/marts/documented.sql"].test_count == 2
-    assert by_path["models/staging/partial_cols.sql"].test_count == 0
-    assert by_path["models/marts/no_desc.sql"].test_count == 0
+def test_from_dict_extracts_models_only() -> None:
+    m = Manifest.from_dict(_manifest())
+    by_path = m.by_path()
+    assert set(by_path) == {"models/a.sql", "models/b.sql"}
 
 
-def test_column_descriptions_are_extracted(manifest: Manifest):
-    columns = manifest.by_path()["models/staging/partial_cols.sql"].columns
-    assert columns == {"id": "the id", "blank": ""}
+def test_description_and_columns() -> None:
+    a = Manifest.from_dict(_manifest()).by_path()["models/a.sql"]
+    assert a.description == "the a model"
+    assert a.columns == {"id": "pk", "x": ""}
 
 
-def test_from_dict_tolerates_missing_optional_keys():
-    # A model node with no description/columns must not raise and must default cleanly.
-    manifest = Manifest.from_dict(
-        {"nodes": {"model.p.m": {"resource_type": "model", "name": "m", "original_file_path": "models/m.sql"}}}
-    )
-    model = manifest.by_path()["models/m.sql"]
-    assert model.description == "" and model.columns == {} and model.test_count == 0
-
-
-def test_loads_from_real_manifest_data_constant():
-    # Sanity check the constant is wired to the loader the same way load() is.
-    assert Manifest.from_dict(MANIFEST_DATA).by_path()["models/marts/documented.sql"].name == "documented"
+def test_test_count_attributed_to_model() -> None:
+    by_path = Manifest.from_dict(_manifest()).by_path()
+    assert by_path["models/a.sql"].test_count == 2  # two test nodes depend on a
+    assert by_path["models/b.sql"].test_count == 0

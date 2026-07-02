@@ -1,6 +1,6 @@
 # Consolidate testing-taxonomy tooling into ADAF (Automated Data Assurance Framework)
 
-**Status:** Accepted
+**Status:** Superseded by 0006
 **Date:**   2026-06-08
 
 ## Context

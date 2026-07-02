@@ -1,4 +1,4 @@
-"""Enable ``python -m adaf`` as an equivalent of the ``adaf`` console script."""
+"""`python -m adaf` entry point."""
 
 from adaf.app import main
 

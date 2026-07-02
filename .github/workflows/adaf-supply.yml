@@ -1,0 +1,19 @@
+# Generated/maintained via `adaf gha create <product>`. Thin per-product caller; the parallel job
+# graph lives in .github/workflows/adaf-reusable.yml (deployed by `adaf gha init`).
+name: adaf - supply
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      # Derived from `dbt ls --selector supply`. Refine if needed. Repo dbt project is in a subdir.
+      - 'dbt-jaffleshop/models/**'
+      - 'dbt-jaffleshop/dbt_project.yml'
+concurrency: { group: '${{ github.workflow }}-${{ github.ref }}', cancel-in-progress: true }
+permissions: { contents: read, id-token: write, pull-requests: write }
+jobs:
+  adaf:
+    name: adaf / supply
+    uses: ./.github/workflows/adaf-reusable.yml
+    with:
+      selector: supply

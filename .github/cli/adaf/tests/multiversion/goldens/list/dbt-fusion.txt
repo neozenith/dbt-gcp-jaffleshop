@@ -1,0 +1,8 @@
+## gate: adaf list --all --selector matrix_demo
+--- exit: 0
+--- stdout:
+models/marts/dim_customers.sql
+models/marts/fct_orders.sql
+models/staging/stg_orders.sql
+--- stderr:
+# all models that are also in selector:matrix_demo — 3 model(s)

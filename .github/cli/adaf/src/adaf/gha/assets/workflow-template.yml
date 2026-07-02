@@ -1,79 +1,39 @@
 # Generated/maintained via `adaf gha create <product>` from the CLI's base workflow template.
-# This is a STARTER: the `on.pull_request.paths` block below is overwritten with globs derived from
-# the product's selector membership; refine the auth + step details for your deployment.
-name: ADAF Workflow - __PRODUCT__
+# Thin per-product caller: the parallel job graph lives in .github/workflows/adaf-reusable.yml
+# (deployed by `adaf gha init`).
+name: adaf - __PRODUCT__
 
 on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      # NOTE: overwritten by `adaf gha create/update` with the selector's derived trigger globs.
+      # NOTE: derived from the selector by `adaf gha create` (collapsed per --paths). Refine if needed.
       - 'models/**'
-      - 'macros/**'
       - 'dbt_project.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The caller grants the permissions the reusable workflow's jobs need (a reusable workflow can't
+# escalate beyond its caller): WIF auth + the sticky PR comment.
 permissions:
   contents: read
-  id-token: write # required for WIF (google-github-actions/auth)
-  models: read # required for `adaf review` via GitHub Models (keyless)
-  pull-requests: write # required for `adaf review --post` sticky comments
-
-env:
-  # Fill these in for your project (Workload Identity Federation — never a long-lived key).
-  WIF_PROVIDER: '__WIF_PROVIDER__'
-  WIF_SERVICE_ACCOUNT: '__WIF_SERVICE_ACCOUNT__'
-  DBT_PR_NUMBER: ${{ github.event.pull_request.number }}
-  DBT_AUTH_METHOD: oauth
-  DBT_TARGET: dev
-  DBT_SELECTOR: __PRODUCT__  # the named selector (data product) this workflow tests
-  # --- per-check opt-out toggles. Flip any to 'false' to skip that check for this data product. ---
-  ADAF_RUN_CHECKS: 'true'           # adaf check all (lint/deprecations/coverage/taxonomy/boundaries)
-  ADAF_RUN_SYSTEM_BOUNDARIES: 'true'  # adaf sdag check — boundary-obligation lint, scoped to the product
-  ADAF_RUN_REVIEW: 'false'          # adaf review --post — LLM taxonomy review via GitHub Models
+  id-token: write
+  pull-requests: write
 
 jobs:
-  adaf-test:
-    name: ADAF Test - __PRODUCT__
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # adaf's changed-only scope diffs against the merge-base
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ env.WIF_PROVIDER }}
-          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v5
-
-      # `adaf check all` is changed-only by default; the path trigger above already bounds this PR to
-      # this product's files, so the changed scope is effectively the product. Writes a PR-comment
-      # summary table to the job summary.
-      - name: ADAF checks
-        if: env.ADAF_RUN_CHECKS == 'true'
-        run: uv run --directory .github/cli/adaf adaf check all --md "$GITHUB_STEP_SUMMARY"
-
-      # Boundary-obligation lint, scoped to the WHOLE named product (outbound models owe a contract +
-      # exposure + semantic model; inbound sources owe freshness).
-      - name: System-boundary obligations
-        if: env.ADAF_RUN_SYSTEM_BOUNDARIES == 'true'
-        run: uv run --directory .github/cli/adaf adaf sdag check --all --selector "${{ env.DBT_SELECTOR }}"
-
-      # LLM taxonomy review of the changed models via GitHub Models (keyless); upserts sticky PR
-      # comments. Disabled by default — flip ADAF_RUN_REVIEW to opt in.
-      - name: ADAF review
-        if: env.ADAF_RUN_REVIEW == 'true'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: uv run --directory .github/cli/adaf adaf review --post
+  adaf:
+    name: adaf / __PRODUCT__ # prefixes every reusable-workflow job (-> "adaf / <product> / <job>")
+    uses: ./.github/workflows/adaf-reusable.yml
+    with:
+      selector: __PRODUCT__
+      # target: dev   # dbt target (default: dev)
+      # build_downstream: 'false'   # build ONLY the changed models (default 'true' = + all descendants)
+      # --- Per-check opt-outs: uncomment a line and set 'false' to skip that check for this product. ---
+      # run_sqlfluff: 'true'
+      # run_deprecations: 'true'
+      # run_docscov: 'true'
+      # run_testcov: 'true'
+      # run_sdag_check: 'true'

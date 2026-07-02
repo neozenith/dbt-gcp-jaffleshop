@@ -1,21 +1,27 @@
 [project]
 name = "adaf"
-version = "0.1.0"
-description = "ADAF — Automated Data Assurance Framework: one CLI over the dbt testing-taxonomy catalogue (deterministic checks + LLM review)."
-readme = "README.md"
+version = "0.2.0"
+description = "ADAF — Automated Data Assurance Framework CLI: sqlfluff + dbt-autofix gates, coverage, and the sdag lineage viewer over a named-selector scope."
 requires-python = ">=3.12"
+# Few-deps by design (fewest deps, lean on the stdlib) — but reach for a mature FOSS primitive
+# rather than reinvent one. 
+# - ruamel.yaml: comment/order-preserving YAML round-trip (selectors.yml + the gha workflow template).
+# - networkx: the lineage DAG + traversals (don't hand-roll graph algorithms). See AGENTS.md ADR-0002.
+#   Pinned >=2.3 (not >=3.0): adaf touches only the stable core DiGraph API (add_*_from, nodes/edges,
+#   predecessors/successors, has_node) which is identical across 2.x/3.x, and elementary-data caps
+#   networkx<3 — the wider floor lets `edr` coexist in the same venv. See AGENTS.md ADR-0002.
+# - elementary-data: provides the `edr` CLI the adaf-report composite action shells out to
+#   (`edr report`). A runtime tool dep, not imported by adaf source.
 dependencies = [
-    "jsonschema>=4.21",
-    "pyyaml>=6.0",
-    "python-dotenv>=1.0",
     "ruamel.yaml>=0.18",
-    "deepdiff>=7.0",
+    "networkx>=2.3",
+    "elementary-data>=0.16",
 ]
 
-# Optional extras. `fusion` adds duckdb for reading dbt v2.0 ("Fusion") parquet artifact sets
-# (adaf.dbt.artifact.ParquetManifestArtifact). The JSON manifest path — every user today — stays
-# duckdb-free; a missing duckdb on the parquet path is a loud ImportError, never a silent fallback.
 [project.optional-dependencies]
+# Feature-gated dbt v2.0 ("Fusion") parquet artifact reader (ParquetManifestArtifact). duckdb is
+# imported ONLY inside that class — the JSON path (every user today) stays duckdb-free. Not in core
+# or dev deps. See docs/todo/dbt-fusion.md (ADR-0002: a dependency only where stdlib genuinely can't).
 fusion = ["duckdb>=1.0"]
 
 [project.scripts]
@@ -25,42 +31,60 @@ adaf = "adaf.app:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# src-layout: the importable package is src/adaf. Hatchling ships every file under
-# it — including the non-.py data in src/adaf/rules/ (catalog.json + its schema) and
-# the sdag viewer assets — into the wheel, so the catalogue (the single source of
-# truth) and templates resolve via importlib.resources whether run from source
-# (`uv run`) or installed (`uvx --from .github/cli/adaf adaf ...`).
 [tool.hatch.build.targets.wheel]
 packages = ["src/adaf"]
 
 [dependency-groups]
-# testcontainers (+ the docker SDK it drives) + packaging are HARD dev dependencies, not an optional
-# extra: tests/multiversion/test_multiversion.py imports them unconditionally at module top (no
-# importorskip), so the suite errors LOUDLY if they are ever missing. The Docker-backed matrix is kept
-# off `make ci` purely by the `multiversion` marker (addopts `-m 'not multiversion'`) — environment
-# economy (ci stays fast/offline/Docker-free), NOT requirement degradation.
+# testcontainers (+ the docker SDK it drives) is a HARD dev dependency, not an optional extra: the
+# dbt version-matrix suite (tests/multiversion/test_multiversion.py) REQUIRES it and must error loudly — never
+# skip — if it is missing (escalators-not-stairs). It lives in `dev` so the test env ALWAYS has it; the
+# suite is kept off `make ci` purely by the `multiversion` marker (addopts `-m 'not multiversion'`),
+# which is environment economy (ci stays fast/offline/Docker-free), NOT requirement degradation.
 dev = [
     "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
     "testcontainers>=4.0",
     "docker>=7.0",
-    "packaging>=24.0",
-]
-# Heavy LLM-eval stack, isolated so the fast `dev` test loop never pulls it in.
-# Run with: uv run --group eval pytest evals/
-eval = [
-    "deepeval>=2.0",
-    "pytest>=8.0",
+    "packaging>=26.2",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
 # The Docker-backed dbt version-matrix suite is marked `multiversion` and DESELECTED by default, so
-# `uv run pytest` (and `make ci`) stays fast, offline, and Docker-free. The adaf-multiversion-ci target
-# re-selects it with an explicit `-m multiversion` (a CLI -m overrides this addopts -m). testcontainers
-# is a hard dev dep (imported unconditionally at module top), so the suite errors loudly if it is ever
-# missing — deselection, never a silent skip, keeps it off ci.
+# `uv run pytest` (and `make ci`) stays fast, offline, and Docker-free. The adaf-multiversion-ci
+# target re-selects it with an explicit `-m multiversion` (a CLI -m overrides this addopts -m).
+# testcontainers is a hard dev dep (imported unconditionally at module top, no importorskip), so the
+# suite errors loudly if it is ever missing — deselection, never a silent skip, keeps it off ci.
 addopts = "-m 'not multiversion'"
 markers = [
     "multiversion: dbt version-matrix integration tests (build + run one Docker image per dbt engine; off ci)",
 ]
+
+[tool.ruff]
+line-length = 120
+src = ["src"]
+# The composite-action assets under gha/assets/actions are VERBATIM vendored copies shipped as package
+# data (deployed by `adaf gha init`), not first-party source — they live by the consuming repo's own
+# conventions, so they're excluded from our lint/format/type gates.
+extend-exclude = ["src/adaf/gha/assets/actions"]
+
+[tool.ruff.lint]
+# Sensible default rule set: pyflakes (F), pycodestyle (E/W), isort (I), bugbear (B),
+# comprehensions (C4), pyupgrade (UP), naming (N).
+select = ["E", "F", "W", "I", "B", "C4", "UP", "N"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+files = ["src/adaf"]
+# Exclude the vendored composite-action assets (verbatim copies, not first-party source — see ruff above).
+exclude = ["src/adaf/gha/assets/actions/"]
+# argparse handlers receive an untyped Namespace; that's the one ergonomic exception.
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["networkx.*", "duckdb.*"]
+ignore_missing_imports = true

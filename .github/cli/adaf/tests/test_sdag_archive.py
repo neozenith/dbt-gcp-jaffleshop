@@ -5,8 +5,8 @@ Two halves:
 * :func:`viewer.write_archive` is driven against a tmp output dir populated with fake viewer
   assets — asserting the zip exists, its ``namelist()`` is exactly the present viewer files at the
   archive root, and the bytes round-trip (self-contained), plus the fail-loud paths.
-* The CLI wiring (``--archive`` argparse + :func:`dataproducts._archive_path`) is exercised through
-  the real parser so bare ``--archive``, ``--archive PATH`` and no-flag resolve to the right zip path.
+* The CLI wiring (``--archive`` argparse + :func:`commands._archive_path`) is exercised through the
+  real parser so bare ``--archive``, ``--archive PATH`` and no-flag resolve to the right zip path.
 """
 
 # Standard Library
@@ -17,9 +17,8 @@ from pathlib import Path
 import pytest
 
 # First Party
-from adaf import viewer
 from adaf.app import build_parser
-from adaf.commands import dataproducts
+from adaf.sdag import commands, viewer
 
 
 def _populate(output_dir: Path, files: tuple[str, ...] = viewer.VIEWER_FILES) -> dict[str, str]:
@@ -49,6 +48,7 @@ def test_write_archive_bundles_all_viewer_files(tmp_path: Path) -> None:
     assert entries == sorted(viewer.VIEWER_FILES)
     with zipfile.ZipFile(zip_path) as zf:
         assert sorted(zf.namelist()) == sorted(viewer.VIEWER_FILES)
+        # Flat layout (archive root), and the bytes survive the round-trip → self-contained.
         for name, body in contents.items():
             assert zf.read(name).decode("utf-8") == body
 
@@ -80,6 +80,16 @@ def test_write_archive_ignores_non_viewer_files(tmp_path: Path) -> None:
         assert "sdag.zip" not in zf.namelist()
 
 
+def test_write_archive_creates_parent_dirs(tmp_path: Path) -> None:
+    out = tmp_path / "sdag"
+    _populate(out)
+    zip_path = tmp_path / "nested" / "deep" / "sdag.zip"
+
+    viewer.write_archive(out, zip_path)
+
+    assert zip_path.is_file()
+
+
 def test_write_archive_fails_loud_when_output_dir_missing(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="does not exist"):
         viewer.write_archive(tmp_path / "nope", tmp_path / "sdag.zip")
@@ -96,33 +106,33 @@ def test_write_archive_fails_loud_when_no_assets(tmp_path: Path) -> None:
 
 
 def test_archive_flag_defaults_to_none() -> None:
-    args = _parse(["products", "generate"])
+    args = _parse(["sdag", "generate"])
     assert args.archive is None
-    assert dataproducts._archive_path(args) is None
+    assert commands._archive_path(args) is None
 
 
 def test_bare_archive_resolves_into_output_dir() -> None:
-    args = _parse(["products", "generate", "--archive", "-o", "tmp/sdag"])
-    assert args.archive == dataproducts.ARCHIVE_DEFAULT
-    assert dataproducts._archive_path(args) == Path("tmp/sdag") / "sdag.zip"
+    args = _parse(["sdag", "generate", "--archive", "-o", "tmp/sdag"])
+    assert args.archive == commands.ARCHIVE_DEFAULT
+    assert commands._archive_path(args) == Path("tmp/sdag") / "sdag.zip"
 
 
 def test_archive_with_explicit_path() -> None:
-    args = _parse(["products", "generate", "--archive", "tmp/foo.zip"])
-    assert dataproducts._archive_path(args) == Path("tmp/foo.zip")
+    args = _parse(["sdag", "generate", "--archive", "tmp/foo.zip"])
+    assert commands._archive_path(args) == Path("tmp/foo.zip")
 
 
 def test_archive_flag_available_on_serve() -> None:
-    args = _parse(["products", "serve", "--archive", "tmp/bar.zip"])
-    assert dataproducts._archive_path(args) == Path("tmp/bar.zip")
+    args = _parse(["sdag", "serve", "--archive", "tmp/bar.zip"])
+    assert commands._archive_path(args) == Path("tmp/bar.zip")
 
 
 def test_cmd_generate_writes_archive_end_to_end(tmp_path: Path) -> None:
     """Drive the bundler the way cmd_generate does against a real populated output dir."""
     out = tmp_path / "sdag"
     _populate(out)
-    args = _parse(["products", "generate", "--archive", "-o", str(out)])
-    zip_path = dataproducts._archive_path(args)
+    args = _parse(["sdag", "generate", "--archive", "-o", str(out)])
+    zip_path = commands._archive_path(args)
     assert zip_path == out / "sdag.zip"
 
     entries = viewer.write_archive(out, zip_path)

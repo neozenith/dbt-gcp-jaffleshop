@@ -21,11 +21,11 @@ from pathlib import Path
 import pytest
 
 # First Party
-from adaf.commands.sdaglint import Artifacts
 from adaf.dbt import artifact as artifact_mod
 from adaf.dbt.artifact import JsonManifestArtifact, ParquetManifestArtifact, load_artifact
 from adaf.dbt.manifest import Manifest
 from adaf.dbt.manifest_view import ManifestView
+from adaf.commands.sdaglint import Artifacts
 
 # Optional adaf[fusion] dependency — skip cleanly if it truly can't be installed in the env, but the
 # verification command supplies it via `--extra fusion` so the suite runs for real.
@@ -70,10 +70,7 @@ def _write_nodes(con, path: Path, rows: list[tuple]) -> None:
 
 def _write_test_metadata(con, path: Path, rows: list[tuple]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    con.execute(
-        "CREATE OR REPLACE TABLE tm (unique_id VARCHAR, test_name VARCHAR, test_namespace VARCHAR, "
-        "ingested_at TIMESTAMPTZ)"
-    )
+    con.execute("CREATE OR REPLACE TABLE tm (unique_id VARCHAR, test_name VARCHAR, test_namespace VARCHAR, ingested_at TIMESTAMPTZ)")
     con.executemany("INSERT INTO tm (unique_id, test_name, test_namespace) VALUES (?, ?, ?)", rows)
     con.execute("UPDATE tm SET ingested_at = now()")
     con.execute(f"COPY tm TO '{path}' (FORMAT PARQUET)")

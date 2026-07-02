@@ -167,4 +167,4 @@ The `generate`/`serve` shape is meant to host more observability features as the
 incubate (test-result heatmaps, freshness timelines, anomaly history). Each new
 feature reads its own Elementary table(s) into a JSON payload and ships a templated
 viewer alongside. When a second feature lands, `generate`/`serve` graduate into a
-per-feature command group (mirroring `adaf products generate/serve`).
+per-feature command group (mirroring `adaf sdag generate/serve`).

@@ -5,11 +5,11 @@ Exercises the manifest artifact-detection (:class:`Artifacts`) and per-node rule
 """
 
 # Standard Library
-from pathlib import Path
 from typing import Any
 
 # Third Party
 import pytest
+from ruamel.yaml import YAML
 
 # First Party
 from adaf.commands.sdaglint import (
@@ -19,11 +19,10 @@ from adaf.commands.sdaglint import (
     _print_violation_summary,
     evaluate_node,
 )
-from adaf.graph import BOTH, INBOUND, INNER, OUTBOUND, Graph
-from adaf.suppression import Suppressions
+from adaf.dbt.graph import BOTH, INBOUND, INNER, OUTBOUND, Graph
+from adaf.suppression import Suppressions, load_suppressions
 
-# An empty suppression set (no adaf.yml under a nonexistent root → never suppresses, scans nothing).
-_NO_SUP = Suppressions(Path("/nonexistent"))
+_yaml = YAML()
 
 
 def _manifest() -> dict[str, Any]:
@@ -31,9 +30,14 @@ def _manifest() -> dict[str, Any]:
 
         source.p.src_in --> model.p.stg --> model.p.fct --> model.p.downstream(external)
 
-    Members: src_in, stg, fct. Artifacts planted on the manifest:
+    Members: src_in, stg, fct. ``Graph.classify`` labels ONLY models (sources/exposures are edges):
+      - stg = inbound  (reads an external source -> entry point; src_in is NOT a subject)
+      - fct = outbound (feeds an external model + exposure -> exit point)
+
+    The ``evaluate_node`` tests below pass explicit boundary labels (independent of classify) so
+    each rule can be exercised. Artifacts planted on the manifest:
       - fct has an enforced contract + an exposure, but NO semantic model -> MD-12 fires.
-      - src_in has NO freshness and NO volume-anomaly test -> TM-AU-01 + MD-07 fire.
+      - the inbound model stg reads src_in, which has NO freshness and NO volume test -> TM-AU-01 + MD-07 fire.
     """
     return {
         "nodes": {
@@ -144,77 +148,103 @@ def test_node_info_resolves_resource_type_and_path() -> None:
 def test_classification_of_members() -> None:
     labels = Graph.from_dict(_manifest()).classify(MEMBERS)
     assert labels == {
-        "source.p.src_in": INBOUND,  # a root source is an entry point -> inbound (owes freshness/volume)
-        "model.p.stg": INNER,  # parent + child both inside the set
-        "model.p.fct": OUTBOUND,  # child downstream is outside the set
+        "model.p.stg": INBOUND,  # reads an external source -> entry point (owes freshness/volume)
+        "model.p.fct": OUTBOUND,  # feeds an external model + exposure -> exit point
     }
+    assert "source.p.src_in" not in labels  # a source is the inbound edge, never a boundary subject
 
 
 def test_outbound_model_missing_semantic_fires_only_semantic() -> None:
     art = Artifacts.from_manifest(_manifest())
-    violations = evaluate_node("model.p.fct", OUTBOUND, art, _NO_SUP)
-    assert {v.rule_id for v in violations} == {"MD-12"}
+    # fct has contract + exposure but no semantic model.
+    violations = evaluate_node("model.p.fct", OUTBOUND, art, Suppressions())
+    rule_ids = {v.rule_id for v in violations}
+    assert rule_ids == {"MD-12"}
 
 
 def test_outbound_model_missing_all_three() -> None:
     art = Artifacts.from_manifest(_manifest())
-    violations = evaluate_node("model.p.stg", OUTBOUND, art, _NO_SUP)
+    # stg as a hypothetical outbound node: no contract, no exposure, no semantic.
+    violations = evaluate_node("model.p.stg", OUTBOUND, art, Suppressions())
     assert {v.rule_id for v in violations} == {"MD-02", "MD-11", "MD-12"}
 
 
-def test_inbound_source_missing_freshness_and_volume() -> None:
+def test_inbound_model_missing_freshness_and_volume() -> None:
     art = Artifacts.from_manifest(_manifest())
-    violations = evaluate_node("source.p.src_in", INBOUND, art, _NO_SUP)
+    # The inbound MODEL owns the freshness/volume obligations via the source it reads (src_in has neither).
+    violations = evaluate_node("model.p.stg", INBOUND, art, Suppressions())
     assert {v.rule_id for v in violations} == {"TM-AU-01", "MD-07"}
+
+
+def test_source_is_never_a_boundary_subject() -> None:
+    art = Artifacts.from_manifest(_manifest())
+    # Sources are edges, not subjects: the inbound rules are now model-only, so a source owes nothing.
+    assert evaluate_node("source.p.src_in", INBOUND, art, Suppressions()) == []
+    assert evaluate_node("source.p.src_in", BOTH, art, Suppressions()) == []
+
+
+def test_fresh_source_satisfies_inbound_model() -> None:
+    data = _manifest()
+    data["sources"]["source.p.src_in"]["freshness"] = {"warn_after": {"count": 1, "period": "day"}}
+    art = Artifacts.from_manifest(data)
+    # stg now reads a FRESH source -> TM-AU-01 satisfied; only MD-07 (no volume test) remains.
+    assert {v.rule_id for v in evaluate_node("model.p.stg", INBOUND, art, Suppressions())} == {"MD-07"}
 
 
 def test_inner_node_has_no_obligations() -> None:
     art = Artifacts.from_manifest(_manifest())
-    assert evaluate_node("model.p.stg", INNER, art, _NO_SUP) == []
+    assert evaluate_node("model.p.stg", INNER, art, Suppressions()) == []
 
 
-def test_both_source_only_gets_inbound_rules() -> None:
+def test_both_model_gets_outbound_and_inbound_rules() -> None:
     art = Artifacts.from_manifest(_manifest())
-    violations = evaluate_node("source.p.src_in", BOTH, art, _NO_SUP)
-    assert {v.rule_id for v in violations} == {"TM-AU-01", "MD-07"}
+    # A model classified `both`: outbound trio + the inbound pair (its source is neither fresh nor volume-tested).
+    violations = evaluate_node("model.p.stg", BOTH, art, Suppressions())
+    assert {v.rule_id for v in violations} == {"MD-02", "MD-11", "MD-12", "TM-AU-01", "MD-07"}
 
 
-def test_both_model_gets_outbound_and_volume() -> None:
+def test_suppressed_violation_not_reported(tmp_path: Any) -> None:
     art = Artifacts.from_manifest(_manifest())
-    violations = evaluate_node("model.p.stg", BOTH, art, _NO_SUP)
-    assert {v.rule_id for v in violations} == {"MD-02", "MD-11", "MD-12", "MD-07"}
-
-
-def test_suppressed_violation_not_reported(tmp_path: Path) -> None:
-    art = Artifacts.from_manifest(_manifest())
-    (tmp_path / "adaf.yml").write_text(
-        "disable:\n  - rules: [TM-AU-01]\n    paths: ['models/staging/_sources.yml']\n",
+    cfg = tmp_path / ".adaf.yml"
+    # The inbound subject is now the MODEL, so suppression matches on the model's path.
+    cfg.write_text(
+        "suppress:\n  - rule: TM-AU-01\n    paths: ['models/staging/stg.sql']\n",
         encoding="utf-8",
     )
-    sup = Suppressions.load(tmp_path)
-    violations = evaluate_node("source.p.src_in", INBOUND, art, sup)
+    sup = load_suppressions(cfg)
+    violations = evaluate_node("model.p.stg", INBOUND, art, sup)
     # TM-AU-01 suppressed for that path; MD-07 still fires.
     assert {v.rule_id for v in violations} == {"MD-07"}
 
 
 def test_violation_carries_label_and_path() -> None:
     art = Artifacts.from_manifest(_manifest())
-    [v] = evaluate_node("model.p.fct", OUTBOUND, art, _NO_SUP)
+    [v] = evaluate_node("model.p.fct", OUTBOUND, art, Suppressions())
     assert isinstance(v, Violation)
     assert v.label == OUTBOUND
     assert v.file_path == "models/marts/fct.sql"
 
 
-def test_all_rules_have_guidance_and_url() -> None:
+def test_violation_carries_guidance_and_url() -> None:
     art = Artifacts.from_manifest(_manifest())
-    outbound = evaluate_node("model.p.stg", OUTBOUND, art, _NO_SUP)
-    inbound = evaluate_node("source.p.src_in", INBOUND, art, _NO_SUP)
+    # fct is missing only its semantic model -> MD-12, which links to the dbt semantic-models docs.
+    [v] = evaluate_node("model.p.fct", OUTBOUND, art, Suppressions())
+    assert v.rule_id == "MD-12"
+    assert v.guidance  # an actionable sentence, not empty
+    assert v.url == "https://docs.getdbt.com/docs/build/semantic-models"
+
+
+def test_all_rules_have_guidance_and_url() -> None:
+    # Every emitted violation must carry non-empty guidance + a doc URL.
+    art = Artifacts.from_manifest(_manifest())
+    outbound = evaluate_node("model.p.stg", OUTBOUND, art, Suppressions())
+    inbound = evaluate_node("model.p.stg", INBOUND, art, Suppressions())  # inbound subject is the model now
     for v in [*outbound, *inbound]:
         assert v.guidance, f"{v.rule_id} has no guidance"
         assert v.url.startswith("https://"), f"{v.rule_id} has no doc url"
 
 
-# ─── rendering through the shared report substrate (capsys, no mocks) ──────────
+# ─── _print_product_report: the shared-report rendering (capsys, no mocks) ─────
 
 
 def _violations() -> list[Violation]:
@@ -244,16 +274,32 @@ def _violations() -> list[Violation]:
 def test_print_product_report_header_on_stderr_findings_on_stdout(capsys: pytest.CaptureFixture[str]) -> None:
     _print_product_report("demand", _violations(), color=False)
     captured = capsys.readouterr()
+
+    # The sqlfluff-style group header is a human delimiter -> stderr, NOT the pipeable stream.
     assert "== [product: demand] FAIL" in captured.err
     assert "== [product: demand] FAIL" not in captured.out
-    finding_lines = [ln for ln in captured.out.splitlines() if ln.startswith("models/")]
+
+    # Findings render through report.render_finding on stdout: path: [error] CODE message.
+    out_lines = captured.out.splitlines()
+    finding_lines = [ln for ln in out_lines if ln.startswith("models/")]
     assert finding_lines == [
         "models/marts/fct.sql: [error] MD-02 missing enforced data contract",
         "models/marts/fct.sql: [error] MD-12 missing semantic model",  # sorted by rule_id
     ]
 
 
+def test_print_product_report_omits_inline_guidance(capsys: pytest.CaptureFixture[str]) -> None:
+    # The findings listing is now bare — guidance/see: URLs are aggregated by _print_violation_summary,
+    # not repeated under every finding.
+    _print_product_report("demand", _violations(), color=False)
+    captured = capsys.readouterr()
+    assert "Add `contract: {enforced: true}`" not in captured.out
+    assert "see:" not in captured.out
+
+
 def test_violation_summary_aggregates_counts_then_advice_once(capsys: pytest.CaptureFixture[str]) -> None:
+    # Two MD-02 violations on different nodes must yield ONE MD-02 advice line and a "× 2" tally —
+    # the de-duplication the user asked for. MD-12 appears once (× 1).
     violations = [
         *_violations(),  # one MD-12 + one MD-02 on model.p.fct
         Violation(
@@ -268,14 +314,24 @@ def test_violation_summary_aggregates_counts_then_advice_once(capsys: pytest.Cap
     ]
     _print_violation_summary(violations, color=False)
     err = capsys.readouterr().err
+
+    # Aggregated counts block, then the advice block — both on stderr (summary, not findings).
     assert "violations by rule:" in err
     assert "MD-02 × 2  missing enforced data contract" in err
     assert "MD-12 × 1  missing semantic model" in err
     assert "how to fix:" in err
+
     # Each rule's guidance + see: URL appears EXACTLY ONCE despite MD-02 tripping twice.
     assert err.count("Add `contract: {enforced: true}` to the model's config.") == 1
     assert err.count("see: https://docs.getdbt.com/docs/collaborate/govern/model-contracts") == 1
     assert err.count("Define a semantic model on top of this model.") == 1
+
+
+def test_print_product_report_no_ansi_when_color_off(capsys: pytest.CaptureFixture[str]) -> None:
+    _print_product_report("demand", _violations(), color=False)
+    captured = capsys.readouterr()
+    assert "\x1b[" not in captured.out
+    assert "\x1b[" not in captured.err
 
 
 def test_print_product_report_color_emits_ansi(capsys: pytest.CaptureFixture[str]) -> None:
@@ -283,6 +339,7 @@ def test_print_product_report_color_emits_ansi(capsys: pytest.CaptureFixture[str
     captured = capsys.readouterr()
     assert "\x1b[31m" in captured.err  # FAIL header coloured red (error severity)
     assert "\x1b[31m" in captured.out  # [error] tag coloured red
+    assert "\x1b[2m" in captured.out  # path + notes dimmed
 
 
 def test_print_product_report_falls_back_to_unique_id_when_no_path(capsys: pytest.CaptureFixture[str]) -> None:

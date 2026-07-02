@@ -1,10 +1,11 @@
 """`adaf gha create|update` — generate / refresh per-data-product workflow entrypoints.
 
-Each data product gets its OWN thin workflow file (`adaf-<product>.yml`) whose path-filtered trigger
-opts that slice into CI, parametrising the shared reusable pieces. The reference skeleton is the
-CLI-owned `adaf/gha/assets/workflow-template.yml` (shipped as package data); we round-trip it with
-ruamel (preserving comments + structure) and swap only the product-specific tokens: the workflow + job
-``name``, ``env.DBT_SELECTOR``, and the ``on.pull_request.paths`` trigger.
+Each data product gets its OWN thin workflow file (`adaf-<product>.yml`) — a path-filtered trigger that
+`uses:` the shared reusable workflow (`adaf-reusable.yml`, the parallel job graph, deployed by `gha
+init`). The reference skeleton is the CLI-owned `adaf/gha/assets/workflow-template.yml` (shipped as
+package data); we round-trip it with ruamel (preserving comments + structure) and swap only the
+product-specific tokens: the workflow ``name``, the ``jobs.adaf.with.selector`` input, and the
+``on.pull_request.paths`` trigger. `create` also deploys the reusable workflow if it's absent.
 
 The trigger ``paths`` are **derived from the selector itself**: `dbt ls --selector <product>` yields the
 product's model files, which :mod:`adaf.gha.globber` collapses into globs (``--paths`` mode). Both
@@ -30,7 +31,7 @@ from adaf import config, report
 from adaf.dbt.ls import ls_model_paths
 from adaf.dbt.manifest_view import ManifestView
 from adaf.dbt.selectors import selector_names
-from adaf.gha import globber
+from adaf.gha import actions, globber
 
 log = logging.getLogger(__name__)
 
@@ -94,6 +95,10 @@ def cmd_create(args: argparse.Namespace) -> int:
     if not template.exists():
         raise FileNotFoundError(f"workflow template not found at '{template}'")
 
+    # The per-product callers `uses:` the reusable workflow — make sure it's present (deploy if missing;
+    # --force re-syncs it). So `gha create <product>` on a fresh repo yields a working caller + reusable.
+    actions.deploy_workflows(args.workflows_dir, force=args.force, color=color)
+
     for product in _targets(args, names):
         out_path: Path = args.workflows_dir / f"adaf-{product}.yml"
         if out_path.exists() and not args.force:
@@ -106,20 +111,21 @@ def cmd_create(args: argparse.Namespace) -> int:
                     severity="warn",
                 )
                 continue
-            raise RuntimeError(
-                f"{out_path} already exists — pass --force to overwrite, or `adaf gha update {product}`"
-            )
+            raise RuntimeError(f"{out_path} already exists — pass --force to overwrite, or `adaf gha update {product}`")
 
         yaml = _yaml()
         data = yaml.load(template.read_text(encoding="utf-8"))
         on_key = _on_key(data)
 
         globs, working = _derive_paths(product, args.paths, macros=args.macros, color=color)
-        data["name"] = f"ADAF Workflow - {product}"
+        data["name"] = f"adaf - {product}"
         data[on_key]["pull_request"]["paths"] = globs
-        data["env"]["DBT_SELECTOR"] = product
-        if "adaf-test" in data.get("jobs", {}):
-            data["jobs"]["adaf-test"]["name"] = f"ADAF Test - {product}"
+        # The template is a thin caller: the selector is the reusable workflow's `with.selector` input
+        # (the job graph itself lives in adaf-reusable.yml, deployed by `gha init`). The caller job name
+        # `adaf / <product>` prefixes every reusable-workflow job, so the run reads as
+        # "adaf / <product> / <job>" (the reusable's jobs carry bare names: setup, sqlfluff, …).
+        data["jobs"]["adaf"]["name"] = f"adaf / {product}"
+        data["jobs"]["adaf"]["with"]["selector"] = product
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with out_path.open("w", encoding="utf-8") as fh:

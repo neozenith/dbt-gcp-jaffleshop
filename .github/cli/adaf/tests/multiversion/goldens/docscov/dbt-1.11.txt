@@ -1,0 +1,8 @@
+## gate: adaf docscov --all --selector matrix_demo --manifest /fixture/target/manifest.json
+--- exit: 1
+--- stdout:
+models/marts/_marts.yml:30: [warn] DOCSCOV no description
+--- stderr:
+# docscov — documentation coverage — all models that are also in selector:matrix_demo
+docscov: 1 of 3 model(s) missing a description:
+docscov: to fix, add a `description:` for the model in its schema YAML (`_*.yml`) — https://docs.getdbt.com/reference/resource-properties/description

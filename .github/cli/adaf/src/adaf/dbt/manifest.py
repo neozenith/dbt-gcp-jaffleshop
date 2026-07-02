@@ -8,10 +8,6 @@ The manifest is dbt's compiled source of truth. We extract just two things per m
 
 Keying models by ``original_file_path`` lets us join directly against the git
 "changed files" set, whose paths are already project-relative (e.g. ``models/staging/stg_orders.sql``).
-
-The mechanical parse (read file, iterate ``nodes``, find ``test`` nodes) lives once in
-:class:`~adaf.dbt.manifest_view.ManifestView`; this projection only adds the doc/test *meaning* via
-:meth:`Manifest.from_view`. ``load`` / ``from_dict`` stay as thin wrappers so call sites are unchanged.
 """
 
 # Standard Library

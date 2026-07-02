@@ -1,106 +1,202 @@
-"""The report generator emits findings purely from the detectors — deterministic, no hand-authoring."""
+"""Tests for the shared reporting substrate in ``adaf.report``."""
 
-from adaf.commands import report
-from adaf.suppression import CONFIG_NAME, Suppressions
-from adaf.taxonomy import DETECTORS, NodeFacts
+# Standard Library
+import io
 
+# Third Party
+import pytest
 
-def _model(name, layer, columns, contract=False, tests=None):
-    from adaf.taxonomy import AttachedTest  # noqa: PLC0415 - test-local construction helper
-
-    return NodeFacts(
-        f"model.p.{name}",
-        name,
-        "model",
-        f"models/{layer}/{name}.sql",
-        layer,
-        columns,
-        contract,
-        False,
-        tests or [AttachedTest("unique_combination_of_columns", "dbt_utils", None)],
-    )
-
-
-def test_report_is_deterministic(tmp_path):
-    nodes = [_model("orders", "marts", ["order_id"])]
-    s = Suppressions.load(tmp_path)
-    a = report.build_markdown(nodes, {"models/marts/orders.sql"}, s, "x")
-    b = report.build_markdown(nodes, {"models/marts/orders.sql"}, s, "x")
-    assert a == b  # same input → byte-identical output (nothing random / hand-authored)
+# Local
+from adaf.report import (
+    Finding,
+    colorize,
+    format_location,
+    render_file_header,
+    render_finding,
+    render_findings,
+    render_headline,
+    render_note,
+    should_colorize,
+)
 
 
-def test_every_detector_appears_as_a_row(tmp_path):
-    md = report.build_markdown(
-        [_model("orders", "marts", ["order_id"])], {"models/marts/orders.sql"}, Suppressions.load(tmp_path), "x"
-    )
-    for code in DETECTORS:
-        assert f"`{code}`" in md
+class _FakeStream:
+    """Stream stub exposing a settable ``isatty`` for colour-resolution tests."""
+
+    def __init__(self, *, tty: bool) -> None:
+        self._tty = tty
+
+    def isatty(self) -> bool:
+        return self._tty
 
 
-def test_pass_and_blocker_render_from_facts(tmp_path):
-    # A mart with a grain test passes MD-01; lacking a contract it warns MD-02 — both straight from facts.
-    md = report.build_markdown(
-        [_model("orders", "marts", ["order_id"])], {"models/marts/orders.sql"}, Suppressions.load(tmp_path), "x"
-    )
-    assert "✅ pass" in md and "has a uniqueness/grain test" in md
-    assert "mart has no enforced contract" in md
+@pytest.mark.parametrize(
+    "path,line,col,expected",
+    [
+        ("models/x.sql", None, None, "models/x.sql"),
+        ("models/x.sql", 12, None, "models/x.sql:12"),
+        ("models/x.sql", 12, 4, "models/x.sql:12:4"),
+        ("models/x.sql", None, 4, "models/x.sql"),  # col without line has no anchor
+    ],
+)
+def test_format_location(path: str, line: int | None, col: int | None, expected: str) -> None:
+    assert format_location(path, line, col) == expected
 
 
-def test_suppressed_finding_is_marked(tmp_path):
-    (tmp_path / CONFIG_NAME).write_text(
-        "disable:\n  - rules: [MD-01]\n    paths: ['models/marts/spine.sql']\n    reason: synthetic\n", encoding="utf-8"
-    )
-    node = NodeFacts("model.p.spine", "spine", "model", "models/marts/spine.sql", "marts", [], False, False, [])
-    md = report.build_markdown([node], {"models/marts/spine.sql"}, Suppressions.load(tmp_path), "x")
-    assert "🟡 suppressed" in md and "synthetic" in md
+def test_should_colorize_always(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")  # always wins even over NO_COLOR
+    assert should_colorize("always", _FakeStream(tty=False)) is True
 
 
-def test_llm_index_maps_statuses():
-    review = {
-        "result": {
-            "models": [
-                {
-                    "model": "orders",
-                    "findings": [
-                        {"rule_code": "MD-01", "status": "applicable_present"},
-                        {"rule_code": "EN-03", "status": "applicable_missing"},
-                        {"rule_code": "MS-05", "status": "not_applicable"},
-                    ],
-                }
-            ]
-        }
-    }
-    idx = report.llm_index(review)
-    assert idx["orders"] == {"MD-01": "present", "EN-03": "gap", "MS-05": "n/a"}
+def test_should_colorize_never(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    assert should_colorize("never", _FakeStream(tty=True)) is False
 
 
-def test_flag_detects_false_positive_and_negative():
-    assert "FALSE POSITIVE" in report._flag("pass", "gap")  # LLM flagged a gap that's covered
-    assert "FALSE NEGATIVE" in report._flag("gap", "present")  # LLM missed a real gap
-    assert report._flag("pass", "present").startswith("✅")
-    assert report._flag("gap", "gap").startswith("✅")
-    assert report._flag("n/a", "present").startswith("🟠")  # applicability disagreement
-    assert report._flag("no-detector", "gap").startswith("⚪")  # unverified
+def test_should_colorize_auto_with_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    assert should_colorize("auto", _FakeStream(tty=True)) is True
 
 
-def test_reconciliation_section_renders_when_review_given(tmp_path):
-    node = NodeFacts(
-        "model.p.products",
-        "products",
-        "model",
-        "models/marts/products.sql",
-        "marts",
-        [],
-        False,
-        False,
-        [],
-        {"product_id": "STRING"},
-    )
-    review = {
-        "result": {
-            "models": [{"model": "products", "findings": [{"rule_code": "EN-01", "status": "applicable_present"}]}]
-        }
-    }
-    md = report.build_markdown([node], {"models/marts/products.sql"}, Suppressions.load(tmp_path), "x", review)
-    # products PK product_id has no tests → EN-01 gap; LLM said present → false negative on the worklist.
-    assert "FALSE NEGATIVE" in md and "LLM reconciliation" in md
+def test_should_colorize_auto_without_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    assert should_colorize("auto", _FakeStream(tty=False)) is False
+
+
+def test_should_colorize_no_color_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NO_COLOR", "")  # any value, including empty string
+    assert should_colorize("auto", _FakeStream(tty=True)) is False
+
+
+def test_colorize_noop_when_disabled() -> None:
+    assert colorize("hello", "red", False) == "hello"
+
+
+def test_colorize_wraps_when_enabled() -> None:
+    out = colorize("hello", "red", True)
+    assert "hello" in out
+    assert "\x1b[" in out
+    assert out.endswith("\x1b[0m")
+
+
+def test_colorize_unknown_color_is_noop() -> None:
+    assert colorize("hello", "chartreuse", True) == "hello"
+
+
+def test_render_finding_plain_contains_location_and_message() -> None:
+    f = Finding(path="models/x.sql", line=12, severity="error", message="no description")
+    out = render_finding(f, color=False)
+    assert "models/x.sql:12" in out
+    assert "[error]" in out
+    assert "no description" in out
+    assert "\x1b[" not in out  # no ANSI when color disabled
+
+
+def test_render_finding_includes_code() -> None:
+    f = Finding(path="models/x.sql", line=3, code="L001", message="bad")
+    out = render_finding(f, color=False)
+    assert "L001" in out
+
+
+def test_render_finding_colored_contains_ansi() -> None:
+    f = Finding(path="models/x.sql", line=12, severity="warn", message="heads up")
+    out = render_finding(f, color=True)
+    assert "\x1b[" in out
+    assert "models/x.sql:12" in out
+    assert "heads up" in out
+
+
+@pytest.mark.parametrize(
+    "severity,code",
+    [
+        ("error", "\x1b[31m"),
+        ("warn", "\x1b[33m"),
+        ("ok", "\x1b[32m"),
+        ("info", "\x1b[36m"),
+    ],
+)
+def test_severity_color_mapping(severity: str, code: str) -> None:
+    f = Finding(path="m.sql", line=1, severity=severity, message="x")
+    out = render_finding(f, color=True)
+    assert code in out
+
+
+def test_render_findings_writes_to_stdout_stream() -> None:
+    findings = [
+        Finding(path="a.sql", line=1, message="one"),
+        Finding(path="b.sql", line=2, message="two"),
+    ]
+    buf = io.StringIO()
+    render_findings(findings, color=False, stream=buf)
+    lines = buf.getvalue().strip().split("\n")
+    assert len(lines) == 2
+    assert "a.sql:1" in lines[0]
+    assert "b.sql:2" in lines[1]
+
+
+def test_render_headline_writes_to_stream() -> None:
+    buf = io.StringIO()
+    render_headline("all good", color=False, severity="ok", stream=buf)
+    assert buf.getvalue().strip() == "all good"
+
+
+def test_render_headline_colored() -> None:
+    buf = io.StringIO()
+    render_headline("uh oh", color=True, severity="error", stream=buf)
+    out = buf.getvalue()
+    assert "uh oh" in out
+    assert "\x1b[31m" in out
+
+
+def test_render_file_header_sqlfluff_shape() -> None:
+    buf = io.StringIO()
+    render_file_header("product: demand", "FAIL", color=False, stream=buf)
+    assert buf.getvalue().strip() == "== [product: demand] FAIL"
+
+
+def test_render_file_header_uppercases_status() -> None:
+    buf = io.StringIO()
+    render_file_header("models/x.sql", "fail", color=False, stream=buf)
+    assert "== [models/x.sql] FAIL" in buf.getvalue()
+
+
+def test_render_file_header_default_status_is_fail() -> None:
+    buf = io.StringIO()
+    render_file_header("p", color=False, stream=buf)
+    assert buf.getvalue().strip() == "== [p] FAIL"
+
+
+def test_render_file_header_colored_uses_severity() -> None:
+    buf = io.StringIO()
+    render_file_header("p", "FAIL", color=True, severity="error", stream=buf)
+    out = buf.getvalue()
+    assert "\x1b[31m" in out  # error -> red
+    assert "== [p] FAIL" in out
+
+
+def test_render_file_header_no_ansi_when_color_off() -> None:
+    buf = io.StringIO()
+    render_file_header("p", "FAIL", color=True, severity="error", stream=buf)
+    plain = io.StringIO()
+    render_file_header("p", "FAIL", color=False, severity="error", stream=plain)
+    assert "\x1b[" not in plain.getvalue()
+
+
+def test_render_note_indents_and_dims() -> None:
+    buf = io.StringIO()
+    render_note("see: https://example.com", color=False, stream=buf)
+    assert buf.getvalue() == "    see: https://example.com\n"  # default 4-space indent
+
+
+def test_render_note_custom_indent() -> None:
+    buf = io.StringIO()
+    render_note("guidance", color=False, indent=8, stream=buf)
+    assert buf.getvalue() == "        guidance\n"
+
+
+def test_render_note_colored_is_dimmed() -> None:
+    buf = io.StringIO()
+    render_note("ctx", color=True, stream=buf)
+    out = buf.getvalue()
+    assert "\x1b[2m" in out  # dim
+    assert "ctx" in out

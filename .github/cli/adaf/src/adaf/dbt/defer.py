@@ -1,15 +1,15 @@
 """Build + cache a *defer-target* manifest from a git ref, so dbt's ``--defer`` can be used.
 
 Given a git ref (tag / branch / sha), check it out into a throwaway worktree (never disturbing
-the working tree — see ``adaf.gitutil``), install THAT ref's own packages, run ``dbt parse``, and
+the working tree — see ``adaf.git``), install THAT ref's own packages, run ``dbt parse``, and
 cache the resulting ``manifest.json`` under ``tmp/`` keyed on the **resolved commit sha**. A
 moving branch like ``main`` reparses when it advances (its sha changes → cache miss); a fixed
 tag/sha reuses the cache forever.
 
 Two delegations keep this module thin: git (worktree lifecycle, sha resolution) lives in
-``adaf.gitutil``; the dbt invocations (``deps``, ``parse``) live in ``adaf.dbt.runner``.
+``adaf.git``; the dbt invocations (``deps``, ``parse``) live in ``adaf.dbt.runner``.
 
-``DBT_PR_NUMBER`` is forced empty for the parse so the state manifest never bakes in a
+`DBT_PR_NUMBER` is forced empty for the parse so the state manifest never bakes in a
 PR-scoped schema name — otherwise ``state:modified`` against it would flag every model.
 """
 
@@ -20,7 +20,7 @@ from pathlib import Path
 # Local
 from adaf import config
 from adaf.dbt.runner import dbt_deps, dbt_parse
-from adaf.gitutil import add_worktree, remove_worktree, resolve_sha
+from adaf.git.gitutil import add_worktree, remove_worktree, resolve_sha
 
 log = logging.getLogger(__name__)
 

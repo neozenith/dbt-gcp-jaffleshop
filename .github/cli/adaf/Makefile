@@ -1,55 +1,65 @@
-# adaf — Automated Data Assurance Framework CLI.
-# Dev command-and-control. Run via `make -C .github/cli/adaf <target>` from the repo root
-# (no cd needed), or `make <target>` from this directory.
+# adaf CLI — dev tooling. Run via `make -C .github/cli/adaf <target>` from the repo root
+# (the repo's sub-Makefile pattern), or from this directory. `uv run` resolves this
+# package's own venv (ruamel + ruff/mypy/pytest) — the dbt/sqlfluff tools it shells out to
+# at runtime live in the ROOT venv and aren't needed for lint/type/test.
 
-.PHONY: help fix ci sync format lint typecheck test evals validate \
+UV := uv run
+
+.PHONY: help install format lint typecheck test fix ci docs \
 	adaf-multiversion-ci adaf-multiversion-rebaseline
 
 help:
-	@echo "adaf dev targets:"
-	@echo "  fix        format + lint --fix          (inner loop)"
-	@echo "  ci         lint + typecheck + test       (what CI runs)"
-	@echo "  format     ruff format"
-	@echo "  lint       ruff check"
-	@echo "  typecheck  mypy over src/"
-	@echo "  test       pytest (fast unit suite)"
-	@echo "  evals      deepeval suite (eval dep-group; installs deepeval)"
-	@echo "  validate   adaf rules validate (the catalogue SSoT guard)"
-	@echo "  sync       uv sync"
+	@echo "Targets:"
+	@echo "  install    uv sync (this package's venv)"
+	@echo "  format     ruff format src/"
+	@echo "  lint       ruff check src/"
+	@echo "  typecheck  mypy --strict over src/adaf"
+	@echo "  test       pytest (multiversion suite deselected by default)"
+	@echo "  fix        ruff format + ruff check --fix (the inner-loop autofix)"
+	@echo "  ci         lint + typecheck + test (must be green before handoff)"
+	@echo "  docs       regenerate the README/AGENTS/CONTRIBUTING TOCs (mdtoc)"
+	@echo "  adaf-multiversion-ci          build + run one Docker image per pinned dbt engine and"
+	@echo "                                snapshot adaf's gates vs tests/multiversion/goldens/ (needs Docker;"
+	@echo "                                off ci — minutes + image builds. See tests/multiversion/README.md)"
+	@echo "  adaf-multiversion-rebaseline  same, but rewrite the goldens for engines that ran (deliberate)"
 
-sync:
+install:
 	uv sync
 
 format:
-	uvx ruff format src tests --line-length 120
+	$(UV) ruff format src
 
 lint:
-	uvx ruff check src tests --line-length 120
+	$(UV) ruff check src
 
 typecheck:
-	uvx mypy --ignore-missing-imports src
+	$(UV) mypy
 
 test:
-	uv run --extra fusion pytest -q   # --extra fusion ⇒ duckdb present so the parquet-reader tests RUN (not skip)
+	$(UV) --extra fusion pytest   # --extra fusion ⇒ duckdb present so the parquet-reader tests RUN (not skip)
 
-evals:
-	uv run --group eval pytest evals/ -p no:cacheprovider -o addopts=""
+# Inner-loop autofix: format, then apply ruff's safe fixes.
+fix:
+	$(UV) ruff format src
+	$(UV) ruff check --fix src
 
-validate:
-	uv run adaf rules validate
+ci: lint typecheck test
 
-# Roll-ups: `fix` is the inner loop; `ci` is the gate. `make fix ci` before pushing.
-fix: format
-	uvx ruff check src tests --line-length 120 --fix
-
-ci: lint typecheck test validate
-
-# Docker-backed dbt version-matrix suite (off ci — minutes + image builds + PyPI). Builds + runs one
-# image per pinned dbt engine and snapshots adaf's gates vs tests/multiversion/goldens/. Needs Docker.
-# `-m multiversion` overrides the pyproject default `-m 'not multiversion'`. See tests/multiversion/README.md.
+# dbt-core future version matrix integration suite:
+# 
+# - tests/multiversion/docker/Dockerfile: Single parametrised Dockerfile for testing multiple dbt versions
+# - tests/multiversion/fixture: tiny example dbt project as a fixture
+# - tests/multiversion/goldens/: Reference working test expectation outputs
+#
+# The flag `-m multiversion` overrides pytest's pyproject's default `-m 'not multiversion'`. 
 adaf-multiversion-ci:
-	uv run pytest tests/multiversion/test_multiversion.py -m multiversion -s -v
+	$(UV) pytest tests/multiversion/test_multiversion.py -m multiversion -s -v
 
-# Deliberate golden re-baseline (review the diff, then commit — never auto-green a run).
+# Deliberate golden re-baseline (review the diff, then commit with the pin bump — never auto-green a run).
 adaf-multiversion-rebaseline:
-	ADAF_GOLDEN_UPDATE=1 uv run pytest tests/multiversion/test_multiversion.py -m multiversion -s -v
+	ADAF_GOLDEN_UPDATE=1 $(UV) pytest tests/multiversion/test_multiversion.py -m multiversion -s -v
+
+# Keep the doc TOCs current. mdtoc edits in place between the <!--TOC--> markers.
+docs:
+	uvx --from md-toc md_toc --in-place --no-list-coherence github --header-levels 4 \
+		README.md AGENTS.md CONTRIBUTING.md
