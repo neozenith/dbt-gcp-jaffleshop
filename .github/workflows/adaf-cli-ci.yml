@@ -1,0 +1,17 @@
+name: ADAF CLI CI
+on:
+  pull_request:
+    paths: ['.github/cli/adaf/**', '.github/workflows/adaf-cli-ci.yml']
+  push:
+    paths: ['.github/cli/adaf/**', '.github/workflows/adaf-cli-ci.yml']
+concurrency: { group: '${{ github.workflow }}-${{ github.ref }}', cancel-in-progress: true }
+permissions: { contents: read }
+jobs:
+  ci:
+    name: lint + typecheck + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v8.2.0
+        with: { enable-cache: true }
+      - run: make -C .github/cli/adaf ci

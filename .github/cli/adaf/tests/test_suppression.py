@@ -1,69 +1,92 @@
-"""Tests for the layered suppression engine — real files under tmp_path, no mocks.
+"""Unit tests for .adaf.yml suppression loading + resolution — pure, no dbt/warehouse."""
 
-Covers config-glob matching, inline-comment parsing, the config-then-inline precedence, and the
-taxonomy integration (a suppressed gap is dropped from findings and recorded as suppressed).
-"""
+# Standard Library
+from pathlib import Path
 
-from adaf.commands import taxonomy as tax_cmd
-from adaf.suppression import CONFIG_NAME, SuppressionRule, Suppressions, disable_help
-from adaf.taxonomy import NodeFacts
+# Third Party
+import pytest
 
-
-def _node(name="products", path="models/marts/products.sql") -> NodeFacts:
-    return NodeFacts(f"model.p.{name}", name, "model", path, "marts", ["product_id"], False, False)
+# First Party
+from adaf.suppression import DEFAULT_ADAF_CONFIG, Suppressions, load_suppressions
 
 
-def test_config_rule_matches_code_and_glob() -> None:
-    rule = SuppressionRule(frozenset({"MD-02"}), ("models/marts/**",), "legacy")
-    assert rule.matches("MD-02", "models/marts/x.sql") is True
-    assert rule.matches("MD-01", "models/marts/x.sql") is False  # wrong code
-    assert rule.matches("MD-02", "models/staging/x.sql") is False  # wrong path
+def _write(tmp_path: Path, body: str) -> Path:
+    p = tmp_path / ".adaf.yml"
+    p.write_text(body, encoding="utf-8")
+    return p
 
 
-def test_load_reads_adaf_yml(tmp_path) -> None:
-    (tmp_path / CONFIG_NAME).write_text(
-        "disable:\n  - rules: [MD-01, MD-02]\n    paths: ['models/marts/spine.sql']\n    reason: generated\n",
-        encoding="utf-8",
+def test_default_config_location() -> None:
+    assert DEFAULT_ADAF_CONFIG == Path(".adaf.yml")
+
+
+def test_missing_file_is_empty(tmp_path: Path) -> None:
+    sup = load_suppressions(tmp_path / "nope.yml")
+    assert sup == Suppressions()
+    assert sup.is_suppressed("MD-02", "models/legacy/x.sql") is False
+
+
+def test_exact_rule_match(tmp_path: Path) -> None:
+    p = _write(
+        tmp_path,
+        "suppress:\n"
+        "  - rule: MD-02\n"
+        '    paths: ["models/legacy/**", "models/x/foo.sql"]\n'
+        '    reason: "grandfathered; ticket DTB-1234"\n',
     )
-    s = Suppressions.load(tmp_path)
-    assert s.reason_for("MD-01", "models/marts/spine.sql") == "generated"
-    assert s.reason_for("MD-02", "models/marts/spine.sql") == "generated"
-    assert s.reason_for("MD-01", "models/marts/other.sql") is None
+    sup = load_suppressions(p)
+    # exact file path match
+    assert sup.is_suppressed("MD-02", "models/x/foo.sql") is True
+    # different rule => not suppressed
+    assert sup.is_suppressed("MD-11", "models/x/foo.sql") is False
+    assert sup.entries[0].reason == "grandfathered; ticket DTB-1234"
 
 
-def test_missing_config_means_no_suppressions(tmp_path) -> None:
-    s = Suppressions.load(tmp_path)
-    assert s.reason_for("MD-01", "models/marts/x.sql") is None
+def test_star_wildcard_rule(tmp_path: Path) -> None:
+    p = _write(tmp_path, "suppress:\n  - rule: '*'\n    paths: ['models/scratch/**']\n")
+    sup = load_suppressions(p)
+    assert sup.is_suppressed("MD-02", "models/scratch/wip/a.sql") is True
+    assert sup.is_suppressed("ANY-RULE-ID", "models/scratch/b.sql") is True
 
 
-def test_inline_comment_suppression(tmp_path) -> None:
-    sql = tmp_path / "models" / "marts" / "spine.sql"
-    sql.parent.mkdir(parents=True)
-    sql.write_text("-- adaf-disable: MD-01 (synthetic spine has no grain)\nselect 1\n", encoding="utf-8")
-    s = Suppressions.load(tmp_path)
-    assert s.reason_for("MD-01", "models/marts/spine.sql") == "synthetic spine has no grain"
-    assert s.reason_for("MD-02", "models/marts/spine.sql") is None
+def test_double_star_spans_directories(tmp_path: Path) -> None:
+    p = _write(tmp_path, "suppress:\n  - rule: MD-02\n    paths: ['models/legacy/**']\n")
+    sup = load_suppressions(p)
+    assert sup.is_suppressed("MD-02", "models/legacy/a.sql") is True
+    assert sup.is_suppressed("MD-02", "models/legacy/deep/nested/b.sql") is True
+    # leading '**' matches any depth
+    p2 = _write(tmp_path, "suppress:\n  - rule: R\n    paths: ['**/foo.sql']\n")
+    sup2 = load_suppressions(p2)
+    assert sup2.is_suppressed("R", "models/a/b/foo.sql") is True
+    assert sup2.is_suppressed("R", "models/a/b/bar.sql") is False
 
 
-def test_inline_multiple_codes_and_file_synonym(tmp_path) -> None:
-    sql = tmp_path / "m.sql"
-    sql.write_text("-- adaf-disable-file: MD-01, MD-02\nselect 1\n", encoding="utf-8")
-    s = Suppressions.load(tmp_path)
-    assert s.is_suppressed("MD-01", "m.sql") and s.is_suppressed("MD-02", "m.sql")
+def test_non_match(tmp_path: Path) -> None:
+    p = _write(tmp_path, "suppress:\n  - rule: MD-02\n    paths: ['models/legacy/**']\n")
+    sup = load_suppressions(p)
+    assert sup.is_suppressed("MD-02", "models/active/x.sql") is False
+    # single '*' does not cross a directory boundary
+    p2 = _write(tmp_path, "suppress:\n  - rule: R\n    paths: ['models/*.sql']\n")
+    sup2 = load_suppressions(p2)
+    assert sup2.is_suppressed("R", "models/top.sql") is True
+    assert sup2.is_suppressed("R", "models/sub/deep.sql") is False
 
 
-def test_evaluate_drops_suppressed_gap(tmp_path) -> None:
-    # A products node missing its grain test (MD-01) is suppressed by config → not a finding, recorded.
-    (tmp_path / CONFIG_NAME).write_text(
-        "disable:\n  - rules: [MD-01]\n    paths: ['models/marts/products.sql']\n    reason: demo\n",
-        encoding="utf-8",
-    )
-    s = Suppressions.load(tmp_path)
-    report = tax_cmd.evaluate([_node()], {"models/marts/products.sql"}, strict=False, scope="x", suppressions=s)
-    assert not any(f.rule_code == "MD-01" for f in report.findings)
-    assert any(sf.rule_code == "MD-01" and sf.reason == "demo" for sf in report.suppressed)
+def test_empty_suppress_list(tmp_path: Path) -> None:
+    p = _write(tmp_path, "suppress: []\n")
+    assert load_suppressions(p).is_suppressed("R", "models/a.sql") is False
 
 
-def test_disable_help_mentions_both_layers() -> None:
-    lines = "\n".join(disable_help("EN-03"))
-    assert "-- adaf-disable: EN-03" in lines and CONFIG_NAME in lines and "rules: [EN-03]" in lines
+@pytest.mark.parametrize(
+    "body",
+    [
+        "suppress: not-a-list\n",
+        "suppress:\n  - paths: ['models/**']\n",  # missing rule
+        "suppress:\n  - rule: R\n    paths: 'models/**'\n",  # paths not a list
+        "suppress:\n  - just-a-string\n",  # entry not a mapping
+    ],
+)
+def test_malformed_raises(tmp_path: Path, body: str) -> None:
+    p = _write(tmp_path, body)
+    with pytest.raises(ValueError):
+        load_suppressions(p)

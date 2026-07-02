@@ -1,0 +1,74 @@
+name: ADAF Cleanup
+description: Clean up PR-namespaced dataset after testing.
+
+inputs:
+  target:
+    description: The dbt target whose dataset should be cleaned up (e.g. dev, test)
+    required: true
+
+  pr-number:
+    description: The PR number to clean up datasets for
+    required: true
+
+  dry-run:
+    description: If true, will only print datasets that would be deleted without actually deleting them
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve GCP project
+      id: resolve
+      shell: bash
+      run: |
+        case "${{ inputs.target }}" in
+          dev)  echo "gcp_project_id=dbt-dev-jaffleshop"  >> "$GITHUB_OUTPUT" ;;
+          test) echo "gcp_project_id=dbt-test-jaffleshop" >> "$GITHUB_OUTPUT" ;;
+          *)
+            echo "::error:: Unsupported target: ${{ inputs.target }}"
+            exit 1
+            ;;
+        esac
+
+    - name: List and delete datasets
+      shell: bash
+      env:
+        GCP_PROJECT_ID: ${{ steps.resolve.outputs.gcp_project_id }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        set -euo pipefail
+
+        command -v bq >/dev/null 2>&1 || { echo "::error:: bq CLI not found. Run google-github-actions/setup-gcloud (and ensure authentication) before invoking this action."; exit 1; }
+        command -v jq >/dev/null 2>&1 || { echo "::error:: jq not found. Install jq on the runner before invoking this action."; exit 1; }
+
+        # Under Workload Identity Federation the active credential is an
+        # `external_account`, which makes `bq` print a "--scopes ... will be
+        # ignored" WARNING to *stdout*, corrupting the JSON payload. Strip any
+        # leading non-JSON lines by keeping output from the first '[' or '{'.
+        BQ_OUTPUT=$(
+          bq --quiet --format=json ls \
+            --project_id="$GCP_PROJECT_ID" \
+            --max_results=1000 \
+          | sed -n '/^[[{]/,$p'
+        )
+
+        DATASETS=$(
+          echo "$BQ_OUTPUT" | jq -r --arg prefix "pr_${PR_NUMBER}_" \
+            '.[] | select(.datasetReference.datasetId | startswith($prefix)) | .datasetReference.datasetId'
+        )
+
+        if [[ -z "$DATASETS" ]]; then
+          echo "::notice:: No datasets found for PR #${PR_NUMBER} in GCP project ${GCP_PROJECT_ID}."
+          exit 0
+        fi
+
+        for dataset in $DATASETS; do
+          if [[ "$DRY_RUN" == 'true' ]]; then
+            echo "::notice:: Dry run enabled, skipping deletion of dataset: $dataset"
+          else
+            echo "::warning:: Deleting dataset: $dataset"
+            bq rm -r -f --project_id="$GCP_PROJECT_ID" "$dataset"
+          fi
+        done

@@ -43,19 +43,23 @@ DBT_STATE_DIR := $(or $(DBT_STATE_DIR),prod-state)
 # storage.objectViewer on this bucket — granted to developers in infra/stacks/dbt_platform/dbt.tf).
 PROD_ARTEFACTS_BUCKET := $(or $(PROD_ARTEFACTS_BUCKET),gs://dbt-prod-jaffleshop-dbt-artefacts)
 
-# Git ref the adaf check targets diff against for their default --changed-only scope.
+# Git ref the adaf gate targets diff against for their default --changed-only scope.
 # Defaults to main for local dev; override in CI to the PR base, e.g. `make ci BASE_REF=origin/main`.
 # NOTE: CI must have BASE_REF reachable locally — use actions/checkout with fetch-depth: 0
 # (or `git fetch origin main`) so `git merge-base` can resolve it on a shallow clone.
 # The "what changed" detection itself now lives in adaf/gitutil.py (was a shell snippet here).
 BASE_REF ?= main
 
+# adaf gates are now scoped to a named data product (a REQUIRED --selector, per the upstream CLI).
+# Defaults to the `demand` product; override to check another, e.g. `make lint SELECTOR=supply`.
+SELECTOR ?= demand
+
 # Export every Make-level variable to recipe environments (covers .env keys + fallbacks above).
 export
 
 export DBT_PROFILES_DIR := $(CURDIR)
 
-.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage doc-columns-coverage tests-coverage checks boundaries system-boundaries-check sdag sdag-serve pytest deploy-dev elementary-report gha-docs state-pull build-defer state-build clone
+.PHONY: help install gen seed load clean deps debug build run test compile docs lint lint-fix format format-check deprecations-check docs-coverage tests-coverage checks system-boundaries-check sdag sdag-serve pytest deploy-dev elementary-report gha-docs state-pull build-defer state-build clone
 
 help:
 	@echo "Targets:"
@@ -74,18 +78,16 @@ help:
 	@echo "                     (impersonates dbt-dev for read-only prod access; single target)"
 	@echo "  gha-docs  simulate .github/workflows/dbt-docs.yml locally: build the static docs +"
 	@echo "            sdag viewer + Elementary report into tmp/_site, then serve them"
-	@echo "  format    sqlfluff format ALL models (auto-fix layout + keyword case)"
-	@echo "  format-check  formatter check on CHANGED models (subset of rules; vs BASE_REF=$(BASE_REF))"
-	@echo "  lint      full sqlfluff lint on CHANGED models, all rules (vs BASE_REF=$(BASE_REF))"
-	@echo "  lint-fix  sqlfluff fix on CHANGED models (auto-fix all fixable rules)"
-	@echo "  --- adaf gates (vs BASE_REF=$(BASE_REF); add --json via 'uv run adaf') ---"
-	@echo "  deprecations-check  dbt-autofix dry-run over FOLDERS of CHANGED models"
-	@echo "  docs-coverage       model description coverage of CHANGED models (from manifest)"
-	@echo "  doc-columns-coverage  resolved column description coverage of CHANGED models (needs catalog.json)"
-	@echo "  tests-coverage      test coverage of CHANGED models (from manifest)"
-	@echo "  checks              run all adaf check gates over CHANGED models"
-	@echo "  boundaries          classify each data-product (selectors.yml) node as a system boundary"
-	@echo "  system-boundaries-check  fail if any inbound/outbound data-product boundary node has no tests"
+	@echo "  format    sqlfluff --fix over ALL models of SELECTOR (auto-fix fixable rules)"
+	@echo "  format-check  sqlfluff lint on CHANGED selector models (== lint; vs BASE_REF=$(BASE_REF))"
+	@echo "  lint      sqlfluff lint on CHANGED selector models, full ruleset (vs BASE_REF=$(BASE_REF))"
+	@echo "  lint-fix  sqlfluff --fix on CHANGED selector models (auto-fix all fixable rules)"
+	@echo "  --- adaf gates (SELECTOR=$(SELECTOR); vs BASE_REF=$(BASE_REF); add --json via 'uv run adaf') ---"
+	@echo "  deprecations-check  dbt-autofix dry-run over FOLDERS of CHANGED models in the selector"
+	@echo "  docs-coverage       model description coverage of CHANGED selector models (from manifest)"
+	@echo "  tests-coverage      test coverage of CHANGED selector models (from manifest)"
+	@echo "  checks              run all adaf gates over the CHANGED models of SELECTOR"
+	@echo "  system-boundaries-check  fail if any inbound/outbound boundary node of SELECTOR has no tests"
 	@echo "  sdag                build the interactive sdag viewer assets into tmp/sdag/"
 	@echo "  sdag-serve          generate + host the sdag viewer on http://localhost:8088/sdag.html"
 	@echo "  pytest    Run pytest macro + adaf tests (parametrized; shells out to dbt)"
@@ -174,7 +176,7 @@ elementary-report: deps
 # Reproduces the Pages build job's three published artefacts as siblings, then serves
 # them — so you can eyeball exactly what a tag/dispatch will publish, without a release.
 #   1. dbt docs generate --static   → static_index.html copied to <site>/index.html
-#   2. adaf products generate   → <site>/sdag.html (+ graph JSON) lineage viewer
+#   2. adaf sdag generate       → <site>/sdag.html (+ graph JSON) lineage viewer
 #   3. edr report                   → <site>/elementary_report.html observability dashboard
 # Prod reads here impersonate dbt-dev (parity with CI's dbt-prod SA, minus the WIF path).
 # Because target.name 'prod-impersonate' is not a valid DBT_ENV_TYPE, DBT_ENV_TYPE=PROD is
@@ -187,7 +189,7 @@ gha-docs: deps
 	  uv run dbt docs generate --target prod-impersonate --static
 	cp target/static_index.html "$(GHA_SITE)/index.html"
 	DBT_TARGET=prod-impersonate DBT_ENV_TYPE=PROD DBT_BQ_PROJECT_PROD=$(ELEMENTARY_PROD_PROJECT) \
-	  uv run adaf products generate -o "$(GHA_SITE)"
+	  uv run adaf sdag generate -o "$(GHA_SITE)"
 	$(MAKE) elementary-report ELEMENTARY_REPORT_PATH="$(GHA_SITE)/elementary_report.html"
 	DBT_BQ_PROJECT_PROD=$(ELEMENTARY_PROD_PROJECT) \
 	  uv run obs generate -o "$(GHA_SITE)/obs"
@@ -203,62 +205,52 @@ gha-docs: deps
 # --- adaf: all CHANGED-model gates (SQLFluff, dbt-autofix, coverage) -------
 # The shell that used to live here now lives in the adaf Python package
 # (adaf/), which a developer, an agent, or GHA can all invoke identically:
-#   uv run adaf check --help
-# Each target is a thin delegation. The check commands default to --changed-only
-# (vs BASE_REF); pass --all or --select <selector> directly to the CLI for other
-# scopes, and --json for machine-readable output.
+#   uv run adaf --help
+# Each target is a thin delegation. Every gate is bounded to a named data product
+# (--selector $(SELECTOR)) and defaults to --changed-only (vs BASE_REF); pass --all
+# directly to the CLI for the whole product, and --json for machine-readable output.
 
-# SQLFluff: format = opinionated layout+keyword-case subset; lint = full ruleset.
-# A check reports (non-zero on drift); --fix applies. Both scoped to CHANGED models.
+# SQLFluff over the selector's CHANGED models (full ruleset). The upstream CLI folds the
+# old formatter-subset into one `sqlfluff` gate, so format-check == lint now. A check reports
+# (non-zero on drift); --fix applies.
 format-check:
-	uv run adaf check format --base-ref $(BASE_REF)
+	uv run adaf sqlfluff --selector $(SELECTOR) --base-ref $(BASE_REF)
 
 # `format` keeps its historic "fix ALL models" meaning (--fix --all).
 format:
-	uv run adaf check format --fix --all
+	uv run adaf sqlfluff --fix --all --selector $(SELECTOR)
 
 lint:
-	uv run adaf check lint --base-ref $(BASE_REF)
+	uv run adaf sqlfluff --selector $(SELECTOR) --base-ref $(BASE_REF)
 
 lint-fix:
-	uv run adaf check lint --fix --base-ref $(BASE_REF)
+	uv run adaf sqlfluff --fix --selector $(SELECTOR) --base-ref $(BASE_REF)
 
 deprecations-check:
-	uv run adaf check deprecations --base-ref $(BASE_REF)
+	uv run adaf deprecations --selector $(SELECTOR) --base-ref $(BASE_REF)
 
 docs-coverage:
-	uv run adaf check docs --base-ref $(BASE_REF)
-
-doc-columns-coverage:
-	uv run adaf check doc-columns --base-ref $(BASE_REF)
+	uv run adaf docscov --selector $(SELECTOR) --base-ref $(BASE_REF)
 
 tests-coverage:
-	uv run adaf check tests --base-ref $(BASE_REF)
+	uv run adaf testcov --selector $(SELECTOR) --base-ref $(BASE_REF)
 
-# All CHANGED-model gates in one pass; non-zero if any fail.
-checks:
-	uv run adaf check all --base-ref $(BASE_REF)
+# All CHANGED-model gates in one pass over SELECTOR; non-zero if any fail. The upstream CLI has no
+# umbrella command, so this composes the individual gates as prerequisites.
+checks: deprecations-check docs-coverage tests-coverage lint system-boundaries-check
 
-# Data-product system-boundary analysis over the named selectors in selectors.yml. Read-only: it
-# classifies each node as an inbound/outbound/both/internal boundary. Add --product <name> to scope to
-# one product, --show-passes to include internal nodes, --json for the machine payload. Needs the dbt
-# project env (.env) since membership comes from `dbt ls`.
-boundaries:
-	uv run adaf products boundaries
-
-# Gate: fail if any inbound/outbound system-boundary node of a data product has zero tests. Selects by
-# data product (selectors.yml), so it is NOT part of `checks` (which is changed-file scoped); run it as
-# its own gate. Needs the dbt project env (.env).
+# Gate: fail if any inbound/outbound system-boundary node of the data product has zero of the
+# obligations (contract/exposure/semantic model/freshness/volume-anomaly). Scoped by --selector.
 system-boundaries-check:
-	uv run adaf check system-boundaries
+	uv run adaf sdag check --selector $(SELECTOR) --base-ref $(BASE_REF)
 
-# Build the interactive sdag viewer assets (full + super Cytoscape JSON + HTML/JS) into tmp/sdag/.
+# Build the interactive sdag viewer assets (Cytoscape JSON + HTML/JS) into tmp/sdag/.
 sdag:
-	uv run adaf products generate
+	uv run adaf sdag generate
 
 # Generate then host the sdag viewer on http://localhost:8088/sdag.html (Ctrl-C to stop).
 sdag-serve:
-	uv run adaf products serve
+	uv run adaf sdag serve
 
 pytest:
 	uv run pytest

@@ -1,18 +1,20 @@
+"""Unit tests for the pure git helpers (the subprocess paths aren't exercised here)."""
+
 # Standard Library
 from pathlib import Path
 
-# Local
-from adaf.gitutil import dirs_of
+# First Party
+from adaf.git.gitutil import dirs_of
 
 
-def test_dirs_of_dedupes_and_sorts():
+def test_dirs_of_dedups_and_sorts() -> None:
     files = [
-        Path("models/staging/a.sql"),
-        Path("models/staging/b.sql"),
-        Path("models/marts/c.sql"),
+        Path("models/cdm/demand/a.sql"),
+        Path("models/cdm/demand/b.sql"),  # same dir as a → deduped
+        Path("models/staging/x.sql"),
     ]
-    assert [str(d) for d in dirs_of(files)] == ["models/marts", "models/staging"]
+    assert dirs_of(files) == [Path("models/cdm/demand"), Path("models/staging")]
 
 
-def test_dirs_of_empty_returns_empty():
+def test_dirs_of_empty() -> None:
     assert dirs_of([]) == []

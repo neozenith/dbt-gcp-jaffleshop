@@ -289,13 +289,13 @@ Vignettes mark their cost class. Use this to sequence what runs in CI vs. nightl
 ## Data-quality dimensions (DAMA-UK6, primary) + Wang–Strong (secondary)
 
 The orthogonal axis. Every vignette tags the **data-quality dimension(s)** it defends so reviewers
-can spot coverage gaps. The catalogue (`adaf rules`) is the source of truth; each rule carries **two**
-attributions and the vignette headers are derived from it:
+can spot coverage gaps. The vignette files in this reference set are the source of truth; each rule
+carries **two** attributions declared in its vignette header:
 
 - **DAMA-UK6 (primary)** — the [DAMA-UK "six primary dimensions"](https://www.dama.org) (2013), the
   operational vocabulary a reviewer gates on. This is the table below.
 - **Wang–Strong (secondary)** — the genuine Wang & Strong (1996) consumer-perception dimensions,
-  derived via a documented crosswalk in the catalogue. (Historically this section was mislabeled
+  derived via the documented crosswalk (the Wang–Strong column in the table below). (Historically this section was mislabeled
   "Wang–Strong" while listing the DAMA-UK6 values;
   [ADR-0005](https://github.com/neozenith/dbt-gcp-jaffleshop/blob/main/docs/arch/adr-0005-adaf-automated-data-assurance-framework.md) corrected it.)
 
@@ -308,7 +308,7 @@ attributions and the vignette headers are derived from it:
 | **Accuracy** | Values match the real-world state | Accuracy | `currency-pairing`, `refactor-parity`, `volume-anomaly` |
 | **Timeliness** | Data is current enough | Timeliness | `freshness-source-and-model`, `calendar-spine`, `volume-anomaly` |
 
-> Inspect any rule's full dual attribution with `adaf rules show <CODE>` (or `adaf rules list --dama Validity`).
+> Inspect any rule's full dual attribution in its vignette file under the role folders (`entity/`, `dimension/`, `measure/`, `model/`, `temporal/`) — each vignette header lists both its DAMA-UK6 and Wang–Strong dimensions.
 
 ## Conventions
 

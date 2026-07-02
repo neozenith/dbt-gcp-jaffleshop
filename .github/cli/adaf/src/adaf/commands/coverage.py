@@ -1,165 +1,221 @@
-"""``check docs`` / ``check doc-columns`` / ``check tests`` — coverage of selected models.
+"""Manifest-backed coverage gates: documentation and test coverage of selected models.
 
-Both join the selected model files against dbt's manifest:
+Unlike the shell-out gates in ``checks.py``, these read dbt's ``manifest.json`` directly
+and join it against the resolved model files:
 
-* **docs**  — a model passes if it has a non-empty ``description`` and every column declared in its
-  YAML is described.
-* **doc-columns** — denominator is the model's ACTUAL columns (``catalog.json``); a column counts as
-  documented if its manifest description is non-empty.
-* **tests** — a model passes if at least one test node depends on it.
+* ``docs``  — a model passes if its ``description`` is non-empty.
+* ``tests`` — a model passes if at least one test node depends on it (``test_count > 0``).
 
-A selected model file absent from the manifest fails loudly (stale manifest — re-run ``dbt parse``).
-The result dataclasses live in ``adaf.reports.coverage`` (re-exported here for back-compat).
+A selected file absent from the manifest fails the check with a "not in manifest" reason —
+the usual cause is a stale manifest, so re-run ``dbt parse`` (or pass ``--parse``).
+
+A gap doesn't live in the model's ``.sql`` — a missing description or test is declared in the
+model's *schema* YAML. So each gap finding is anchored at that schema file, resolved from the
+manifest node's ``patch_path`` (``"<project>://models/.../_schema.yml"`` → repo-relative path),
+and at the line of the model's ``- name: <model>`` entry when it can be found by a best-effort
+scan. When ``patch_path`` is absent/unresolvable the finding falls back to the ``.sql`` path with
+no line — never a fabricated one.
 """
 
 # Standard Library
-import logging
-import subprocess
 from pathlib import Path
 
 # Local
-from adaf import config
-from adaf.dbt import selection
-from adaf.dbt.catalog import Catalog
-from adaf.dbt.manifest import Manifest
-from adaf.reports.coverage import ColumnsReport, ColumnsRow, DocsReport, DocsRow, TestsReport, TestsRow
-from adaf.utils.formatting import render_from_args
+from adaf import report
+from adaf.dbt.manifest import Manifest, ModelDoc
+from adaf.dbt.manifest_view import ManifestView
+from adaf.dbt.runner import dbt_parse
 
-log = logging.getLogger(__name__)
-
-__all__ = [
-    "ColumnsReport",
-    "ColumnsRow",
-    "DocsReport",
-    "DocsRow",
-    "TestsReport",
-    "TestsRow",
-    "load_manifest",
-    "dbt_docs_generate",
-    "load_catalog",
-    "evaluate_docs",
-    "evaluate_columns",
-    "evaluate_tests",
-    "cmd_docs",
-    "cmd_columns",
-    "cmd_tests",
-]
+# One-shot remediation guidance, emitted once per run (not per finding) when gaps exist. The findings
+# already point at ``schema.yml:line``; this tells the user what to put there, and links the dbt docs.
+_DOCSCOV_GUIDANCE = (
+    "docscov: to fix, add a `description:` for the model in its schema YAML (`_*.yml`) — "
+    "https://docs.getdbt.com/reference/resource-properties/description"
+)
+_TESTCOV_GUIDANCE = (
+    "testcov: to fix, add `data_tests:` (or `tests:`) under the model or its columns in the schema YAML — "
+    "https://docs.getdbt.com/reference/resource-properties/data-tests"
+)
 
 
-def load_manifest(path: Path, *, parse: bool = False, cwd: Path | None = None) -> Manifest:
+def load_manifest(path: Path, *, parse: bool = False, target: str | None = None, cwd: Path | None = None) -> Manifest:
     """Load the manifest, optionally refreshing it first via ``dbt parse`` (fail loud)."""
-    cwd = cwd or config.PROJECT_ROOT
     if parse:
-        proc = subprocess.run(["dbt", "parse"], cwd=cwd, capture_output=True, text=True)
-        if proc.returncode != 0:
-            raise RuntimeError(f"`dbt parse` failed (exit {proc.returncode}):\n{proc.stderr or proc.stdout}")
+        dbt_parse(cwd, target=target)
     if not Path(path).exists():
         raise FileNotFoundError(f"dbt manifest not found at '{path}'. Run `dbt parse` or pass --parse.")
     return Manifest.load(path)
 
 
-def dbt_docs_generate(cwd: Path | None = None) -> None:
-    """Run ``dbt docs generate`` to (re)build manifest.json + catalog.json (needs a warehouse)."""
-    cwd = cwd or config.PROJECT_ROOT
-    proc = subprocess.run(["dbt", "docs", "generate"], cwd=cwd, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"`dbt docs generate` failed (exit {proc.returncode}):\n{proc.stderr or proc.stdout}")
+def _strip_scheme(patch_path: str) -> str:
+    """``"<project>://models/.../_schema.yml"`` → ``"models/.../_schema.yml"`` (pass through if no scheme)."""
+    _, sep, rest = patch_path.partition("://")
+    return rest if sep else patch_path
 
 
-def load_catalog(path: Path) -> Catalog:
-    """Load catalog.json (the resolved warehouse columns); fail loud if it isn't there."""
-    if not Path(path).exists():
-        raise FileNotFoundError(
-            f"dbt catalog not found at '{path}'. Run `dbt docs generate` (needs a warehouse build) or pass --docs-generate."
+def _schema_index(manifest_path: Path | None) -> dict[str, str]:
+    """Map each model's ``.sql`` ``original_file_path`` → its repo-relative schema YAML (from ``patch_path``).
+
+    Built read-only from a :class:`~adaf.dbt.manifest_view.ManifestView` because the
+    :class:`~adaf.dbt.manifest.Manifest` projection doesn't carry ``patch_path``. Empty when no path is
+    given (the caller then falls back to the ``.sql`` location); a model with no ``patch_path`` is simply
+    omitted.
+    """
+    if manifest_path is None or not Path(manifest_path).exists():
+        return {}
+    view = ManifestView.load(manifest_path)
+    index: dict[str, str] = {}
+    for rec in view.of_type("model").values():
+        node = rec.raw
+        original = str(node.get("original_file_path") or "")
+        patch = node.get("patch_path")
+        if original and patch:
+            index[original] = _strip_scheme(str(patch))
+    return index
+
+
+def _find_model_line(schema_file: Path, model_name: str) -> int | None:
+    """Best-effort 1-based line of the model's entry in its schema YAML; ``None`` if not found.
+
+    Matches a ``- name: <model>`` or ``name: <model>`` line (quotes and a trailing ``#`` comment
+    tolerated). Never guesses — a missing file or unmatched name yields ``None``, not a fabricated line.
+    """
+    if not schema_file.exists():
+        return None
+    for lineno, raw in enumerate(schema_file.read_text(encoding="utf-8").splitlines(), start=1):
+        stripped = raw.strip()
+        for prefix in ("- name:", "name:"):
+            if stripped.startswith(prefix):
+                value = stripped[len(prefix) :].split("#", 1)[0].strip().strip("'\"")
+                if value == model_name:
+                    return lineno
+    return None
+
+
+def _coverage_finding(
+    sql_path: Path, model: ModelDoc | None, schema_index: dict[str, str], *, code: str, reason: str
+) -> report.Finding:
+    """Build one warn-level finding for a gap model, anchored at its schema YAML when resolvable.
+
+    A model missing from the manifest has no ``patch_path``, so it falls back to the ``.sql`` path with
+    the stale-manifest reason. Otherwise the finding points at the schema YAML (and its model line, when
+    a best-effort scan finds one); absent a ``patch_path`` it falls back to the ``.sql`` path, ``line=None``.
+    """
+    if model is None:
+        message = "not in manifest (run `dbt parse`?)"
+        return report.Finding(path=str(sql_path), line=None, severity="warn", code=code, message=message)
+    schema_rel = schema_index.get(model.original_file_path)
+    if schema_rel:
+        line = _find_model_line(Path(schema_rel), model.name)
+        return report.Finding(path=schema_rel, line=line, severity="warn", code=code, message=reason)
+    return report.Finding(path=str(sql_path), line=None, severity="warn", code=code, message=reason)
+
+
+def check_docs(
+    files: list[Path],
+    manifest: Manifest,
+    *,
+    scope: str,
+    color: bool = False,
+    manifest_path: Path | None = None,
+    json_out: Path | None = None,
+    quiet: bool = False,
+) -> int:
+    """Report selected models with no description. Non-zero if any are undocumented."""
+    if not quiet:
+        report.render_headline(f"# docscov — documentation coverage — {scope}", color=color, severity="info")
+    if not files:
+        return report.emit_findings(
+            "docscov",
+            [],
+            0,
+            color=color,
+            json_out=json_out,
+            quiet=quiet,
+            headline="docscov: no files in scope — skipped.",
+            severity="ok",
         )
-    return Catalog.load(path)
-
-
-def evaluate_docs(manifest: Manifest, files: list[Path], *, scope: str) -> DocsReport:
     by_path = manifest.by_path()
-    rows: list[DocsRow] = []
-    for f in files:
-        key = str(f)
-        model = by_path.get(key)
-        if model is None:
-            rows.append(DocsRow(key, None, in_manifest=False, has_description=False))
-        else:
-            rows.append(DocsRow(key, model.name, in_manifest=True, has_description=bool(model.description.strip())))
-    return DocsReport(scope, rows)
-
-
-def cmd_docs(args) -> int:
-    sel = selection.from_args(args)
-    files = selection.resolve_model_files(sel)
-    manifest = load_manifest(args.manifest, parse=args.parse)
-    report = evaluate_docs(manifest, files, scope=selection.describe(sel))
-    return render_from_args(report, args)
-
-
-def evaluate_columns(manifest: Manifest, catalog: Catalog, files: list[Path], *, scope: str) -> ColumnsReport:
-    by_path = manifest.by_path()
-    rows: list[ColumnsRow] = []
-    for f in files:
-        key = str(f)
-        model = by_path.get(key)
-        if model is None:
-            rows.append(
-                ColumnsRow(
-                    key, None, in_manifest=False, in_catalog=False, documented=0, total=0, undocumented_columns=[]
-                )
-            )
-            continue
-        actual = catalog.columns_for(model.unique_id)
-        if actual is None:
-            rows.append(
-                ColumnsRow(
-                    key, model.name, in_manifest=True, in_catalog=False, documented=0, total=0, undocumented_columns=[]
-                )
-            )
-            continue
-        described = {name.lower() for name, desc in model.columns.items() if desc.strip()}
-        undocumented = [col for col in actual if col.lower() not in described]
-        rows.append(
-            ColumnsRow(
-                key,
-                model.name,
-                in_manifest=True,
-                in_catalog=True,
-                documented=len(actual) - len(undocumented),
-                total=len(actual),
-                undocumented_columns=undocumented,
-            )
+    gaps = [(f, by_path.get(str(f))) for f in files]
+    gaps = [(f, m) for f, m in gaps if m is None or not m.description.strip()]
+    if not gaps:
+        return report.emit_findings(
+            "docscov",
+            [],
+            0,
+            color=color,
+            json_out=json_out,
+            quiet=quiet,
+            headline=f"docscov: OK — all {len(files)} selected model(s) have a description.",
+            severity="ok",
         )
-    return ColumnsReport(scope, rows)
+    index = _schema_index(manifest_path)
+    findings = [_coverage_finding(f, m, index, code="DOCSCOV", reason="no description") for f, m in gaps]
+    rc = report.emit_findings(
+        "docscov",
+        findings,
+        1,
+        color=color,
+        json_out=json_out,
+        quiet=quiet,
+        headline=f"docscov: {len(gaps)} of {len(files)} model(s) missing a description:",
+        severity="warn",
+    )
+    if not quiet:
+        report.render_headline(_DOCSCOV_GUIDANCE, color=color, severity="info")
+    return rc
 
 
-def cmd_columns(args) -> int:
-    sel = selection.from_args(args)
-    files = selection.resolve_model_files(sel)
-    if args.docs_generate:
-        dbt_docs_generate(config.PROJECT_ROOT)
-    manifest = load_manifest(args.manifest, parse=args.parse)
-    catalog = load_catalog(args.catalog)  # fail loud if absent — no silent declared-only fallback
-    report = evaluate_columns(manifest, catalog, files, scope=selection.describe(sel))
-    return render_from_args(report, args)
-
-
-def evaluate_tests(manifest: Manifest, files: list[Path], *, scope: str) -> TestsReport:
+def check_tests(
+    files: list[Path],
+    manifest: Manifest,
+    *,
+    scope: str,
+    color: bool = False,
+    manifest_path: Path | None = None,
+    json_out: Path | None = None,
+    quiet: bool = False,
+) -> int:
+    """Report selected models with no tests. Non-zero if any are untested."""
+    if not quiet:
+        report.render_headline(f"# testcov — test coverage — {scope}", color=color, severity="info")
+    if not files:
+        return report.emit_findings(
+            "testcov",
+            [],
+            0,
+            color=color,
+            json_out=json_out,
+            quiet=quiet,
+            headline="testcov: no files in scope — skipped.",
+            severity="ok",
+        )
     by_path = manifest.by_path()
-    rows: list[TestsRow] = []
-    for f in files:
-        key = str(f)
-        model = by_path.get(key)
-        if model is None:
-            rows.append(TestsRow(key, None, in_manifest=False, test_count=0))
-        else:
-            rows.append(TestsRow(key, model.name, in_manifest=True, test_count=model.test_count))
-    return TestsReport(scope, rows)
-
-
-def cmd_tests(args) -> int:
-    sel = selection.from_args(args)
-    files = selection.resolve_model_files(sel)
-    manifest = load_manifest(args.manifest, parse=args.parse)
-    report = evaluate_tests(manifest, files, scope=selection.describe(sel))
-    return render_from_args(report, args)
+    gaps = [(f, by_path.get(str(f))) for f in files]
+    gaps = [(f, m) for f, m in gaps if m is None or m.test_count <= 0]
+    if not gaps:
+        return report.emit_findings(
+            "testcov",
+            [],
+            0,
+            color=color,
+            json_out=json_out,
+            quiet=quiet,
+            headline=f"testcov: OK — all {len(files)} selected model(s) have at least one test.",
+            severity="ok",
+        )
+    index = _schema_index(manifest_path)
+    findings = [_coverage_finding(f, m, index, code="TESTCOV", reason="no tests") for f, m in gaps]
+    rc = report.emit_findings(
+        "testcov",
+        findings,
+        1,
+        color=color,
+        json_out=json_out,
+        quiet=quiet,
+        headline=f"testcov: {len(gaps)} of {len(files)} model(s) untested:",
+        severity="warn",
+    )
+    if not quiet:
+        report.render_headline(_TESTCOV_GUIDANCE, color=color, severity="info")
+    return rc

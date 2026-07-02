@@ -147,7 +147,6 @@ def render_working_out(
         if len(fps) > 20:
             lines.append(f"  … and {len(fps) - 20} more")
     else:
-        lines.append(
-            report.colorize("false positives: none (globs match exactly the discovered files)", "green", color)
-        )
+        none_msg = "false positives: none (globs match exactly the discovered files)"
+        lines.append(report.colorize(none_msg, "green", color))
     return "\n".join(lines)

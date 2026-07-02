@@ -40,11 +40,11 @@ def test_selector_cache_round_trip(tmp_path) -> None:
     _touch(selectors, mtime_ns=1_000)
     entry = cache.SelectorCacheEntry(
         members={"model.x", "model.y"},
-        boundaries={"model.x": "outbound", "model.y": "internal"},
+        boundaries={"model.x": "outbound", "model.y": "inner"},
     )
 
-    cache.save_selector(tmp_path, manifest, selectors, "demand", entry)
-    loaded = cache.load_selector(tmp_path, manifest, selectors, "demand")
+    cache.save_selector(tmp_path, manifest, selectors, "planit", entry)
+    loaded = cache.load_selector(tmp_path, manifest, selectors, "planit")
     assert loaded is not None
     assert loaded.members == entry.members
     assert loaded.boundaries == entry.boundaries
@@ -56,14 +56,14 @@ def test_selector_cache_is_one_file_per_selector(tmp_path) -> None:
     _touch(manifest, mtime_ns=1_000)
     _touch(selectors, mtime_ns=1_000)
     cache.save_selector(
-        tmp_path, manifest, selectors, "demand", cache.SelectorCacheEntry({"model.x"}, {"model.x": "outbound"})
+        tmp_path, manifest, selectors, "planit", cache.SelectorCacheEntry({"model.x"}, {"model.x": "outbound"})
     )
     cache.save_selector(
-        tmp_path, manifest, selectors, "supply", cache.SelectorCacheEntry({"model.z"}, {"model.z": "inbound"})
+        tmp_path, manifest, selectors, "data_sentinel", cache.SelectorCacheEntry({"model.z"}, {"model.z": "inbound"})
     )
     # Each selector resolves to its own inspectable file; one missing doesn't affect the other.
-    assert cache.selector_cache_path(tmp_path, "demand").exists()
-    assert cache.selector_cache_path(tmp_path, "supply").exists()
+    assert cache.selector_cache_path(tmp_path, "planit").exists()
+    assert cache.selector_cache_path(tmp_path, "data_sentinel").exists()
     assert cache.load_selector(tmp_path, manifest, selectors, "absent") is None
 
 
@@ -73,12 +73,12 @@ def test_selector_cache_invalidates_when_manifest_changes(tmp_path) -> None:
     _touch(manifest, mtime_ns=1_000)
     _touch(selectors, mtime_ns=1_000)
     cache.save_selector(
-        tmp_path, manifest, selectors, "demand", cache.SelectorCacheEntry({"model.x"}, {"model.x": "internal"})
+        tmp_path, manifest, selectors, "planit", cache.SelectorCacheEntry({"model.x"}, {"model.x": "inner"})
     )
 
     os.utime(manifest, ns=(5_000, 5_000))  # a reparse bumps the manifest mtime
     # Fingerprint no longer matches → a miss (None), never a stale read.
-    assert cache.load_selector(tmp_path, manifest, selectors, "demand") is None
+    assert cache.load_selector(tmp_path, manifest, selectors, "planit") is None
 
 
 def test_corrupt_cache_is_a_miss(tmp_path) -> None:
@@ -86,7 +86,7 @@ def test_corrupt_cache_is_a_miss(tmp_path) -> None:
     selectors = tmp_path / "selectors.yml"
     _touch(manifest, mtime_ns=1_000)
     _touch(selectors, mtime_ns=1_000)
-    cache_file = cache.selector_cache_path(tmp_path, "demand")
+    cache_file = cache.selector_cache_path(tmp_path, "planit")
     cache_file.parent.mkdir(parents=True, exist_ok=True)
     cache_file.write_text("{not json", encoding="utf-8")
-    assert cache.load_selector(tmp_path, manifest, selectors, "demand") is None
+    assert cache.load_selector(tmp_path, manifest, selectors, "planit") is None

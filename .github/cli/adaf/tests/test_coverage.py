@@ -1,165 +1,226 @@
+"""Unit tests for the manifest-backed coverage gates — real manifest JSON + schema YAML on disk.
+
+No mocks: each test writes a synthetic ``manifest.json`` (and, where a line anchor is asserted, the
+matching schema YAML) into ``tmp_path``, loads it through the real :class:`Manifest`, and checks the
+stderr headline / stdout findings split via ``capsys``.
+"""
+
 # Standard Library
+import json
 from pathlib import Path
 
-# Local
-from adaf.dbt.catalog import Catalog
-from adaf.commands.coverage import ColumnsReport, evaluate_columns, evaluate_docs, evaluate_tests
+# Third Party
+import pytest
+
+# First Party
+from adaf.commands import coverage
+from adaf.commands.coverage import _find_model_line, _strip_scheme
 from adaf.dbt.manifest import Manifest
 
-SCOPE = "changed models vs main"
-
-# --------------------------------------------------------- docs (model descriptions)
-
-
-def test_docs_passes_model_with_description(manifest: Manifest):
-    report = evaluate_docs(manifest, [Path("models/marts/documented.sql")], scope=SCOPE)
-    assert report.rows[0].has_description is True
-    assert report.ok is True
+# A schema YAML where model `a` is documented and `b` is not; `a` lands on line 3, `b` on line 5.
+_SCHEMA_YML = """version: 2
+models:
+  - name: a
+    description: the a model
+  - name: b
+"""
 
 
-def test_docs_is_model_level_only_ignores_undocumented_columns(manifest: Manifest):
-    # partial_cols has a model description but an undocumented column — that's the `doc-columns`
-    # check's concern now, so docs passes it.
-    report = evaluate_docs(manifest, [Path("models/staging/partial_cols.sql")], scope=SCOPE)
-    assert report.rows[0].has_description is True
-    assert report.ok is True
+def _manifest_dict() -> dict:
+    """Two models (a: documented + 2 tests; b: undocumented + untested), both patched by one schema YAML."""
+    return {
+        "nodes": {
+            "model.p.a": {
+                "resource_type": "model",
+                "name": "a",
+                "original_file_path": "models/a.sql",
+                "patch_path": "p://models/_schema.yml",
+                "description": "the a model",
+                "columns": {},
+            },
+            "model.p.b": {
+                "resource_type": "model",
+                "name": "b",
+                "original_file_path": "models/b.sql",
+                "patch_path": "p://models/_schema.yml",
+                "description": "",
+                "columns": {},
+            },
+            "test.p.t1": {"resource_type": "test", "depends_on": {"nodes": ["model.p.a"]}},
+            "test.p.t2": {"resource_type": "test", "depends_on": {"nodes": ["model.p.a"]}},
+        }
+    }
 
 
-def test_docs_flags_missing_model_description(manifest: Manifest):
-    report = evaluate_docs(manifest, [Path("models/marts/no_desc.sql")], scope=SCOPE)
-    assert report.rows[0].has_description is False
-    assert report.ok is False
+@pytest.fixture
+def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Manifest, Path]:
+    """Lay down a manifest.json + schema YAML under a tmp project root and chdir into it.
+
+    Chdir matters: the schema location is repo-relative (``models/_schema.yml``), so ``_find_model_line``
+    resolves it against the project root — here, ``tmp_path``.
+    """
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "_schema.yml").write_text(_SCHEMA_YML, encoding="utf-8")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(_manifest_dict()), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    return Manifest.load(manifest_path), manifest_path
 
 
-def test_docs_model_absent_from_manifest_fails(manifest: Manifest):
-    report = evaluate_docs(manifest, [Path("models/marts/ghost.sql")], scope=SCOPE)
-    assert report.rows[0].in_manifest is False
-    assert report.ok is False
+# --- pure helpers ---------------------------------------------------------------------------------
 
 
-def test_docs_empty_changeset_is_ok(manifest: Manifest):
-    report = evaluate_docs(manifest, [], scope=SCOPE)
-    assert report.rows == []
-    assert report.ok is True
+def test_strip_scheme_removes_project_scheme() -> None:
+    assert _strip_scheme("bq://models/staging/_x.yml") == "models/staging/_x.yml"
 
 
-# ----------------------------------------------------- columns (column descriptions)
+def test_strip_scheme_passthrough_when_no_scheme() -> None:
+    assert _strip_scheme("models/_x.yml") == "models/_x.yml"
 
 
-def test_columns_uses_resolved_columns_with_ratio(manifest: Manifest, catalog: Catalog):
-    # partial_cols: catalog has id, blank, extra; only id is described → 1/3, missing blank+extra
-    # (note `extra` was never declared in YAML — the manifest-only check could not have seen it).
-    report = evaluate_columns(manifest, catalog, [Path("models/staging/partial_cols.sql")], scope=SCOPE)
-    row = report.rows[0]
-    assert (row.documented, row.total) == (1, 3)
-    assert row.ratio == "1/3"
-    assert row.undocumented_columns == ["blank", "extra"]
-    assert row.ok is False
-    text = _text(report)
-    assert "1/3 columns documented" in text
-    assert "blank" in text and "extra" in text
+def test_find_model_line_locates_entries(tmp_path: Path) -> None:
+    yml = tmp_path / "_schema.yml"
+    yml.write_text(_SCHEMA_YML, encoding="utf-8")
+    assert _find_model_line(yml, "a") == 3
+    assert _find_model_line(yml, "b") == 5
 
 
-def test_columns_resolved_total_exceeds_declared(manifest: Manifest, catalog: Catalog):
-    # no_desc declares NO columns, but the warehouse (catalog) has 2 → 0/2 (the manifest-only
-    # check would have called this vacuously ok — this is the whole point of catalog.json).
-    report = evaluate_columns(manifest, catalog, [Path("models/marts/no_desc.sql")], scope=SCOPE)
-    assert report.rows[0].ratio == "0/2"
-    assert report.ok is False
+def test_find_model_line_missing_name_or_file(tmp_path: Path) -> None:
+    yml = tmp_path / "_schema.yml"
+    yml.write_text(_SCHEMA_YML, encoding="utf-8")
+    assert _find_model_line(yml, "nope") is None
+    assert _find_model_line(tmp_path / "absent.yml", "a") is None
 
 
-def test_columns_passes_fully_documented_model(manifest: Manifest, catalog: Catalog):
-    report = evaluate_columns(manifest, catalog, [Path("models/marts/documented.sql")], scope=SCOPE)
-    assert report.rows[0].ratio == "1/1"
-    assert report.ok is True
+# --- docscov --------------------------------------------------------------------------------------
 
 
-def test_columns_model_not_in_catalog_fails(manifest: Manifest):
-    report = evaluate_columns(manifest, Catalog.from_dict({}), [Path("models/marts/documented.sql")], scope=SCOPE)
-    assert report.rows[0].in_catalog is False
-    assert report.ok is False
-    assert "not in catalog" in _text(report)
+def test_docscov_all_documented_returns_zero(project, capsys) -> None:
+    manifest, manifest_path = project
+    rc = coverage.check_docs([Path("models/a.sql")], manifest, scope="x", manifest_path=manifest_path)
+    out = capsys.readouterr()
+    assert rc == 0
+    assert "OK" in out.err  # headline on stderr
+    assert out.out == ""  # no findings on stdout
 
 
-def test_columns_model_absent_from_manifest_fails(manifest: Manifest, catalog: Catalog):
-    report = evaluate_columns(manifest, catalog, [Path("models/marts/ghost.sql")], scope=SCOPE)
-    assert report.rows[0].in_manifest is False
-    assert report.ok is False
+def test_docscov_no_files_returns_zero(project, capsys) -> None:
+    manifest, manifest_path = project
+    rc = coverage.check_docs([], manifest, scope="x", manifest_path=manifest_path)
+    out = capsys.readouterr()
+    assert rc == 0
+    assert "skipped" in out.err
+    assert out.out == ""
 
 
-def test_columns_to_dict_shape(manifest: Manifest, catalog: Catalog):
-    payload = evaluate_columns(manifest, catalog, [Path("models/staging/partial_cols.sql")], scope=SCOPE).to_dict()
-    assert payload["check"] == "doc-columns"
-    assert payload["ok"] is False
-    assert payload["error"] is None
-    result = payload["results"][0]
-    assert result["undocumented_columns"] == ["blank", "extra"]
-    assert (result["documented"], result["total"]) == (1, 3)
+def test_docscov_gap_points_at_schema_line(project, capsys) -> None:
+    manifest, manifest_path = project
+    rc = coverage.check_docs(
+        [Path("models/a.sql"), Path("models/b.sql")], manifest, scope="x", manifest_path=manifest_path
+    )
+    out = capsys.readouterr()
+    assert rc == 1
+    # Summary headline on stderr; findings on stdout.
+    assert "1 of 2" in out.err
+    assert "models/_schema.yml:5" in out.out  # b's entry line
+    assert "DOCSCOV" in out.out
+    assert "no description" in out.out
+    assert "models/a.sql" not in out.out  # a is documented — not a finding
 
 
-def test_columns_report_error_state_when_catalog_missing():
-    report = ColumnsReport(SCOPE, [], error="dbt catalog not found at 'target/catalog.json'.")
-    assert report.ok is False
-    assert "not found" in _text(report)
-    assert report.to_dict()["error"]
+def test_docscov_gap_emits_remediation_guidance_once(project, capsys) -> None:
+    manifest, manifest_path = project
+    rc = coverage.check_docs(
+        [Path("models/a.sql"), Path("models/b.sql")], manifest, scope="x", manifest_path=manifest_path
+    )
+    out = capsys.readouterr()
+    assert rc == 1
+    # Guidance is a trailing help line on stderr (the headline channel), not a per-finding stdout line.
+    assert "add a `description:`" in out.err
+    assert "https://docs.getdbt.com/reference/resource-properties/description" in out.err
+    assert out.err.count("https://docs.getdbt.com/reference/resource-properties/description") == 1
+    assert "https://docs.getdbt.com" not in out.out  # guidance stays off the findings list
 
 
-# -------------------------------------------------------------------------- tests
+def test_docscov_clean_run_has_no_guidance(project, capsys) -> None:
+    manifest, manifest_path = project
+    rc = coverage.check_docs([Path("models/a.sql")], manifest, scope="x", manifest_path=manifest_path)
+    out = capsys.readouterr()
+    assert rc == 0
+    assert "https://docs.getdbt.com" not in out.err
+    assert "add a `description:`" not in out.err
 
 
-def test_tests_flags_untested_model(manifest: Manifest):
-    report = evaluate_tests(manifest, [Path("models/staging/partial_cols.sql")], scope=SCOPE)
-    assert report.rows[0].test_count == 0
-    assert report.ok is False
+def test_docscov_without_manifest_path_falls_back_to_sql(project, capsys) -> None:
+    manifest, _ = project
+    rc = coverage.check_docs([Path("models/b.sql")], manifest, scope="x")  # no manifest_path
+    out = capsys.readouterr()
+    assert rc == 1
+    assert "models/b.sql" in out.out  # fell back to the .sql path
+    assert ".yml" not in out.out
 
 
-def test_tests_counts_and_passes_tested_model(manifest: Manifest):
-    report = evaluate_tests(manifest, [Path("models/marts/documented.sql")], scope=SCOPE)
-    assert report.rows[0].test_count == 2
-    assert report.ok is True
+def test_docscov_not_in_manifest_falls_back_to_sql(project, capsys) -> None:
+    manifest, manifest_path = project
+    rc = coverage.check_docs([Path("models/ghost.sql")], manifest, scope="x", manifest_path=manifest_path)
+    out = capsys.readouterr()
+    assert rc == 1
+    assert "models/ghost.sql" in out.out
+    assert "not in manifest" in out.out
 
 
-def test_tests_model_absent_from_manifest_fails(manifest: Manifest):
-    report = evaluate_tests(manifest, [Path("models/x.sql")], scope=SCOPE)
-    assert report.rows[0].in_manifest is False
-    assert report.ok is False
+# --- testcov --------------------------------------------------------------------------------------
 
 
-def test_to_dict_shape_is_machine_friendly(manifest: Manifest):
-    payload = evaluate_tests(manifest, [Path("models/marts/documented.sql")], scope=SCOPE).to_dict()
-    assert payload["check"] == "tests"
-    assert payload["ok"] is True
-    assert payload["scope"] == SCOPE
-    assert payload["results"][0]["test_count"] == 2
-    assert payload["results"][0]["ok"] is True
+def test_testcov_all_tested_returns_zero(project, capsys) -> None:
+    manifest, manifest_path = project
+    rc = coverage.check_tests([Path("models/a.sql")], manifest, scope="x", manifest_path=manifest_path)
+    out = capsys.readouterr()
+    assert rc == 0
+    assert "OK" in out.err
+    assert out.out == ""
 
 
-# ------------------------------------------------------- failures-only output
-
-_MIXED = [Path("models/marts/documented.sql"), Path("models/marts/no_desc.sql")]
-
-
-def _text(report, **kwargs) -> str:
-    return "\n".join(line for _level, line in report.human_lines(**kwargs))
-
-
-def test_human_default_shows_only_failures(manifest: Manifest):
-    report = evaluate_docs(manifest, _MIXED, scope=SCOPE)  # documented passes, no_desc fails
-    text = _text(report)
-    assert "no_desc.sql" in text  # the failing model is shown
-    assert "documented.sql" not in text  # the passing model is suppressed by default
-    assert "model description gaps found" in text  # the verdict still prints
+def test_testcov_gap_points_at_schema_line(project, capsys) -> None:
+    manifest, manifest_path = project
+    rc = coverage.check_tests(
+        [Path("models/a.sql"), Path("models/b.sql")], manifest, scope="x", manifest_path=manifest_path
+    )
+    out = capsys.readouterr()
+    assert rc == 1
+    assert "1 of 2" in out.err
+    assert "models/_schema.yml:5" in out.out  # b is untested
+    assert "TESTCOV" in out.out
+    assert "no tests" in out.out
+    assert "models/a.sql" not in out.out  # a has two tests
 
 
-def test_human_show_passes_includes_passing_rows(manifest: Manifest):
-    text = _text(evaluate_docs(manifest, _MIXED, scope=SCOPE), show_passes=True)
-    assert "documented.sql" in text  # passing row now shown
-    assert "no_desc.sql" in text
+def test_testcov_gap_emits_remediation_guidance_once(project, capsys) -> None:
+    manifest, manifest_path = project
+    rc = coverage.check_tests(
+        [Path("models/a.sql"), Path("models/b.sql")], manifest, scope="x", manifest_path=manifest_path
+    )
+    out = capsys.readouterr()
+    assert rc == 1
+    assert "add `data_tests:`" in out.err
+    assert "https://docs.getdbt.com/reference/resource-properties/data-tests" in out.err
+    assert out.err.count("https://docs.getdbt.com/reference/resource-properties/data-tests") == 1
+    assert "https://docs.getdbt.com" not in out.out
 
 
-def test_all_pass_collapses_to_single_verdict_line(manifest: Manifest):
-    # Failures-only with nothing failing → no per-item rows, just the verdict.
-    report = evaluate_tests(manifest, [Path("models/marts/documented.sql")], scope=SCOPE)
-    lines = report.human_lines()
-    assert len(lines) == 1
-    assert "all selected models tested" in lines[0][1]
+def test_testcov_clean_run_has_no_guidance(project, capsys) -> None:
+    manifest, manifest_path = project
+    rc = coverage.check_tests([Path("models/a.sql")], manifest, scope="x", manifest_path=manifest_path)
+    out = capsys.readouterr()
+    assert rc == 0
+    assert "https://docs.getdbt.com" not in out.err
+    assert "add `data_tests:`" not in out.err
+
+
+def test_testcov_no_files_returns_zero(project, capsys) -> None:
+    manifest, manifest_path = project
+    rc = coverage.check_tests([], manifest, scope="x", manifest_path=manifest_path)
+    out = capsys.readouterr()
+    assert rc == 0
+    assert "skipped" in out.err
+    assert out.out == ""

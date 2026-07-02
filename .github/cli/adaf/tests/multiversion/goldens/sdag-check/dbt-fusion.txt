@@ -1,0 +1,17 @@
+## gate: adaf sdag check --all --selector matrix_demo --manifest /fixture/target
+--- exit: 1
+--- stdout:
+models/marts/fct_orders.sql: [error] MD-12 missing semantic model
+models/staging/stg_orders.sql: [error] MD-07 missing Elementary volume-anomaly test
+--- stderr:
+# sdag check — system-boundary obligations — all models that are also in selector:matrix_demo
+== [product: matrix_demo] FAIL
+sdag check: 2 violation(s) on 2 boundary node(s) in all models that are also in selector:matrix_demo
+violations by rule:
+  MD-07 × 1  missing Elementary volume-anomaly test
+  MD-12 × 1  missing semantic model
+how to fix:
+  MD-07  Add an Elementary `volume_anomalies` test to the source this entry model reads (or to the model).
+      see: https://docs.elementary-data.com/data-tests/anomaly-detection-tests/volume-anomalies
+  MD-12  Define a semantic model on top of this model so its entities, dimensions, and measures are governed in the semantic layer.
+      see: https://docs.getdbt.com/docs/build/semantic-models

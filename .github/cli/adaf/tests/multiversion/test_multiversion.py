@@ -17,7 +17,7 @@ wins automatically by being the higher version. Each ``Series`` resolves to a co
 (a plain pip install of that dbt-core + ``dbt-duckdb`` into an isolated venv), whose ``name`` is the
 resolved version (``dbt2-0-0a2``) — but the GOLDENS are keyed by the STABLE line id (``dbt-2.0``).
 
-That split is deliberate. The gate goldens (``list`` / ``docs`` / ``tests`` / ``sdag-check``) are
+That split is deliberate. The gate goldens (``list`` / ``docscov`` / ``testcov`` / ``sdag-check``) are
 version-INDEPENDENT (they depend only on the fixture spec profile), so a new patch with unchanged
 behaviour re-passes them automatically; only the version-bearing ``parse`` golden differs across a
 float, so a newly-resolved version surfaces as a single deliberate ``parse`` re-baseline that records
@@ -375,7 +375,7 @@ def _render_goldens(data: dict[str, object]) -> dict[str, str]:
 
     The layout is ``goldens/<capability>/<engine>.txt`` so a single capability can be diffed straight
     across versions (the engine/version is the filename, not in-file noise). Capabilities are the
-    ``parse`` metadata pseudo-gate plus each adaf gate (``list`` / ``docs`` / ``tests`` /
+    ``parse`` metadata pseudo-gate plus each adaf gate (``list`` / ``docscov`` / ``testcov`` /
     ``sdag-check``). All paths inside are stable container paths and versions come from exact pins, so
     the rendering is portable across machines with no normalisation needed.
     """
@@ -385,16 +385,30 @@ def _render_goldens(data: dict[str, object]) -> dict[str, str]:
     assert isinstance(parse, dict)
     out: dict[str, str] = {}
 
-    # `parse` capability — the per-engine metadata: versions, artifact kind, parse exit. Only the
-    # deterministic fields: dbt's parse stdout/stderr tail carries wall-clock timestamps and per-run
-    # durations (`[31ms]`), so it is kept in result.json for debugging but NOT enshrined in the golden.
+    # `parse` capability — the per-engine ARTIFACT capture: versions, the format of each dbt artifact
+    # (manifest / run_results / catalog — json vs the Fusion parquet set), the parse/build/docs exit
+    # codes, and the real listing of `target/metadata` (so a new Fusion parquet artifact surfaces here).
+    # Only deterministic fields: dbt's stdout/stderr tails carry wall-clock timestamps and per-run
+    # durations (`[31ms]`), so they stay in result.json for debugging but are NOT enshrined in the golden.
+    build = data["build"]
+    assert isinstance(build, dict)
+    docs = data["docs_generate"]
+    assert isinstance(docs, dict)
+    metadata_files = data.get("metadata_files") or []
+    assert isinstance(metadata_files, list)
     ver = ", ".join(f"{k}=={v}" for k, v in sorted(versions.items()))
     out["parse"] = (
         "\n".join(
             [
                 f"# versions: {ver}",
                 f"# manifest artifact: {data['manifest_kind']}",
+                f"# run_results artifact: {data['run_results_kind']}",
+                f"# catalog artifact: {data['catalog_kind']}",
                 f"--- dbt parse exit: {parse['exit']}",
+                f"--- dbt build exit: {build['exit']}",
+                f"--- dbt docs generate exit: {docs['exit']}",
+                "--- target/metadata files:",
+                *(f"  {p}" for p in metadata_files),
             ]
         )
         + "\n"

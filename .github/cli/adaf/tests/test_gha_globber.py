@@ -7,7 +7,7 @@ from adaf.gha.globber import (
     glob_to_regex,
 )
 
-# A source-fed product-like shape: two product dirs that differ in ONE component (cdm vs marts).
+# A source-fed demand-like shape: two product dirs that differ in ONE component (cdm vs marts).
 PATHS = {
     "models/cdm/demand/fact_a.sql",
     "models/cdm/demand/fact_b.sql",

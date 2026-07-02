@@ -1,9 +1,13 @@
-"""ADAF — Automated Data Assurance Framework.
+"""ADAF — the Automated Data Assurance Framework CLI."""
 
-One CLI over the dbt testing-taxonomy catalogue. The catalogue (``adaf.rules``)
-is the single source of truth; the deterministic checks, the LLM review prompt +
-output-schema enum, the docs vignettes, and the developer skill all derive from
-it. See ``docs/arch/adr-0005-adaf-automated-data-assurance-framework.md``.
-"""
+# Standard Library
+from importlib.metadata import PackageNotFoundError, version
 
-__version__ = "0.1.0"
+try:
+    # Single source of truth: the version declared in pyproject.toml (read from installed metadata),
+    # so `gha init`'s managed-asset banner never drifts from a hand-maintained constant.
+    __version__ = version("adaf")
+except PackageNotFoundError:  # pragma: no cover - only when running from a non-installed checkout
+    __version__ = "0.0.0+unknown"
+
+__all__ = ["__version__"]

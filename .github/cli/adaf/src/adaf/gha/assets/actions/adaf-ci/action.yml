@@ -1,0 +1,79 @@
+name: ADAF Bootstrap
+description: >-
+  Per-job bootstrap shared by every job in the adaf parallel-jobs workflow:
+  GCP auth, the uv/dbt environment, and (optionally) restoring the setup job's
+  manifest + defer-state artifacts so a downstream job reuses them instead of
+  rebuilding. Checkout is done by the calling job BEFORE this action (a local
+  `uses:` needs the repo already present).
+
+inputs:
+  wif-provider:
+    description: Workload Identity Federation provider for google-github-actions/auth.
+    required: true
+
+  wif-sa:
+    description: Service account to impersonate via WIF.
+    required: true
+
+  download-state:
+    description: >-
+      'true' ⇒ restore the `adaf-manifest` (parsed `target/`) and `adaf-defer-state`
+      (`tmp/adaf_cache/defer/`) artifacts the setup job uploaded, so `adaf --defer-ref`
+      hits the cache rather than rebuilding the baseline. 'false' for the setup job itself.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v3
+      with:
+        workload_identity_provider: ${{ inputs.wif-provider }}
+        service_account: ${{ inputs.wif-sa }}
+
+    - name: Set up gcloud CLI
+      uses: google-github-actions/setup-gcloud@v3
+
+    # No actions/setup-python: uv provisions the interpreter itself on `uv sync`,
+    # pinned by the repo-root `.python-version`. enable-cache also caches that interpreter.
+    - name: Install uv
+      uses: astral-sh/setup-uv@v8.2.0
+      with:
+        enable-cache: true
+
+    - name: Sync dependencies with uv lockfile
+      shell: bash
+      run: uv sync --frozen
+
+    - name: Set DBT_PROFILES_DIR
+      shell: bash
+      run: echo "DBT_PROFILES_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+    - name: Cache dbt_packages
+      uses: actions/cache@v5
+      with:
+        path: dbt_packages
+        key: dbt-packages-${{ runner.os }}-${{ hashFiles('packages.yml', 'package-lock.yml') }}
+        restore-keys: dbt-packages-${{ runner.os }}-
+
+    - name: Install dbt packages
+      shell: bash
+      run: uv run dbt deps
+
+    # Restore the setup job's parsed manifest so selector resolution needs no re-parse.
+    - name: Restore manifest artifact
+      if: inputs.download-state == 'true'
+      uses: actions/download-artifact@v8
+      with:
+        name: adaf-manifest
+        path: target
+
+    # Restore the setup job's defer-target baseline into adaf's sha-keyed cache dir, so a downstream
+    # `adaf <check> --defer-ref <sha>` finds it cached (no worktree rebuild).
+    - name: Restore defer-state artifact
+      if: inputs.download-state == 'true'
+      uses: actions/download-artifact@v8
+      with:
+        name: adaf-defer-state
+        path: tmp/adaf_cache/defer

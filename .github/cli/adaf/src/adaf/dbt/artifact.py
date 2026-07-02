@@ -2,7 +2,7 @@
 
 ``ManifestView`` owns *normalisation* (records, edges); each projection owns *meaning*. This module
 owns the layer below both: reading a dbt compiled-artifact set off disk and presenting it as the two
-section/parent_map dicts the view consumes. It extends the ManifestView seam (ADR-0005) one level
+section/parent_map dicts the view consumes. Splitting it out is ADR-0022's seam extended one level
 deeper — the *artifact* owns I/O + format, so the loading mechanism is swappable without the view or
 any projection noticing.
 
@@ -15,9 +15,9 @@ a loud :class:`ImportError` (``pip install 'adaf[fusion]'``), never a silent fal
 :func:`load_artifact` detects which one to build.
 
 The parquet layout below is VERIFIED against real Fusion output (2.0.0-preview.190, ``dbt parse
---write-index``) — see ``docs/dbt-fusion-artifacts.md`` for the captured schema and how it was probed.
-Note Fusion *also* still writes a (v12-schema) ``manifest.json`` alongside the parquet; the parquet set
-is the new "v20" artifact and is what this reader exercises.
+--write-index``) — see ``.github/cli/adaf/docs/dbt-fusion-artifacts.md`` for the captured schema and how
+it was probed. Note Fusion *also* still writes a (v12-schema) ``manifest.json`` alongside the parquet;
+the parquet set is the new "v20" artifact and is what this reader exercises.
 """
 
 # Standard Library
@@ -49,6 +49,28 @@ _NODE_COLUMNS = (
     "depends_on",
     "payload",
 )
+
+
+def read_parquet_rows(con: Any, path: Path, columns: tuple[str, ...]) -> list[dict[str, Any]]:
+    """Read exactly ``columns`` from one parquet file into a list of row dicts (shared duckdb reader).
+
+    The columns are validated against the file's schema first; a missing one raises a clear
+    :class:`ValueError` naming the file and the column(s) — schema drift fails loudly, it does not
+    silently produce an empty/partial section. Only the requested columns are projected (never
+    ``SELECT *``) so an unused tz-aware ``ingested_at`` column is never materialised. Used by both the
+    manifest reader (:class:`ParquetManifestArtifact`) and the run-results reader
+    (:class:`adaf.dbt.runresults.ParquetRunResultsArtifact`).
+    """
+    available = [d[0] for d in con.execute("SELECT * FROM read_parquet(?) LIMIT 0", [str(path)]).description]
+    missing = [c for c in columns if c not in available]
+    if missing:
+        raise ValueError(
+            f"parquet artifact '{path}' is missing required column(s) {missing} (has {available}); "
+            "its schema does not match the verified dbt Fusion layout. See docs/dbt-fusion-artifacts.md."
+        )
+    col_sql = ", ".join(f'"{c}"' for c in columns)
+    rel = con.execute(f"SELECT {col_sql} FROM read_parquet(?)", [str(path)])  # noqa: S608 (idents validated above)
+    return [dict(zip(columns, row, strict=True)) for row in rel.fetchall()]
 
 
 class ManifestArtifact(Protocol):
@@ -226,25 +248,8 @@ class ParquetManifestArtifact:
 
     @staticmethod
     def _read_rows(con: Any, path: Path, columns: tuple[str, ...]) -> list[dict[str, Any]]:
-        """Read exactly ``columns`` from one parquet file into a list of row dicts.
-
-        The columns are validated against the file's schema first; a missing one raises a clear
-        :class:`ValueError` naming the file and the column(s) — schema drift fails loudly, it does not
-        silently produce an empty/partial section. Only the requested columns are projected (never
-        ``SELECT *``) so the unused tz-aware ``ingested_at`` column is never materialised (see
-        :data:`_NODE_COLUMNS`).
-        """
-        available = [d[0] for d in con.execute("SELECT * FROM read_parquet(?) LIMIT 0", [str(path)]).description]
-        missing = [c for c in columns if c not in available]
-        if missing:
-            raise ValueError(
-                f"parquet artifact '{path}' is missing required column(s) {missing} (has {available}); "
-                "its schema does not match the verified dbt Fusion layout. See "
-                "ParquetManifestArtifact docs and docs/dbt-fusion-artifacts.md."
-            )
-        col_sql = ", ".join(f'"{c}"' for c in columns)
-        rel = con.execute(f"SELECT {col_sql} FROM read_parquet(?)", [str(path)])  # noqa: S608 (idents validated above)
-        return [dict(zip(columns, row, strict=True)) for row in rel.fetchall()]
+        """Thin alias kept for readability inside this class — see :func:`read_parquet_rows`."""
+        return read_parquet_rows(con, path, columns)
 
     def sections(self) -> dict[str, dict[str, Any]]:
         """Each manifest section as ``{unique_id: node dict}``, rebuilt from the parquet node table."""

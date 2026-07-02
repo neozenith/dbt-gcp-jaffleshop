@@ -1,0 +1,19 @@
+# versions: dbt-fusion==2.0.0-preview.193
+# manifest artifact: parquet
+# run_results artifact: parquet
+# catalog artifact: parquet
+--- dbt parse exit: 0
+--- dbt build exit: 0
+--- dbt docs generate exit: 0
+--- target/metadata files:
+  metadata/catalog/columns/v1_0.parquet
+  metadata/parse/alive.parquet
+  metadata/parse/columns/v1_0.parquet
+  metadata/parse/filestamps.parquet
+  metadata/parse/generation.parquet
+  metadata/parse/nodes/v1_0.parquet
+  metadata/parse/resolver_state.parquet
+  metadata/parse/test_metadata/v1_0.parquet
+  metadata/run/invocations/v1_0.parquet
+  metadata/run/invocations/v1_1.parquet
+  metadata/run/results/v1_0.parquet

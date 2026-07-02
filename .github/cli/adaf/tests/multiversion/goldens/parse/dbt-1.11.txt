@@ -1,0 +1,8 @@
+# versions: dbt-core==1.11.11, dbt-duckdb==1.10.1
+# manifest artifact: json
+# run_results artifact: json
+# catalog artifact: json
+--- dbt parse exit: 0
+--- dbt build exit: 0
+--- dbt docs generate exit: 0
+--- target/metadata files:

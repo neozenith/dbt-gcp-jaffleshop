@@ -1,4 +1,4 @@
-"""Shared reporting substrate for the workflow commands (list, defer-diff, deprecations, sqlfluff).
+"""Shared reporting substrate for the check commands (coverage, deprecations, lint, list).
 
 Two cross-cutting concerns live here so every gate renders findings the same way:
 
@@ -12,16 +12,14 @@ The CLI's output convention is preserved: a one-line headline goes to STDERR
 (:func:`render_headline`) and the findings list goes to STDOUT (:func:`render_findings`).
 The argparse flag itself is wired by the command layer — this module only exposes the
 resolver so a command can compute ``color = should_colorize(args.color, sys.stdout)``.
-
-This is the substrate the data-product workflow commands (``list``, ``defer-diff``) render through.
-The catalogue checks (``check …``) keep their own ``utils.style`` / ``utils.formatting`` rendering.
 """
 
 # Standard Library
+import json
 import os
-import shlex
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, Protocol, TextIO
 
 ColorMode = Literal["auto", "always", "never"]
@@ -72,6 +70,60 @@ class Finding:
     code: str | None = None
     message: str = ""
     path_color: str | None = None  # override the path colour (default "dim"); e.g. "grey" for context nodes
+
+    def to_dict(self) -> dict[str, object]:
+        """The machine-readable projection (drops the TUI-only ``path_color``)."""
+        return {
+            "path": self.path,
+            "line": self.line,
+            "col": self.col,
+            "severity": self.severity,
+            "code": self.code,
+            "message": self.message,
+        }
+
+
+def write_findings_json(path: Path, check: str, exit_code: int, findings: list["Finding"]) -> None:
+    """Serialize a check's result to ``path`` as the shared findings JSON schema.
+
+    Schema (consumed by ``adaf report``): ``{check, exit_code, findings: [Finding.to_dict()]}``.
+    Written for EVERY run that requests it — an empty ``findings`` with ``exit_code 0`` is the
+    explicit "ran clean" signal, distinct from a missing file (check didn't run).
+    """
+    payload = {"check": check, "exit_code": exit_code, "findings": [f.to_dict() for f in findings]}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def emit_findings(
+    check: str,
+    findings: list["Finding"],
+    exit_code: int,
+    *,
+    color: bool,
+    json_out: Path | None = None,
+    quiet: bool = False,
+    headline: str | None = None,
+    severity: str = "info",
+) -> int:
+    """Single exit point for a check: write the JSON artifact and/or render the TUI text.
+
+    The three output modes (see ``--json-out`` / ``-q``):
+
+    * **logs only** (default — no ``json_out``): render headline + findings.
+    * **both** (``json_out`` set, not quiet): write JSON *and* render text.
+    * **json only** (``json_out`` set, ``quiet``): write JSON, render nothing.
+
+    Returns ``exit_code`` unchanged so callers can ``return emit_findings(...)``.
+    """
+    if json_out is not None:
+        write_findings_json(json_out, check, exit_code, findings)
+    if not quiet:
+        if headline is not None:
+            render_headline(headline, color=color, severity=severity)
+        if findings:
+            render_findings(findings, color=color)
+    return exit_code
 
 
 def format_location(path: str, line: int | None = None, col: int | None = None) -> str:
@@ -173,20 +225,6 @@ def render_note(text: str, *, color: bool, indent: int = 4, stream: TextIO | Non
     """
     out = stream if stream is not None else sys.stdout
     print(colorize(f"{' ' * indent}{text}", "dim", color), file=out)
-
-
-def print_commands(label: str, argvs: list[list[str]], *, color: bool) -> int:
-    """Print each subprocess command verbatim instead of running it — one runnable, shell-quoted
-    line to STDOUT (pipeable), a headline to STDERR. Lets a user inspect, copy, or run the exact
-    command adaf would have shelled out to. Paths are relative to the dbt project root, so the
-    printed commands are meant to be run from there. Always returns 0 (nothing was executed).
-    """
-    render_headline(
-        f"# {label} — {len(argvs)} command(s); run from the dbt project root", color=color, severity="info"
-    )
-    for argv in argvs:
-        print(shlex.join(argv))
-    return 0
 
 
 def render_table(headers: list[str], rows: list[list[str]], *, aligns: list[str] | None = None) -> str:

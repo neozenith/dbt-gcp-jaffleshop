@@ -1,15 +1,13 @@
 # ADAF rule suppressions — manage false positives like a linter.
 #
 # Each `disable` entry silences the listed rule codes on files matching any of the path globs.
-# A reason is strongly encouraged: it is what a reviewer reads, and `adaf rules explain <CODE>`
-# shows this exact syntax. The alternative is an inline `-- adaf-disable: <CODE> (reason)` comment
-# in a model's .sql (per-file). Suppressed findings never fail the gate but stay auditable
-# (counted in the summary; listed with `--show-passes`).
+# A reason is strongly encouraged: it is what a reviewer reads. The alternative is an inline
+# `-- adaf-disable: <CODE> (reason)` comment in a model's .sql (per-file). Suppressed findings
+# never fail the gate but stay auditable (counted in the summary).
 #
 # NOTE: the formerly-intentional demo gaps (products/supplies/locations missing tests; sources
-# missing freshness) have been REMEDIATED — the dbt project now passes `adaf check all`. The only
-# remaining suppression is the genuine false positive below. The deepeval harness under
-# `.github/cli/adaf/evals/` (which exercised the broken fixture) is a separate follow-up.
+# missing freshness) have been REMEDIATED — the dbt project now passes the adaf gates. The only
+# remaining suppression is the genuine false positive below.
 disable:
   - rules: [MD-01, MD-02]
     paths: ["models/marts/metricflow_time_spine.sql"]

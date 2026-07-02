@@ -1,0 +1,371 @@
+# Reusable ADAF pipeline — the parallel job graph shared by every per-product workflow.
+# Called via `uses: ./.github/workflows/adaf-reusable.yml` (see .github/workflows/adaf-<product>.yml).
+# Holds setup → (checks matrix ∥ dbt-build) → report; the per-product caller stays ~20 lines.
+name: ADAF Reusable Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      selector:
+        description: The named dbt selector (from selectors.yml) this run tests.
+        required: true
+        type: string
+      target:
+        description: The dbt target (e.g. dev/test).
+        required: false
+        type: string
+        default: test
+      # Per-check opt-out toggles — a caller flips any to 'false' to skip that check for its product.
+      run_sqlfluff: { required: false, type: string, default: 'true' }
+      run_deprecations: { required: false, type: string, default: 'true' }
+      run_docscov: { required: false, type: string, default: 'true' }
+      run_testcov: { required: false, type: string, default: 'true' }
+      run_sdag_check: { required: false, type: string, default: 'true' }
+      # Build scope: 'true' (default) builds the changed models + ALL descendants
+      # (--state-modified-plus-plus); 'false' builds ONLY the changed models (--state-modified).
+      build_downstream: { required: false, type: string, default: 'true' }
+
+permissions:
+  contents: read
+  id-token: write # required for WIF (google-github-actions/auth)
+
+# working-directory applies ONLY to `run:` steps — the dbt project lives in dbt-jaffleshop/.
+# `uses:` steps (checkout, artifacts, composite actions) are NOT affected: their paths are
+# prefixed with dbt-jaffleshop/ explicitly below.
+defaults:
+  run:
+    working-directory: dbt-jaffleshop
+
+env:
+  # Org-wide identifiers (same for every product) — kept here, not duplicated per caller.
+  WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+  WIF_SA: 'dbt-test@dbt-test-jaffleshop.iam.gserviceaccount.com'
+  DBT_ELEMENTARY_ENABLED: 'True'
+  DBT_PR_NUMBER: ${{ github.event.pull_request.number }}
+  DBT_AUTH_METHOD: oauth
+  # dbt project env (mirrors dbt-cicd-checks.yml). The subdir profiles.yml renders every output,
+  # so dev/prod project ids must resolve even on the test target — fake values satisfy env_var().
+  DBT_PROFILES_DIR: ${{ github.workspace }}/dbt-jaffleshop
+  DBT_ENV_TYPE: TEST
+  DBT_BQ_PROJECT_TEST: dbt-test-jaffleshop
+  DBT_BQ_PROJECT_DEV: fake-gcp-project-dev
+  DBT_BQ_PROJECT_PROD: fake-gcp-project-prod
+  # A slice is mandatory in non-PROD (generate_schema_name errors otherwise).
+  DBT_GIT_BRANCH: ${{ github.head_ref || github.ref_name }}
+  # Per-product, injected from the caller's inputs:
+  DBT_TARGET: ${{ inputs.target }}
+  DBT_SELECTOR: ${{ inputs.selector }}
+  ADAF_RUN_SQLFLUFF: ${{ inputs.run_sqlfluff }}
+  ADAF_RUN_DEPRECATIONS: ${{ inputs.run_deprecations }}
+  ADAF_RUN_DOCSCOV: ${{ inputs.run_docscov }}
+  ADAF_RUN_TESTCOV: ${{ inputs.run_testcov }}
+  ADAF_RUN_SDAG_CHECK: ${{ inputs.run_sdag_check }}
+  ADAF_BUILD_DOWNSTREAM: ${{ inputs.build_downstream }}
+
+jobs:
+  # ── Gate + shared state ──────────────────────────────────────────────────────
+  # Parses once, runs the early-abandon change gate, and (only if something in scope
+  # changed) builds the defer-state baseline and uploads it + the manifest as artifacts.
+  # Every downstream job restores those artifacts instead of re-deriving them.
+  setup:
+    name: setup
+    runs-on: ubuntu-latest
+    environment: test
+    outputs:
+      has-modified: ${{ steps.gate.outputs.has-modified }}
+      base-sha: ${{ steps.base.outputs.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history so adaf's merge-base changed-file diff resolves
+
+      - name: Bootstrap
+        uses: ./.github/actions/adaf-ci
+        with:
+          wif-provider: ${{ env.WIF_PROVIDER }}
+          wif-sa: ${{ env.WIF_SA }}
+
+      - name: Debug dbt project
+        shell: bash
+        run: uv run dbt debug --target "$DBT_TARGET"
+
+      - name: Parse dbt project
+        shell: bash
+        run: uv run dbt parse --target "$DBT_TARGET" --quiet
+
+      - name: Fetch + resolve base ref
+        id: base
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --depth=1 origin "${{ github.base_ref }}"
+          echo "sha=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+
+      # EARLY ABANDON GATE: state:modified ∩ selector — the faithful offline calculator vs --defer-ref
+      # (catches changed macros/config/contracts, ignores benign whitespace), matching what the build
+      # actually rebuilds. Empty ⇒ a false-positive trigger and EVERY downstream job (checks, build,
+      # report) is skipped via `if: needs.setup.outputs.has-modified`.
+      - name: Detect changed product models (early-abandon gate)
+        id: gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          changed="$(uv run adaf list --selector "$DBT_SELECTOR" \
+            --state-modified --defer-ref "${{ steps.base.outputs.sha }}" --target "$DBT_TARGET")"
+          echo "$changed"
+          if [[ -n "$changed" ]]; then echo "has-modified=true"; else echo "has-modified=false"; fi >> "$GITHUB_OUTPUT"
+
+      - name: Build defer-target state
+        if: steps.gate.outputs.has-modified == 'true'
+        shell: bash
+        run: uv run adaf defer-state --defer-ref "${{ steps.base.outputs.sha }}" --target "$DBT_TARGET" >/dev/null
+
+      - name: Upload manifest
+        if: steps.gate.outputs.has-modified == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: adaf-manifest
+          path: dbt-jaffleshop/target
+
+      - name: Upload defer-state
+        if: steps.gate.outputs.has-modified == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: adaf-defer-state
+          path: dbt-jaffleshop/tmp/adaf_cache/defer
+
+  # ── Quality gates (parallel matrix) ──────────────────────────────────────────
+  # Each check is its own parallel leg. `fail-fast: false` so one red check doesn't cancel the rest.
+  checks:
+    name: ${{ matrix.cmd }}
+    needs: setup
+    if: needs.setup.outputs.has-modified == 'true'
+    runs-on: ubuntu-latest
+    environment: test
+    strategy:
+      fail-fast: false
+      matrix:
+        # `cmd` is both the leg name and the adaf subcommand. `include` attaches the per-check
+        # toggle env-var name (and the sqlfluff-only advisory flag) to each leg.
+        cmd: [sqlfluff, deprecations, docscov, testcov, 'sdag check']
+        include:
+          - cmd: sqlfluff
+            toggle: ADAF_RUN_SQLFLUFF
+          - cmd: deprecations
+            toggle: ADAF_RUN_DEPRECATIONS
+          - cmd: docscov
+            toggle: ADAF_RUN_DOCSCOV
+          - cmd: testcov
+            toggle: ADAF_RUN_TESTCOV
+          - cmd: 'sdag check'
+            toggle: ADAF_RUN_SDAG_CHECK
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Bootstrap (restore state)
+        uses: ./.github/actions/adaf-ci
+        with:
+          wif-provider: ${{ env.WIF_PROVIDER }}
+          wif-sa: ${{ env.WIF_SA }}
+          download-state: 'true'
+
+      # The ADAF_RUN_* toggle gates the whole step (env indexed by the matrix value); a disabled
+      # check is simply skipped. Only sqlfluff is advisory (continue-on-error). Each leg also writes
+      # its findings as JSON (`--json-out`) for the report job — even when the check fails, the file
+      # is written before the non-zero exit, so the upload (below) captures it regardless.
+      - name: Run ${{ matrix.cmd }}
+        if: ${{ env[matrix.toggle] == 'true' }}
+        continue-on-error: ${{ matrix.advisory == true }}
+        shell: bash
+        run: |
+          slug="${{ matrix.cmd }}"; slug="${slug// /-}"
+          mkdir -p findings
+          uv run adaf ${{ matrix.cmd }} --selector "$DBT_SELECTOR" \
+            --base-ref "${{ needs.setup.outputs.base-sha }}" \
+            --defer --defer-ref "${{ needs.setup.outputs.base-sha }}" \
+            --target "$DBT_TARGET" --json-out "findings/${slug}.json"
+
+      - name: Upload findings
+        if: ${{ !cancelled() && env[matrix.toggle] == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: adaf-findings-${{ strategy.job-index }}
+          path: dbt-jaffleshop/findings/
+          if-no-files-found: ignore
+
+  # ── dbt compile + build (its own job) ────────────────────────────────────────
+  dbt-build:
+    name: dbt-build
+    needs: setup
+    if: needs.setup.outputs.has-modified == 'true'
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+      id-token: write # WIF for GCP auth (edr) in the bootstrap action
+      pull-requests: write # update the `build` section of the sticky PR comment
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Bootstrap (restore state)
+        uses: ./.github/actions/adaf-ci
+        with:
+          wif-provider: ${{ env.WIF_PROVIDER }}
+          wif-sa: ${{ env.WIF_SA }}
+          download-state: 'true'
+
+      # The build scope is ONE selection, chosen by the `build_downstream` toggle (default true):
+      #   true  ⇒ --state-modified-plus-plus — the changed models + ALL descendants (crosses the product
+      #           boundary so out-of-product consumers of a change rebuild too) — the full deferred build;
+      #   false ⇒ --state-modified — ONLY the directly-changed models in the product.
+      # Plain `adaf ls --defer` prints the human-readable build PLAN (built/deferred) to the log first;
+      # then `--flags` emits the machine selection. Empty ⇒ nothing changed in scope ⇒ build skipped.
+      - name: Resolve dbt build flags (state:modified)
+        id: flags
+        shell: bash
+        run: |
+          if [ "$ADAF_BUILD_DOWNSTREAM" = "true" ]; then
+            scope=(--state-modified-plus-plus); label="state:modified+descendants"
+          else
+            scope=(--state-modified); label="state:modified"
+          fi
+          echo "::group::$label — build plan"
+          uv run adaf ls --selector "$DBT_SELECTOR" "${scope[@]}" \
+            --defer-ref "${{ needs.setup.outputs.base-sha }}" --target "$DBT_TARGET" --defer
+          echo "::endgroup::"
+          flags="$(uv run adaf ls --flags --selector "$DBT_SELECTOR" "${scope[@]}" \
+            --defer-ref "${{ needs.setup.outputs.base-sha }}" --target "$DBT_TARGET")"
+          echo "flags=$flags" >> "$GITHUB_OUTPUT"
+          echo "::notice::$label selection: ${flags:-<nothing changed in scope — skipping>}"
+
+      - name: dbt compile
+        if: ${{ env.DBT_PR_NUMBER != '' && steps.flags.outputs.flags != '' }}
+        shell: bash
+        run: uv run dbt compile --target "$DBT_TARGET" ${{ steps.flags.outputs.flags }}
+
+      - name: dbt build
+        if: ${{ env.DBT_PR_NUMBER != '' && steps.flags.outputs.flags != '' }}
+        shell: bash
+        run: uv run dbt build --target "$DBT_TARGET" ${{ steps.flags.outputs.flags }}
+
+      - name: Upload run results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: adaf-run-results
+          path: |
+            dbt-jaffleshop/target/run_results.json
+            dbt-jaffleshop/target/manifest.json
+
+      - name: Run EDR report
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: uv run edr report --profiles-dir ${{ github.workspace }}/dbt-jaffleshop
+
+      - name: Upload EDR report
+        id: upload-edr
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: edr-report
+          path: dbt-jaffleshop/edr_target/elementary_report.html
+          archive: false
+
+      - name: Generate sdag viewer (inline)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: uv run adaf sdag generate --inline --no-parse -o sdag_target
+
+      - name: Upload sdag viewer
+        id: upload-sdag
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: sdag-viewer
+          path: dbt-jaffleshop/sdag_target/sdag.html
+          archive: false
+
+      # dbt's own catalog/lineage docs as a SINGLE self-contained file (`--static` bundles the manifest +
+      # catalog into target/static_index.html), uploaded inline like the EDR report.
+      # DISABLED for now — `dbt docs generate --static` is hitting an error outside adaf's scope. Re-enable
+      # these two steps (and the DBT_DOCS_URL/--docs-url wiring below) once that's resolved.
+      # - name: Generate dbt docs (static)
+      #   if: ${{ !cancelled() }}
+      #   shell: bash
+      #   run: uv run dbt docs generate --target "$DBT_TARGET" --static
+      #
+      # - name: Upload dbt docs
+      #   id: upload-docs
+      #   if: ${{ !cancelled() }}
+      #   uses: actions/upload-artifact@v7
+      #   with:
+      #     name: dbt-docs
+      #     path: target/static_index.html
+      #     archive: false
+
+      # Update ONLY the `build` section of the sticky PR comment (the findings section is owned by the
+      # report job). Splices in without clobbering it; creates the comment if the report job hasn't yet.
+      - name: Update build section of PR comment
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EDR_REPORT_URL: ${{ steps.upload-edr.outputs.artifact-url }}
+          SDAG_VIEWER_URL: ${{ steps.upload-sdag.outputs.artifact-url }}
+          # DBT_DOCS_URL: ${{ steps.upload-docs.outputs.artifact-url }}  # re-enable with the dbt-docs steps above
+        run: |
+          uv run adaf report --section build \
+            --run-results target/run_results.json \
+            --manifest target/manifest.json \
+            --selector "$DBT_SELECTOR" \
+            --edr-url "$EDR_REPORT_URL" \
+            --sdag-url "$SDAG_VIEWER_URL"
+          # --docs-url "$DBT_DOCS_URL"  # re-enable with the dbt-docs steps above
+
+  # ── Findings comment (needs ONLY the checks — NOT dbt-build, so it posts fast) ──
+  report:
+    name: report
+    needs: [setup, checks]
+    if: ${{ needs.setup.outputs.has-modified == 'true' && !cancelled() }}
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+      id-token: write # WIF for GCP auth in the bootstrap action
+      pull-requests: write # post/update the sticky PR comment
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Bootstrap
+        uses: ./.github/actions/adaf-ci
+        with:
+          wif-provider: ${{ env.WIF_PROVIDER }}
+          wif-sa: ${{ env.WIF_SA }}
+
+      - name: Restore findings
+        uses: actions/download-artifact@v8
+        with:
+          pattern: adaf-findings-*
+          merge-multiple: true
+          path: dbt-jaffleshop/findings
+
+      # Update ONLY the `findings` section of the sticky PR comment. Independent of dbt-build.
+      - name: Update findings section of PR comment
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          uv run adaf report --section findings \
+            --findings-dir findings \
+            --selector "$DBT_SELECTOR"

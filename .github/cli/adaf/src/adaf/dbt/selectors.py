@@ -1,6 +1,6 @@
 """Read named selectors out of dbt's ``selectors.yml`` (ruamel round-trip).
 
-Shared by the sdag viewer (which products to render) and ``gha create`` (validating the
+Shared by the sdag viewer (which products to render) and `gha create` (validating the
 product name). ruamel preserves comments + ordering, which matters when other tooling
 round-trips the same file.
 """

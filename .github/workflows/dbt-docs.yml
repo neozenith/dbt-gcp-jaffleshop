@@ -148,7 +148,7 @@ jobs:
       # `dbt ls` membership resolution is parse-only, so the prod env already set on this job is enough
       # (no warehouse query). Fail-loud (no `|| true`) to match the docs-generate step's stance.
       - name: Build sdag data-product viewer (sibling of index.html)
-        run: uv run adaf products generate -o "${{ github.workspace }}/_site"
+        run: uv run adaf sdag generate -o "${{ github.workspace }}/_site"
 
       # Elementary observability dashboard → <pages-url>/elementary_report.html. Runs as the
       # dbt-prod SA authenticated above (edr materializes scratch tables in ELEMENTARY, so it

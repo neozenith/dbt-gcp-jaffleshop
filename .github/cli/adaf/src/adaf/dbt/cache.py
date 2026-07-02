@@ -11,8 +11,8 @@ The invalidation chain is one-directional and designed so a stale result can NEV
 * The selector cache stores **one JSON file per named selector** under
   ``tmp/adaf_cache/selectors/<selector>.json``. Each file is independently inspectable and
   records the selector's resolved member ``unique_id`` set AND every member's computed
-  system-boundary status (``inbound`` / ``outbound`` / ``both`` / ``internal`` — see
-  ``adaf.graph``), alongside a **fingerprint** of ``(manifest mtime, selectors.yml mtime)``.
+  system-boundary status (``inbound`` / ``outbound`` / ``both`` / ``inner`` — see
+  ``adaf.dbt.graph``), alongside a **fingerprint** of ``(manifest mtime, selectors.yml mtime)``.
   On load, a fingerprint mismatch is treated as a miss (``None``) — never a stale hit. Changing
   the manifest or selectors.yml flips the fingerprint, so the cache self-invalidates without any
   explicit bust. One file per selector means a single product can miss/refresh without rewriting
@@ -89,7 +89,7 @@ class SelectorCacheEntry:
 
     ``members`` are the resource ``unique_id``s dbt resolved for the selector; ``boundaries``
     maps each of those ids to its computed system-boundary status (``inbound`` / ``outbound`` /
-    ``both`` / ``internal``, from ``adaf.graph.Graph.classify``). The two are kept together so
+    ``both`` / ``inner``, from ``adaf.dbt.graph.Graph.classify``). The two are kept together so
     one cache file fully describes a data product.
     """
 

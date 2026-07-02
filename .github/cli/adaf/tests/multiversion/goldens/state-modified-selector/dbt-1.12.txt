@@ -1,0 +1,26 @@
+## gate: adaf state-modified-selector (M / M+ / (S∩M+)+ via adaf ls)
+--- exit: 0
+--- stdout:
+selector: matrix_demo   (baseline: pristine TARGET)
+--- --state-modified:
+  models/staging/stg_orders.sql
+  flags: --select selector:matrix_demo,state:modified --state /fixture/target --defer
+  dbt ls <flags> == adaf: True
+  native `selector:matrix_demo,state:modified` (exit 0) == adaf: True
+--- --state-modified-plus:
+  models/marts/dim_customers.sql
+  models/marts/fct_orders.sql
+  models/staging/stg_orders.sql
+  flags: --select selector:matrix_demo,state:modified+ --state /fixture/target --defer
+  dbt ls <flags> == adaf: True
+  native `selector:matrix_demo,state:modified+` (exit 0) == adaf: True
+--- --state-modified-plus-plus:
+  models/downstream/report_orders.sql
+  models/marts/dim_customers.sql
+  models/marts/fct_orders.sql
+  models/staging/stg_orders.sql
+  flags: --select models/marts/dim_customers.sql+ models/marts/fct_orders.sql+ models/staging/stg_orders.sql+ --state /fixture/target --defer
+  dbt ls <flags> == adaf: True
+  native: n/a — (S ∩ M+)+ has no one-expression form (Atom Rule)
+--- stderr:
+

@@ -1,10 +1,10 @@
-"""Centralised dbt subprocess helpers shared by the gates, the ``ls`` resolver, the viewer, and the
+"""Centralised dbt subprocess helpers shared by the gates, the `ls` resolver, the viewer, and the
 defer builder.
 
-The CLI shells out to ``dbt`` rather than importing it. ``run_dbt`` is the single place every
+The CLI shells out to `dbt` rather than importing it. ``run_dbt`` is the single place every
 invocation goes through — one home for the command shape, env, capture, and fail-loud error
-formatting (``dbt ls``, ``dbt parse``, ``dbt deps`` all route here, including the worktree-targeted
-parse the defer builder needs via ``--project-dir`` / ``--target-path`` / a scrubbed env).
+formatting (`dbt ls`, `dbt parse`, `dbt deps` all route here, including the worktree-targeted parse
+the defer builder needs via `--project-dir` / `--target-path` / a scrubbed env).
 """
 
 # Standard Library
@@ -22,11 +22,9 @@ def run_dbt(args: list[str], *, cwd: Path | None = None, extra_env: dict[str, st
     The single dbt entry point for the whole CLI — ``ls.py`` (which needs the stdout) and the
     parse/deps helpers below all delegate here, so the subprocess + error shape lives in one place.
     """
-    cwd = cwd or config.PROJECT_ROOT
+    cwd = cwd or config.project_root()
     env = {**os.environ, **(extra_env or {})}
-    proc = subprocess.run(
-        ["dbt", *args], cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL, env=env
-    )
+    proc = subprocess.run(["dbt", *args], cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL, env=env)
     if proc.returncode != 0:
         tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-30:])
         raise RuntimeError(f"`dbt {' '.join(args)}` failed (exit {proc.returncode}):\n{tail}")

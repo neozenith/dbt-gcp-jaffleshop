@@ -3,15 +3,9 @@
 Builds **one Docker image per pinned dbt version — all from a SINGLE, ARG-parametrised Dockerfile**
 (`docker/Dockerfile`), `dbt parse`s the tiny committed `fixture/` project under that version, runs adaf's
 read-only gates against the resulting artifact, and snapshots their stdout / stderr / exit codes against
-a golden per capability per version LINE (`goldens/<capability>/<series-id>.txt`). A diff is the
-regression signal: if a new dbt parser drops, renames, or *rejects* a field one of adaf's projections
-reads, the snapshot diverges and the run fails loudly — escalators-not-stairs, never a silent skip.
-
-> **Bootstrap:** no goldens are committed yet. The first run on a fresh checkout (or whenever a new
-> version line resolves) must **rebaseline** to create them — `adaf-multiversion-ci` asserts
-> `golden.exists()` and fails loudly with a "re-baseline" message until you do. This is by design:
-> goldens are version/behaviour snapshots that can only be produced by actually running the matrix on
-> a Docker host, so they are generated, reviewed, then committed — never hand-authored.
+a committed golden per capability per version LINE (`goldens/<capability>/<series-id>.txt`). A diff is the regression signal: if a new dbt
+parser drops, renames, or *rejects* a field one of adaf's projections reads, the snapshot diverges and
+the run fails loudly — escalators-not-stairs, never a silent skip.
 
 The harness is driven by **testcontainers** (`test_multiversion.py`), needs a running **Docker daemon**,
 and is **off `make ci`**.
@@ -19,10 +13,8 @@ and is **off `make ci`**.
 ## Run it
 
 ```bash
-# First time (or after a new version line lands): create + review the goldens, then commit them.
-make -C .github/cli/adaf adaf-multiversion-rebaseline    # build + run every version, WRITE goldens
-# Thereafter: assert the committed goldens still hold (the regression gate).
 make -C .github/cli/adaf adaf-multiversion-ci            # build + run every version, assert vs goldens
+make -C .github/cli/adaf adaf-multiversion-rebaseline    # same, but rewrite goldens (deliberate)
 ```
 
 Under the hood (the target just selects the marker — nothing extra to install, see below):
@@ -66,12 +58,12 @@ degradation (the dependency is present and the tests are real).
 
 ## The matrix — version LINES, resolved from PyPI (auto-tracking)
 
-The matrix is **not** a list of fixed pins. It is one row per dbt *version line* (a `Series` in
-`test_multiversion.py`), and each line resolves its concrete build **when the test runs**. So a new
-prerelease — or the GA that supersedes it — **auto-enrols the moment it lands**, with no edit to this
-suite. The pip lines are a plain pip install of `dbt-core` + `dbt-duckdb` into an isolated venv; the
-`dbt-fusion` line is different — it installs the Rust **Fusion engine** from the public CDN (not PyPI)
-and is the row that exercises the new **v20 parquet** artifact set (see
+The matrix is **not** a list of fixed pins. It is one row per dbt-core *version line* (a `Series` in
+`test_multiversion.py`), and each line resolves its concrete patch **from PyPI when the test runs**. So
+a new prerelease — or the GA that supersedes it — **auto-enrols the moment it lands on PyPI**, with no
+edit to this suite. The pip lines are a plain pip install of `dbt-core` + `dbt-duckdb` into an isolated
+venv; the `dbt-fusion` line is different — it installs the Rust **Fusion engine** from the public CDN
+(not PyPI) and is the row that exercises the new **v20 parquet** artifact set (see
 [`docs/dbt-fusion-artifacts.md`](../../docs/dbt-fusion-artifacts.md)). The fixture is migrated to be
 forward-compatible (see below), so all lines parse clean and produce identical *gate* output (only the
 `parse` golden differs per row):
@@ -97,7 +89,8 @@ never touches the network). If PyPI is unreachable, or no release matches a line
 from tracking new releases.
 
 **A newly-resolved version → one deliberate re-baseline.** Goldens are keyed by the *stable line id*
-(`dbt-1.12`), not the floating version. The gate goldens (`list` / `docs` / `tests` / `sdag-check`)
+(`dbt-1.12`), not the floating version. The gate goldens (the `list` / `docscov` / `testcov` / `sdag-check`
+checks, plus the `state-modified-selector` / `ls-defer` selection snapshots)
 are version-independent, so a new patch with unchanged behaviour **re-passes them automatically**; only
 the version-bearing `parse` golden differs, so a freshly-resolved prerelease/GA surfaces as a single
 `parse` mismatch. Re-baseline it (below) and the commit becomes the record of *which* version the line
@@ -140,12 +133,13 @@ selector (`tag:matrix_demo`):
 - a fully-governed outbound mart (`dim_customers`: description, test, enforced contract, exposure,
   semantic model) → **clean** outbound node;
 - a partially-governed outbound mart (`fct_orders`: enforced contract + exposure, but no semantic
-  model, description, or tests) → **violates MD-12**, and the docs / tests coverage gap;
+  model, description, or tests) → **violates MD-12**, and the docscov / testcov gap;
 - an untagged MetricFlow time-spine model kept *out* of the product.
 
-So every engine's golden encodes the same known-answer mix across all four gates: `list` → 3 models,
-`check docs` 1/3, `check tests` 1/3, and `sdag check` reporting exactly **MD-12** (`fct_orders`) +
-**MD-07** (`raw.orders`).
+So every engine's golden encodes the same known-answer mix across the four check gates: `list` → 3 models,
+`docscov` 1/3, `testcov` 1/3, and `sdag check` reporting exactly **MD-12** (`fct_orders`) +
+**MD-07** (`raw.orders`). The two selection gates (`state-modified-selector`, `ls-defer`) snapshot the
+same fixture's offline `state:modified ∩ selector` resolution and `--defer` built/deferred split.
 
 ### Per-engine fixture variants (`__<engine-id>` suffix)
 
@@ -181,11 +175,13 @@ single gate diffs straight across lines:
 
 ```
 goldens/
-├── parse/<series-id>.txt        # the ONLY version-bearing golden: versions, manifest kind, parse exit
+├── parse/<series-id>.txt                  # the ONLY version-bearing golden: versions, manifest kind, parse exit
 ├── list/<series-id>.txt
-├── docs/<series-id>.txt
-├── tests/<series-id>.txt
-└── sdag-check/<series-id>.txt    # ("sdag check" → slug "sdag-check")
+├── docscov/<series-id>.txt
+├── testcov/<series-id>.txt
+├── sdag-check/<series-id>.txt             # ("sdag check" → slug "sdag-check")
+├── ls-defer/<series-id>.txt               # `ls --defer` built/deferred split against a baseline ref
+└── state-modified-selector/<series-id>.txt # offline state:modified ∩ selector resolution
 ```
 
 Each gate file holds only that gate's invocation + exit/stdout/stderr and is **version-independent**, so
@@ -218,8 +214,9 @@ row is a pip venv — so they are baked straight into the image's `ENV` rather t
   `harness.py` puts the engine's `dbt` first on `PATH` so the `dbt ls` adaf shells out to is the
   **same** engine that wrote the manifest.
 - **`harness.py`** `dbt parse`s the fixture, detects whether the artifact is JSON (`manifest.json`)
-  or parquet (a `*.parquet` dir — adaf's `load_artifact` handles both), runs all four gates
-  (`list`, `check docs`, `check tests`, `sdag check` — over `--all` / `--selector matrix_demo`), and emits ONE
+  or parquet (a `*.parquet` dir — adaf's `load_artifact` handles both), runs all six gates
+  (the `list` / `docscov` / `testcov` / `sdag check` checks — each `--all --selector matrix_demo` — plus
+  the `state-modified-selector` and `ls-defer` selection snapshots), and emits ONE
   JSON document on stdout. It always exits 0: a gate's non-zero exit is *data*, so a parse/engine
   failure is captured in the golden, not masked as a crash.
 - **`test_multiversion.py`** stages a minimal build context under `tmp/`, builds the image with

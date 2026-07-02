@@ -1,7 +1,7 @@
 version: 2
 
 # Exposures name the downstream consumers of the published marts. The ADAF system-boundary
-# gate (`adaf check system-boundaries`) requires every OUTBOUND data-product node to be named
+# gate (`adaf sdag check`) requires every OUTBOUND data-product node to be named
 # by an exposure — proof that a published interface has a known consumer. Each outbound mart
 # (customers, products, supplies) appears in a depends_on below.
 exposures:

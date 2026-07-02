@@ -3,13 +3,37 @@ version: "1.0.0"
 config-version: 2
 
 # A deliberately tiny dbt project that the version-matrix harness parses under each
-# pinned dbt engine. It is NOT a real production project — it exists only so adaf's
-# read-only gates (list / check docs / check tests / sdag check) have a real manifest to chew on.
+# pinned dbt engine. It is NOT the real dbt project — it exists only so adaf's
+# read-only gates (docscov / testcov / sdag check) have a real manifest to chew on.
 profile: matrix_fixture
 
 model-paths: ["models"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
+
+# The harness runs `dbt build` (to capture run_results) + `dbt docs generate` (catalog), so the
+# `raw.orders` source must physically exist. This hook seeds a tiny raw table in the source's schema
+# before models build — making the fixture self-contained and buildable (exit 0) on every engine,
+# without changing its resource TOPOLOGY (the inbound source node the sdag/boundary gates rely on stays
+# a source; an on-run-start operation is not a data node, so the read-only gate goldens are unaffected).
+# on-run-start does NOT run during `dbt parse`, so the parse manifest the gates read is unchanged.
+on-run-start:
+  - "create schema if not exists raw_data"
+  # Column types are cast to match the enforced contracts on the marts (fct_orders/dim_customers):
+  # order_id/customer_id=integer, order_total=double, created_at=timestamp (NOT timestamptz). The
+  # types flow source -> stg_orders -> marts, so the contract assertion passes at build time.
+  - >
+    create table if not exists raw_data.orders as
+    select
+      cast(order_id as integer) as order_id,
+      cast(customer_id as integer) as customer_id,
+      cast(order_total as double) as order_total,
+      cast(created_at as timestamp) as created_at
+    from (values
+      (1, 10, 100.00, now()),
+      (2, 20, 250.50, now()),
+      (3, 10, 75.25, now())
+    ) as t(order_id, customer_id, order_total, created_at)
 
 # Only the staging + marts models carry the `matrix_demo` tag, so the named selector
 # in selectors.yml (tag:matrix_demo) resolves exactly the product. The MetricFlow
